@@ -1,0 +1,18 @@
+# Registro de decisiones de arquitectura (ADR)
+
+Cada decisión relevante se documenta con la [plantilla](0000-plantilla.md): contexto, decisión,
+alternativas y consecuencias. Una ADR aceptada no se edita en lo sustancial: si la decisión cambia,
+se escribe una nueva que la **reemplaza** y se actualiza el estado de la anterior.
+
+| # | Decisión | Estado | Fecha |
+|---|---|---|---|
+| [0001](0001-turnos-simultaneos-cerrador-unico.md) | Turnos simultáneos con un único cerrador por ronda (lock en Redis + `UNIQUE(match_id, seq)` en Postgres) | aceptada | 2026-10-29 |
+| [0002](0002-signalr-websockets-messagepack.md) | SignalR solo sobre WebSockets con MessagePack y sin *sticky sessions* | aceptada | 2026-10-29 |
+| [0003](0003-event-sourcing-liviano-snapshot-redis.md) | Event sourcing liviano con instantánea en Redis | aceptada | 2026-10-29 |
+| [0004](0004-jwt-propio-vs-oidc.md) | JWT propio frente a un proveedor OIDC externo | aceptada | 2026-10-29 |
+| [0005](0005-dotnet-10-openapi-31.md) | .NET 10 en lugar de .NET 8 (OpenAPI 3.1 nativo) | aceptada | 2026-10-29 |
+| [0006](0006-ticket-handshake-websocket.md) | Ticket de un solo uso para el *handshake* WebSocket | aceptada | 2026-10-29 |
+
+Contratos relacionados: [`contracts/asyncapi.yaml`](../../contracts/asyncapi.yaml) (tiempo real) y
+el OpenAPI 3.1 que genera la API. Visión general en
+[`planteamiento/02-arquitectura.md`](../../planteamiento/02-arquitectura.md).

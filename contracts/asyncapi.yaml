@@ -1,46 +1,1787 @@
 asyncapi: 3.0.0
+id: urn:ascua:realtime:match
 info:
   title: Ascua — protocolo en tiempo real
-  version: 0.1.0
+  version: 1.0.0
   description: |
-    Contrato del hub SignalR `/realtime/match` (WebSocket seguro, protocolo MessagePack).
-    Borrador del esqueleto: se completa en la fase 2 (SubmitOrder, RoundResolved, GetSnapshot, errores y códigos de cierre).
+    Contrato del hub SignalR **`/realtime/match`** del servidor autoritativo de *Ascua*
+    (mazmorra semi-cooperativa por turnos simultáneos, 2-4 jugadores).
+
+    Este documento describe **el servidor**: las operaciones `receive` son invocaciones que
+    el cliente hace al hub y las operaciones `send` son mensajes que el hub empuja al cliente.
+
+    ## 1. Conexión
+
+    | Aspecto | Valor |
+    |---|---|
+    | Transporte | Solo **WebSocket seguro (`wss`)**. Sin *negotiate*: el cliente usa `skipNegotiation: true` y `transport: WebSockets`. No hay SSE ni *long polling*, así que no hacen falta *sticky sessions* |
+    | URL | `wss://{apiHost}/realtime/match?protocolVersion=1&access_token={ticket}` |
+    | Protocolo de hub | **MessagePack** (`"protocol":"messagepack","version":1` en el *handshake* de SignalR). Los objetos se serializan como **mapas con claves de texto** (camelCase), nunca como arreglos posicionales, para que agregar campos sea compatible. **JSON** (`"protocol":"json"`) se admite **solo para depuración** en ambientes `local` y `dev`; en `prod` se rechaza |
+    | Tamaño máximo | 4 KB por mensaje entrante (`MaximumReceiveMessageSize`) |
+    | Heartbeat | El servidor envía *ping* de SignalR cada **10 s** (`KeepAliveInterval`). Si el servidor no recibe nada del cliente en **30 s** (`ClientTimeoutInterval`) cierra la conexión. El cliente debe configurar `serverTimeoutInMilliseconds = 30000` y `keepAliveIntervalInMilliseconds = 10000` |
+    | Conexiones por usuario | Máximo 3 simultáneas (contador en Redis) |
+    | Gracia de reconexión | Al caer la conexión se marca `disconnectedAt`; durante **60 s** el servidor aplica `GUARD` en cada ronda. Si el jugador no vuelve, se aplica la regla de abandono |
+
+    ### Autenticación (ticket de un solo uso)
+
+    1. El cliente, autenticado por HTTP con su JWT de acceso, llama a
+       `POST /api/v1/realtime/tickets` (cuerpo `{ "matchId": "<uuid>" }`).
+    2. El servidor responde `201 { "ticket": "<opaco, 43 caracteres base64url>", "expiresAt": "..." }`.
+       El ticket vale **30 s**, está atado al usuario y a la partida, y se guarda en Redis.
+    3. El cliente abre el WebSocket enviando el ticket en el *query* `access_token`
+       (es lo que hace `accessTokenFactory` del cliente de SignalR con WebSockets).
+    4. En el *upgrade* el servidor lo consume con `GETDEL`: un ticket **no se puede reutilizar**.
+       Si falta, venció o ya se usó, el *upgrade* se rechaza con **HTTP 401** y no se abre el socket.
+
+    El JWT nunca viaja en la URL del WebSocket: solo el ticket, que caduca enseguida y no sirve dos veces
+    (ver ADR-0006). Para reconectar, el cliente pide **un ticket nuevo**.
+
+    ### Flujo típico
+
+    ```
+    POST /api/v1/realtime/tickets ─► ticket
+    WS upgrade (ticket, protocolVersion=1) ─► handshake MessagePack
+    JoinMatch ─► ACK con Snapshot
+    [Drafting]   DraftOffer ─► DraftPick ─► ACK
+    [InProgress] RoundOpened ─► SubmitOrder ─► ACK ─► PlayerDecided (a todos) ─► RoundResolved (a cada uno su vista)
+    ... ─► MatchFinished ─► cierre MATCH_FINISHED
+    ```
+
+    ## 2. Códigos y razones de cierre
+
+    La razón **normativa** viaja en el mensaje `Close` de SignalR (campo `error`, con el formato
+    `CODIGO: descripción`) junto con `allowReconnect`. El código WebSocket es informativo
+    (algunos proxies lo reescriben). Los rechazos del *upgrade* no abren el socket y se informan con HTTP.
+
+    | WS / HTTP | Razón (`Close.error`) | `allowReconnect` | Cuándo | Qué hace el cliente |
+    |---|---|---|---|---|
+    | HTTP 401 | `TICKET_INVALID` | — | Ticket ausente, vencido, ya usado o de otra partida | Pide un ticket nuevo y reintenta **una** vez; si vuelve a fallar, renueva el JWT |
+    | HTTP 400 | `UNSUPPORTED_PROTOCOL_VERSION` | — | `protocolVersion` ausente o no soportado | Actualiza el cliente. No reintenta |
+    | HTTP 429 | `CONNECTION_LIMIT` | — | El usuario ya tiene 3 conexiones abiertas | Cierra otras pestañas; reintenta con *backoff* |
+    | 1000 | `MATCH_FINISHED` | `false` | Se envió `MatchFinished` y la partida terminó (o expiró/fue abandonada) | Muestra el resultado. No reconecta |
+    | 1001 | `SERVER_DRAINING` | `true` | La réplica se apaga (despliegue o reducción de escala); antes se envió `ServerDraining` | Reconecta tras `reconnectAfterMs` con un ticket nuevo; otra réplica lo atiende |
+    | 1009 | `MESSAGE_TOO_LARGE` | `true` | Un mensaje entrante superó 4 KB | Reconecta; corrige el cliente. La partida **sigue** (cuenta la gracia) |
+    | 1011 | `INTERNAL_ERROR` | `true` | Fallo inesperado de la réplica | Reconecta con *backoff* exponencial (1, 2, 4… máx. 30 s) |
+    | 4001 | `SESSION_REPLACED` | `false` | El mismo usuario abrió otra conexión a la misma partida; la vieja se cierra | No reconecta: la sesión nueva ya está activa |
+    | 4003 | `KICKED_BY_ADMIN` | `false` | Un administrador expulsó al jugador (queda auditado) | Muestra el aviso. No reconecta |
+    | 4029 | `RATE_LIMITED` | `true` | Abuso sostenido: más de 50 rechazos `RATE_LIMITED` en 60 s | Espera al menos 60 s antes de reconectar |
+    | — | `HEARTBEAT_TIMEOUT` | — | Lo detecta el **cliente**: 30 s sin mensajes del servidor | Reconecta con un ticket nuevo |
+
+    ## 3. Errores
+
+    Toda invocación responde con su ACK o con `InvocationError { error: { code, message, … } }`
+    (nunca con una excepción de SignalR sin tipo). Los errores que no responden a una invocación
+    concreta llegan como el mensaje `Error`.
+
+    > **Un mensaje inválido se rechaza sin cerrar la partida.** El servidor responde el error,
+    > no aplica nada y la partida sigue para todos. Solo `MESSAGE_TOO_LARGE` y el abuso sostenido
+    > de `RATE_LIMITED` cierran **la conexión** (no la partida).
+
+    | Código | Reintentable | Significado |
+    |---|---|---|
+    | `INVALID_PAYLOAD` | No | El mensaje no cumple el esquema (tipos, rangos, `maxLength`, campos extra) |
+    | `INVALID_ORDER` | No | La orden es válida en forma pero ilegal en el estado actual (p. ej. habilidad en enfriamiento) |
+    | `STALE_ROUND` | No | `round` no es la ronda abierta (ya se cerró o aún no existe). `details.currentRound` indica la vigente |
+    | `ORDER_ALREADY_SUBMITTED` | No | Ya hay una orden para esta ronda con **otro** `clientActionId`; la primera es la que vale |
+    | `DUPLICATE_ACTION` | — | **No es un fallo.** Reenvío del mismo `clientActionId`: se devuelve el ACK original con `result: DUPLICATE_ACTION` y no se aplica nada |
+    | `NOT_PARTICIPANT` | No | El usuario no pertenece a la partida |
+    | `NOT_JOINED` | No | Se invocó un método de partida sin `JoinMatch` previo en esta conexión |
+    | `PLAYER_DOWN` | No | El héroe está caído, extinto o retirado y no puede actuar |
+    | `MATCH_NOT_FOUND` | No | La partida no existe |
+    | `MATCH_NOT_ACTIVE` | No | La partida no está en el estado que exige la operación (terminada, expirada, `Faulted`…) |
+    | `ALREADY_IN_ANOTHER_MATCH` | No | El usuario tiene otra partida activa |
+    | `DRAFT_CLOSED` | No | La oferta de draft ya se resolvió o venció |
+    | `INVALID_PICK` | No | La bendición elegida no está entre las opciones de esa oferta |
+    | `RATE_LIMITED` | Sí | Se agotó el *token bucket* de la conexión (capacidad 20, recarga 5/s). `retryAfterMs` indica la espera |
+    | `MESSAGE_TOO_LARGE` | No | Mensaje mayor a 4 KB (además cierra la conexión con 1009) |
+    | `INTERNAL_ERROR` | Sí | Error del servidor; no se aplicó nada. Se puede reintentar con el **mismo** `clientActionId` |
+
+    Los clientes deben tratar un código desconocido como error genérico no reintentable.
+
+    ## 4. Orden, entrega y recuperación
+
+    - Cada partida tiene una secuencia `seq` monótona (la de sus eventos en Postgres).
+      `RoundResolved` trae `previousSeq` y `seq`: el cliente aplica el delta solo si
+      `previousSeq` coincide con su último `seq`; si no, pide `GetSnapshot`.
+    - La entrega por WebSocket es *at-most-once*; la recuperación es siempre por `Snapshot`.
+    - `SubmitOrder` es idempotente por `clientActionId` (UUID v7 generado en el cliente):
+      ante un *timeout* el cliente reintenta con el **mismo** id.
+    - Ningún mensaje revela información oculta de otro jugador: órdenes antes de resolver,
+      pactos, opciones de draft, bendiciones ajenas, contenido de cofres, casillas fuera de visión
+      ni héroes en sigilo. Cada jugador recibe su propia vista.
+
+    ## 5. Versionado y compatibilidad
+
+    - **`protocolVersion`** (entero, *query* del *upgrade*) es la versión **mayor** del protocolo.
+      Esta especificación define `protocolVersion=1`. `info.version` sigue SemVer y su mayor coincide.
+    - Dentro de una versión mayor solo hay **cambios aditivos** (sube la menor):
+      campos opcionales nuevos, mensajes servidor→cliente nuevos, códigos de error nuevos y
+      valores nuevos en enumeraciones marcadas como extensibles (`VisibleEvent.type`).
+      Los clientes **deben ignorar** campos y mensajes desconocidos.
+    - Un cambio incompatible (quitar o renombrar un campo, cambiar un tipo, endurecer una
+      validación) exige una versión mayor nueva. El servidor acepta la mayor actual y la anterior
+      durante al menos 30 días; luego rechaza la vieja con `UNSUPPORTED_PROTOCOL_VERSION`.
+    - Cada mensaje declara `x-since` (versión en que apareció). Los cambios se registran en
+      `docs/adr/` y en el changelog de la versión.
+  contact:
+    name: Equipo Ascua
+    url: https://github.com/JanPMolina/ascua
+  tags:
+    - name: invocacion
+      description: Cliente → servidor (invocación de un método del hub con ACK).
+    - name: difusion
+      description: Servidor → todos los jugadores de la partida.
+    - name: privado
+      description: Servidor → un solo jugador; contiene información que solo él puede ver.
+    - name: sistema
+      description: Mensajes de operación del servidor (errores, drenado).
+  externalDocs:
+    description: Arquitectura y decisiones (ADRs)
+    url: https://github.com/JanPMolina/ascua/tree/main/docs/adr
+
+defaultContentType: application/x-msgpack
+
 servers:
+  production:
+    host: '{apiHost}'
+    protocol: wss
+    pathname: /realtime/match
+    title: Azure Container Apps
+    summary: Ingress HTTPS/WSS de Container Apps (dev y prod).
+    variables:
+      apiHost:
+        default: ascua-api.azurecontainerapps.io
+        description: FQDN del ingress del ambiente (dev o prod).
+    security:
+      - $ref: '#/components/securitySchemes/realtimeTicket'
   local:
     host: localhost:8080
     protocol: ws
     pathname: /realtime/match
+    title: Desarrollo local
+    summary: Solo para desarrollo; admite JSON para depuración.
+    security:
+      - $ref: '#/components/securitySchemes/realtimeTicket'
+
 channels:
   match:
     address: /realtime/match
+    title: Hub de partida
+    description: |
+      Conexión SignalR de un jugador. Tras `JoinMatch` la conexión entra al grupo `match:{matchId}`
+      (difusiones) y recibe además los mensajes privados dirigidos a su usuario.
+    servers:
+      - $ref: '#/servers/production'
+      - $ref: '#/servers/local'
+    bindings:
+      ws:
+        method: GET
+        query:
+          type: object
+          additionalProperties: false
+          required: [protocolVersion, access_token]
+          properties:
+            protocolVersion:
+              type: string
+              enum: ['1']
+              description: Versión mayor del protocolo de Ascua.
+            access_token:
+              type: string
+              minLength: 43
+              maxLength: 64
+              pattern: '^[A-Za-z0-9_-]+$'
+              description: Ticket de un solo uso emitido por `POST /api/v1/realtime/tickets`.
+        bindingVersion: 0.1.0
     messages:
-      ping:
-        $ref: '#/components/messages/Ping'
-      pong:
-        $ref: '#/components/messages/Pong'
+      JoinMatch:
+        $ref: '#/components/messages/JoinMatch'
+      JoinMatchAck:
+        $ref: '#/components/messages/JoinMatchAck'
+      SubmitOrder:
+        $ref: '#/components/messages/SubmitOrder'
+      SubmitOrderAck:
+        $ref: '#/components/messages/SubmitOrderAck'
+      GetSnapshot:
+        $ref: '#/components/messages/GetSnapshot'
+      LeaveMatch:
+        $ref: '#/components/messages/LeaveMatch'
+      LeaveMatchAck:
+        $ref: '#/components/messages/LeaveMatchAck'
+      DraftPick:
+        $ref: '#/components/messages/DraftPick'
+      DraftPickAck:
+        $ref: '#/components/messages/DraftPickAck'
+      InvocationError:
+        $ref: '#/components/messages/InvocationError'
+      RoundOpened:
+        $ref: '#/components/messages/RoundOpened'
+      PlayerDecided:
+        $ref: '#/components/messages/PlayerDecided'
+      RoundResolved:
+        $ref: '#/components/messages/RoundResolved'
+      Snapshot:
+        $ref: '#/components/messages/Snapshot'
+      DraftOffer:
+        $ref: '#/components/messages/DraftOffer'
+      PlayerConnectionChanged:
+        $ref: '#/components/messages/PlayerConnectionChanged'
+      MatchFinished:
+        $ref: '#/components/messages/MatchFinished'
+      ServerDraining:
+        $ref: '#/components/messages/ServerDraining'
+      Error:
+        $ref: '#/components/messages/Error'
+
 operations:
-  sendPing:
+  # ───────────── Cliente → servidor ─────────────
+  joinMatch:
     action: receive
     channel:
       $ref: '#/channels/match'
+    title: JoinMatch
+    summary: Asocia la conexión a una partida en la que el usuario ya es participante.
+    description: |
+      No agrega al usuario a la partida (eso se hace por REST); solo suscribe la conexión.
+      Si el usuario estaba desconectado, cancela su gracia y se difunde `PlayerConnectionChanged`.
+      Si ya había otra conexión del mismo usuario en la partida, esa se cierra con `SESSION_REPLACED`.
+    tags:
+      - name: invocacion
     messages:
-      - $ref: '#/channels/match/messages/ping'
+      - $ref: '#/channels/match/messages/JoinMatch'
     reply:
       channel:
         $ref: '#/channels/match'
       messages:
-        - $ref: '#/channels/match/messages/pong'
+        - $ref: '#/channels/match/messages/JoinMatchAck'
+        - $ref: '#/channels/match/messages/InvocationError'
+  submitOrder:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: SubmitOrder
+    summary: Envía la orden secreta del jugador para la ronda abierta.
+    description: |
+      Validación en orden: esquema y tamaño → participante → héroe activo → `round` igual a la
+      ronda abierta → legalidad de la orden. La primera orden aceptada de la ronda es definitiva.
+      Idempotente por `clientActionId`. Si con esta orden ya decidieron todos los vivos,
+      el servidor intenta cerrar la ronda de inmediato.
+    tags:
+      - name: invocacion
+    messages:
+      - $ref: '#/channels/match/messages/SubmitOrder'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/SubmitOrderAck'
+        - $ref: '#/channels/match/messages/InvocationError'
+  getSnapshot:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: GetSnapshot
+    summary: Pide la vista completa del jugador (al reconectar o al detectar un hueco de `seq`).
+    tags:
+      - name: invocacion
+    messages:
+      - $ref: '#/channels/match/messages/GetSnapshot'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/Snapshot'
+        - $ref: '#/channels/match/messages/InvocationError'
+  leaveMatch:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: LeaveMatch
+    summary: Abandona la partida de forma voluntaria.
+    description: |
+      En `Lobby` o `Drafting` el jugador simplemente sale. En `InProgress` es un **abandono
+      inmediato** (sin gracia): el héroe se retira y pierde todas sus ascuas.
+    tags:
+      - name: invocacion
+    messages:
+      - $ref: '#/channels/match/messages/LeaveMatch'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/LeaveMatchAck'
+        - $ref: '#/channels/match/messages/InvocationError'
+  draftPick:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: DraftPick
+    summary: Elige 1 de las 2 bendiciones de una `DraftOffer`.
+    description: |
+      Idempotente: repetir la misma elección devuelve el mismo ACK. Si vence el plazo sin
+      elección, el servidor elige al azar (CSPRNG) entre las dos opciones.
+    tags:
+      - name: invocacion
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/DraftPick'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/DraftPickAck'
+        - $ref: '#/channels/match/messages/InvocationError'
+
+  # ───────────── Servidor → cliente ─────────────
+  sendRoundOpened:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: RoundOpened
+    summary: Abre la fase de planificación de una ronda.
+    tags:
+      - name: difusion
+    messages:
+      - $ref: '#/channels/match/messages/RoundOpened'
+  sendPlayerDecided:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: PlayerDecided
+    summary: Avisa que un jugador ya envió su orden, sin revelarla.
+    tags:
+      - name: difusion
+    messages:
+      - $ref: '#/channels/match/messages/PlayerDecided'
+  sendRoundResolved:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: RoundResolved
+    summary: Resultado de la ronda como delta de la vista de cada jugador.
+    description: Cada jugador recibe **su propio** delta, calculado por el proyector de vistas.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/RoundResolved'
+  sendSnapshot:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: Snapshot
+    summary: Vista completa del jugador, empujada por el servidor cuando un delta no basta.
+    description: |
+      Además de responder a `GetSnapshot`, el servidor la empuja al cambiar de sala (piso)
+      o al recuperar una partida tras la caída de una réplica.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/Snapshot'
+  sendDraftOffer:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: DraftOffer
+    summary: Ofrece 2 bendiciones a un solo jugador (draft inicial o altar).
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/DraftOffer'
+  sendPlayerConnectionChanged:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: PlayerConnectionChanged
+    summary: Un jugador se desconectó, volvió o abandonó.
+    tags:
+      - name: difusion
+    messages:
+      - $ref: '#/channels/match/messages/PlayerConnectionChanged'
+  sendMatchFinished:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: MatchFinished
+    summary: Resultado final e inmutable, con los pactos revelados.
+    tags:
+      - name: difusion
+    messages:
+      - $ref: '#/channels/match/messages/MatchFinished'
+  sendServerDraining:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: ServerDraining
+    summary: La réplica se va a apagar; el cliente debe reconectarse.
+    tags:
+      - name: sistema
+    messages:
+      - $ref: '#/channels/match/messages/ServerDraining'
+  sendError:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: Error
+    summary: Error que no corresponde a la respuesta de una invocación.
+    tags:
+      - name: sistema
+    messages:
+      - $ref: '#/channels/match/messages/Error'
+
 components:
+  securitySchemes:
+    realtimeTicket:
+      type: httpApiKey
+      name: access_token
+      in: query
+      description: |
+        Ticket opaco de un solo uso (32 bytes aleatorios en base64url), válido 30 s, atado a
+        usuario y partida. Se obtiene con `POST /api/v1/realtime/tickets` usando el JWT de acceso
+        y se consume con `GETDEL` en el *upgrade*. Inválido → HTTP 401 `TICKET_INVALID`.
+
+  correlationIds:
+    clientAction:
+      description: Correlaciona `SubmitOrder` con su ACK (y con reenvíos) por `clientActionId`.
+      location: $message.payload#/clientActionId
+
+  messageTraits:
+    signalrInvocation:
+      contentType: application/x-msgpack
+      description: |
+        Se transporta como un mensaje `Invocation` de SignalR (tipo 1) cuyo `target` es el
+        nombre del mensaje y cuyo único argumento es el *payload*. La respuesta llega como
+        `Completion` (tipo 3) con el mismo `invocationId`.
+    signalrPush:
+      contentType: application/x-msgpack
+      description: |
+        Se transporta como un mensaje `Invocation` de SignalR (tipo 1) sin `invocationId`,
+        con `target` igual al nombre del mensaje y un único argumento: el *payload*.
+
   messages:
-    Ping:
-      name: Ping
-      summary: Invocación de prueba de conectividad.
+    # ───────────── Invocaciones y respuestas ─────────────
+    JoinMatch:
+      name: JoinMatch
+      title: JoinMatch
+      summary: Suscribir la conexión a una partida.
+      x-since: 1.0.0
+      x-errors: [INVALID_PAYLOAD, NOT_PARTICIPANT, MATCH_NOT_FOUND, MATCH_NOT_ACTIVE, ALREADY_IN_ANOTHER_MATCH, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
       payload:
-        type: object
-        additionalProperties: false
-    Pong:
-      name: Pong
-      summary: Respuesta al ping.
+        $ref: '#/components/schemas/JoinMatchRequest'
+      examples:
+        - name: unirse
+          summary: Unirse a una partida en curso.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+
+    JoinMatchAck:
+      name: JoinMatchAck
+      title: ACK de JoinMatch
+      summary: Confirmación con el asiento y la vista completa del jugador.
+      x-since: 1.0.0
+      tags:
+        - name: invocacion
+        - name: privado
       payload:
-        type: string
-        const: pong
+        $ref: '#/components/schemas/JoinMatchAck'
+      examples:
+        - name: unido
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            playerId: 0193a1b0-1111-7c00-9a00-00000000a001
+            seat: 1
+            snapshot:
+              matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+              seq: 0
+              serverTime: '2026-11-03T18:00:00Z'
+              view:
+                status: LOBBY
+                round: 0
+                floor: 1
+                roundDeadline: null
+                me:
+                  playerId: 0193a1b0-1111-7c00-9a00-00000000a001
+                  displayName: ana
+                  hero: CHISPA
+                  state: ALIVE
+                  hp: 4
+                  maxHp: 4
+                  shield: 0
+                  position: { x: 1, y: 1 }
+                  facing: E
+                  embers: 0
+                  charges: 0
+                  abilityCooldown: 0
+                  stealthRoundsLeft: 0
+                  downRoundsLeft: null
+                  blessings: []
+                  pact: null
+                  decided: false
+                  pendingOrder: null
+                allies: []
+                enemies: []
+                tiles: []
+
+    SubmitOrder:
+      name: SubmitOrder
+      title: SubmitOrder
+      summary: Orden secreta del jugador para la ronda `round`.
+      x-since: 1.0.0
+      x-errors: [INVALID_PAYLOAD, INVALID_ORDER, STALE_ROUND, ORDER_ALREADY_SUBMITTED, DUPLICATE_ACTION, NOT_PARTICIPANT, NOT_JOINED, PLAYER_DOWN, MATCH_NOT_ACTIVE, RATE_LIMITED, MESSAGE_TOO_LARGE, INTERNAL_ERROR]
+      correlationId:
+        $ref: '#/components/correlationIds/clientAction'
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/SubmitOrderRequest'
+      examples:
+        - name: mover
+          summary: Mover una casilla al norte en la ronda 7.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 7
+            clientActionId: 0193a1d4-9b21-7e33-a4f0-5c6d7e8f9012
+            order:
+              type: MOVE
+              direction: N
+        - name: guardar
+          summary: '`GUARD` no lleva dirección.'
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 7
+            clientActionId: 0193a1d4-9b21-7e33-a4f0-5c6d7e8f9013
+            order:
+              type: GUARD
+
+    SubmitOrderAck:
+      name: SubmitOrderAck
+      title: ACK de SubmitOrder
+      summary: La orden quedó registrada (o era un reenvío idempotente).
+      x-since: 1.0.0
+      correlationId:
+        $ref: '#/components/correlationIds/clientAction'
+      tags:
+        - name: invocacion
+      payload:
+        $ref: '#/components/schemas/SubmitOrderAck'
+      examples:
+        - name: aceptada
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 7
+            clientActionId: 0193a1d4-9b21-7e33-a4f0-5c6d7e8f9012
+            result: ACCEPTED
+            receivedAt: '2026-11-03T18:02:11.482Z'
+        - name: reenvio
+          summary: Mismo `clientActionId`; se devuelve el ACK original sin aplicar nada.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 7
+            clientActionId: 0193a1d4-9b21-7e33-a4f0-5c6d7e8f9012
+            result: DUPLICATE_ACTION
+            receivedAt: '2026-11-03T18:02:11.482Z'
+
+    GetSnapshot:
+      name: GetSnapshot
+      title: GetSnapshot
+      summary: Pedir la vista completa del jugador.
+      x-since: 1.0.0
+      x-errors: [INVALID_PAYLOAD, NOT_PARTICIPANT, NOT_JOINED, MATCH_NOT_FOUND, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/GetSnapshotRequest'
+      examples:
+        - name: pedir
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+
+    LeaveMatch:
+      name: LeaveMatch
+      title: LeaveMatch
+      summary: Salir de la partida.
+      x-since: 1.0.0
+      x-errors: [INVALID_PAYLOAD, NOT_PARTICIPANT, NOT_JOINED, MATCH_NOT_ACTIVE, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/LeaveMatchRequest'
+      examples:
+        - name: salir
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+
+    LeaveMatchAck:
+      name: LeaveMatchAck
+      title: ACK de LeaveMatch
+      summary: El jugador salió; `abandoned` indica si contó como abandono.
+      x-since: 1.0.0
+      tags:
+        - name: invocacion
+      payload:
+        $ref: '#/components/schemas/LeaveMatchAck'
+      examples:
+        - name: abandono
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            leftAt: '2026-11-03T18:05:00Z'
+            abandoned: true
+
+    DraftPick:
+      name: DraftPick
+      title: DraftPick
+      summary: Elegir una bendición de la oferta.
+      x-since: 1.0.0
+      x-errors: [INVALID_PAYLOAD, INVALID_PICK, DRAFT_CLOSED, NOT_PARTICIPANT, NOT_JOINED, PLAYER_DOWN, MATCH_NOT_ACTIVE, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/DraftPickRequest'
+      examples:
+        - name: elegir
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000f1
+            blessingId: LAMPARA
+
+    DraftPickAck:
+      name: DraftPickAck
+      title: ACK de DraftPick
+      summary: La bendición quedó asignada al jugador.
+      x-since: 1.0.0
+      tags:
+        - name: invocacion
+        - name: privado
+      payload:
+        $ref: '#/components/schemas/DraftPickAck'
+      examples:
+        - name: elegida
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000f1
+            blessingId: LAMPARA
+            acceptedAt: '2026-11-03T18:00:41Z'
+
+    InvocationError:
+      name: InvocationError
+      title: Error de invocación
+      summary: Respuesta (`Completion`) de una invocación rechazada. No se aplicó nada.
+      x-since: 1.0.0
+      tags:
+        - name: invocacion
+        - name: sistema
+      payload:
+        $ref: '#/components/schemas/InvocationError'
+      examples:
+        - name: rondaVieja
+          summary: La orden llegó cuando la ronda 7 ya estaba cerrada.
+          payload:
+            error:
+              code: STALE_ROUND
+              message: La ronda 7 ya se cerró; la ronda abierta es la 8.
+              details:
+                currentRound: 8
+        - name: limite
+          payload:
+            error:
+              code: RATE_LIMITED
+              message: Demasiados mensajes en esta conexión.
+              retryAfterMs: 400
+        - name: ordenInvalida
+          payload:
+            error:
+              code: INVALID_ORDER
+              message: La habilidad está en enfriamiento.
+              details:
+                field: order.type
+
+    # ───────────── Servidor → cliente ─────────────
+    RoundOpened:
+      name: RoundOpened
+      title: RoundOpened
+      summary: Comienza la planificación de la ronda `round` con plazo `deadline`.
+      x-since: 1.0.0
+      tags:
+        - name: difusion
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/RoundOpened'
+      examples:
+        - name: ronda8
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 8
+            deadline: '2026-11-03T18:02:35Z'
+            durationMs: 20000
+            expectedPlayers: 3
+
+    PlayerDecided:
+      name: PlayerDecided
+      title: PlayerDecided
+      summary: '"Jugador X ya decidió". Nunca incluye la orden.'
+      x-since: 1.0.0
+      tags:
+        - name: difusion
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/PlayerDecided'
+      examples:
+        - name: decidio
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 8
+            playerId: 0193a1b0-1111-7c00-9a00-00000000a002
+            decidedCount: 2
+            expectedPlayers: 3
+
+    RoundResolved:
+      name: RoundResolved
+      title: RoundResolved
+      summary: Delta de la vista del jugador tras resolver la ronda.
+      description: |
+        El cliente aplica el delta solo si `previousSeq` es igual a su último `seq`;
+        en otro caso descarta el mensaje y llama a `GetSnapshot`.
+      x-since: 1.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/RoundResolved'
+      examples:
+        - name: ronda7
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 7
+            previousSeq: 118
+            seq: 126
+            delta:
+              status: IN_PROGRESS
+              floorChanged: null
+              me:
+                playerId: 0193a1b0-1111-7c00-9a00-00000000a001
+                displayName: ana
+                hero: CHISPA
+                state: ALIVE
+                hp: 3
+                maxHp: 4
+                shield: 0
+                position: { x: 4, y: 3 }
+                facing: N
+                embers: 2
+                charges: 1
+                abilityCooldown: 0
+                stealthRoundsLeft: 0
+                downRoundsLeft: null
+                blessings: [LAMPARA]
+                pact:
+                  pactId: OPEN_3_CHESTS
+                  description: Abrir 3 cofres.
+                decided: false
+                pendingOrder: null
+              alliesChanged:
+                - playerId: 0193a1b0-1111-7c00-9a00-00000000a002
+                  displayName: beto
+                  hero: YUNQUE
+                  state: ALIVE
+                  hp: 6
+                  maxHp: 6
+                  position: { x: 4, y: 2 }
+                  facing: N
+                  embers: 1
+                  blessingCount: 1
+                  connected: true
+                  decided: false
+              enemiesUpserted:
+                - enemyId: 12
+                  kind: BALLESTERO
+                  hp: 2
+                  maxHp: 2
+                  position: { x: 4, y: 0 }
+                  facing: S
+                  phase: null
+                  telegraph:
+                    - { x: 4, y: 1 }
+                    - { x: 4, y: 2 }
+                    - { x: 4, y: 3 }
+              enemiesRemoved: [9]
+              tilesChanged:
+                - { x: 5, y: 3, kind: CHEST_OPENED }
+              events:
+                - { type: MOVED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, position: { x: 4, y: 3 } }
+                - { type: ENEMY_KILLED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, targetId: 'enemy:9' }
+                - { type: EMBERS_GAINED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, amount: 1 }
+
+    Snapshot:
+      name: Snapshot
+      title: Snapshot
+      summary: Vista completa del jugador en el `seq` indicado.
+      x-since: 1.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/Snapshot'
+      examples:
+        - name: reconexion
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            seq: 126
+            serverTime: '2026-11-03T18:02:16Z'
+            view:
+              status: IN_PROGRESS
+              round: 8
+              floor: 2
+              roundDeadline: '2026-11-03T18:02:35Z'
+              me:
+                playerId: 0193a1b0-1111-7c00-9a00-00000000a001
+                displayName: ana
+                hero: CHISPA
+                state: ALIVE
+                hp: 3
+                maxHp: 4
+                shield: 0
+                position: { x: 4, y: 3 }
+                facing: N
+                embers: 2
+                charges: 1
+                abilityCooldown: 0
+                stealthRoundsLeft: 0
+                downRoundsLeft: null
+                blessings: [LAMPARA]
+                pact:
+                  pactId: OPEN_3_CHESTS
+                  description: Abrir 3 cofres.
+                decided: true
+                pendingOrder:
+                  type: ATTACK
+                  direction: N
+              allies:
+                - playerId: 0193a1b0-1111-7c00-9a00-00000000a003
+                  displayName: caro
+                  hero: CUERVO
+                  state: ALIVE
+                  hp: 4
+                  maxHp: 4
+                  position: null
+                  facing: null
+                  embers: 3
+                  blessingCount: 1
+                  connected: true
+                  decided: false
+              enemies:
+                - enemyId: 12
+                  kind: BALLESTERO
+                  hp: 2
+                  maxHp: 2
+                  position: { x: 4, y: 0 }
+                  facing: S
+                  phase: null
+                  telegraph:
+                    - { x: 4, y: 1 }
+                    - { x: 4, y: 2 }
+                    - { x: 4, y: 3 }
+              tiles:
+                - { x: 4, y: 3, kind: FLOOR }
+                - { x: 5, y: 3, kind: CHEST_OPENED }
+                - { x: 3, y: 3, kind: WALL }
+
+    DraftOffer:
+      name: DraftOffer
+      title: DraftOffer
+      summary: Dos bendiciones a elegir; solo las ve su destinatario.
+      x-since: 1.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/DraftOffer'
+      examples:
+        - name: draftInicial
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000f1
+            source: INITIAL_DRAFT
+            options: [LAMPARA, BRASA_VIVA]
+            deadline: '2026-11-03T18:00:45Z'
+
+    PlayerConnectionChanged:
+      name: PlayerConnectionChanged
+      title: PlayerConnectionChanged
+      summary: Cambio de conexión de un jugador.
+      x-since: 1.0.0
+      tags:
+        - name: difusion
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/PlayerConnectionChanged'
+      examples:
+        - name: desconectado
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            playerId: 0193a1b0-1111-7c00-9a00-00000000a002
+            state: DISCONNECTED
+            graceDeadline: '2026-11-03T18:04:10Z'
+        - name: reconectado
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            playerId: 0193a1b0-1111-7c00-9a00-00000000a002
+            state: CONNECTED
+            graceDeadline: null
+
+    MatchFinished:
+      name: MatchFinished
+      title: MatchFinished
+      summary: Resultado final, inmutable, con los pactos de todos revelados.
+      x-since: 1.0.0
+      tags:
+        - name: difusion
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/MatchFinished'
+      examples:
+        - name: celadorDerrotado
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            seq: 1432
+            outcome: WARDEN_DEFEATED
+            rounds: 41
+            winners: [0193a1b0-1111-7c00-9a00-00000000a001]
+            standings:
+              - playerId: 0193a1b0-1111-7c00-9a00-00000000a001
+                displayName: ana
+                hero: CHISPA
+                finalState: ALIVE
+                embers: 14
+                placement: 1
+                pact: { pactId: OPEN_3_CHESTS, description: Abrir 3 cofres., fulfilled: true }
+              - playerId: 0193a1b0-1111-7c00-9a00-00000000a002
+                displayName: beto
+                hero: YUNQUE
+                finalState: DOWN
+                embers: 9
+                placement: 2
+                pact: { pactId: NEVER_DOWNED, description: Terminar sin haber caído., fulfilled: false }
+            finishedAt: '2026-11-03T18:13:52Z'
+            replayUrl: https://ascua-api.azurecontainerapps.io/api/v1/matches/0193a1c2-5e7f-7a10-8b2c-3d4e5f607182/replay
+
+    ServerDraining:
+      name: ServerDraining
+      title: ServerDraining
+      summary: La réplica se apaga; reconectar con un ticket nuevo.
+      x-since: 1.0.0
+      tags:
+        - name: sistema
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/ServerDraining'
+      examples:
+        - name: despliegue
+          payload:
+            reason: DEPLOYMENT
+            reconnectAfterMs: 500
+            closesAt: '2026-11-03T18:06:30Z'
+
+    Error:
+      name: Error
+      title: Error
+      summary: Error asíncrono (no ligado a la respuesta de una invocación).
+      x-since: 1.0.0
+      tags:
+        - name: sistema
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/ErrorPush'
+      examples:
+        - name: partidaFallida
+          summary: La resolución falló y la partida quedó aislada como `FAULTED`.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            error:
+              code: MATCH_NOT_ACTIVE
+              message: La partida quedó en estado FAULTED y se detuvo.
+              details:
+                status: FAULTED
+
+  schemas:
+    # ───────────── Tipos base ─────────────
+    Uuid:
+      type: string
+      format: uuid
+      minLength: 36
+      maxLength: 36
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    Timestamp:
+      type: string
+      format: date-time
+      maxLength: 35
+      description: Instante UTC (RFC 3339) según el reloj del servidor.
+    NullableTimestamp:
+      anyOf:
+        - $ref: '#/components/schemas/Timestamp'
+        - type: 'null'
+    RoundNumber:
+      type: integer
+      minimum: 1
+      maximum: 60
+      description: Número de ronda (máximo 60; al agotarse, el Umbral se apaga).
+    Seq:
+      type: integer
+      minimum: 0
+      maximum: 9007199254740991
+      description: Secuencia monótona de eventos de la partida.
+    Direction:
+      type: string
+      enum: [N, S, E, W]
+    Position:
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x: { type: integer, minimum: 0, maximum: 8 }
+        y: { type: integer, minimum: 0, maximum: 8 }
+    NullablePosition:
+      anyOf:
+        - $ref: '#/components/schemas/Position'
+        - type: 'null'
+    DisplayName:
+      type: string
+      minLength: 3
+      maxLength: 32
+    HeroKind:
+      type: string
+      enum: [YUNQUE, CHISPA, CUERVO, RAIZ]
+    HeroState:
+      type: string
+      enum: [ALIVE, DOWN, EXTINCT, RETIRED]
+      description: '`DOWN` = caído; `EXTINCT` = extinto; `RETIRED` = abandonó.'
+    MatchStatus:
+      type: string
+      enum: [LOBBY, DRAFTING, IN_PROGRESS, FINISHED, FAULTED, ABANDONED, EXPIRED]
+    BlessingId:
+      type: string
+      enum: [BRASA_VIVA, PASO_IGNEO, PUNO_DE_PIEDRA, CORAZON_DOBLE, HOJA_HAMBRIENTA, ESPEJO_ROTO, LAMPARA, GANZUA, ULTIMO_ALIENTO, CODICIA, ESCARCHA, OJO_DE_BUHO]
+    EnemyKind:
+      type: string
+      enum: [CARRONERO, POLILLA, GELATINA, SALTASAPO, BALLESTERO, TOTEM, CELADOR]
+    TileKind:
+      type: string
+      enum: [FLOOR, WALL, SPIKES, SPIKES_ARMED, BRAZIER, CRACK, CHEST, CHEST_OPENED, ALTAR, STAIRS, FIRE]
+    Embers:
+      type: integer
+      minimum: 0
+      maximum: 999
+    Hp:
+      type: integer
+      minimum: 0
+      maximum: 8
+
+    # ───────────── Órdenes ─────────────
+    Order:
+      description: |
+        Orden del jugador. `GUARD` no lleva dirección; el resto la exige.
+        El cliente solo envía la intención: todo cálculo ocurre en el servidor.
+      oneOf:
+        - $ref: '#/components/schemas/DirectedOrder'
+        - $ref: '#/components/schemas/GuardOrder'
+    DirectedOrder:
+      type: object
+      additionalProperties: false
+      required: [type, direction]
+      properties:
+        type:
+          type: string
+          enum: [MOVE, ATTACK, ABILITY, INTERACT]
+        direction:
+          $ref: '#/components/schemas/Direction'
+    GuardOrder:
+      type: object
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          const: GUARD
+    NullableOrder:
+      anyOf:
+        - $ref: '#/components/schemas/Order'
+        - type: 'null'
+
+    # ───────────── Peticiones (cliente → servidor) ─────────────
+    JoinMatchRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+    SubmitOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId, round, clientActionId, order]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        round:
+          $ref: '#/components/schemas/RoundNumber'
+        clientActionId:
+          $ref: '#/components/schemas/Uuid'
+          description: UUID v7 generado por el cliente; clave de idempotencia.
+        order:
+          $ref: '#/components/schemas/Order'
+    GetSnapshotRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+    LeaveMatchRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+    DraftPickRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, blessingId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        blessingId:
+          $ref: '#/components/schemas/BlessingId'
+
+    # ───────────── Respuestas (ACK) ─────────────
+    JoinMatchAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, playerId, seat, snapshot]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        seat:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: Orden de asiento (desempata la iniciativa).
+        snapshot:
+          $ref: '#/components/schemas/Snapshot'
+    SubmitOrderAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, round, clientActionId, result, receivedAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        round:
+          $ref: '#/components/schemas/RoundNumber'
+        clientActionId:
+          $ref: '#/components/schemas/Uuid'
+        result:
+          type: string
+          enum: [ACCEPTED, DUPLICATE_ACTION]
+          description: '`DUPLICATE_ACTION` = reenvío idempotente; se repite el ACK original.'
+        receivedAt:
+          $ref: '#/components/schemas/Timestamp'
+    LeaveMatchAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, leftAt, abandoned]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        leftAt:
+          $ref: '#/components/schemas/Timestamp'
+        abandoned:
+          type: boolean
+          description: '`true` si la partida estaba en curso y la salida contó como abandono.'
+    DraftPickAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, blessingId, acceptedAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        blessingId:
+          $ref: '#/components/schemas/BlessingId'
+        acceptedAt:
+          $ref: '#/components/schemas/Timestamp'
+
+    # ───────────── Errores ─────────────
+    ErrorCode:
+      type: string
+      enum:
+        - INVALID_PAYLOAD
+        - INVALID_ORDER
+        - STALE_ROUND
+        - ORDER_ALREADY_SUBMITTED
+        - DUPLICATE_ACTION
+        - NOT_PARTICIPANT
+        - NOT_JOINED
+        - PLAYER_DOWN
+        - MATCH_NOT_FOUND
+        - MATCH_NOT_ACTIVE
+        - ALREADY_IN_ANOTHER_MATCH
+        - DRAFT_CLOSED
+        - INVALID_PICK
+        - RATE_LIMITED
+        - MESSAGE_TOO_LARGE
+        - INTERNAL_ERROR
+      description: Código estable. Nunca cambia de significado; los nuevos se agregan en versiones menores.
+    ErrorBody:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code:
+          $ref: '#/components/schemas/ErrorCode'
+        message:
+          type: string
+          maxLength: 200
+          description: Texto para humanos (español). No se debe interpretar en el cliente.
+        retryAfterMs:
+          type: integer
+          minimum: 0
+          maximum: 60000
+          description: Solo en errores reintentables.
+        details:
+          type: object
+          additionalProperties: false
+          maxProperties: 4
+          properties:
+            field:
+              type: string
+              maxLength: 64
+              description: Ruta del campo que falló la validación.
+            currentRound:
+              $ref: '#/components/schemas/RoundNumber'
+            status:
+              $ref: '#/components/schemas/MatchStatus'
+            traceId:
+              type: string
+              maxLength: 32
+              pattern: '^[0-9a-f]{32}$'
+              description: Id de traza de OpenTelemetry, para soporte.
+    InvocationError:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    ErrorPush:
+      type: object
+      additionalProperties: false
+      required: [error]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        error:
+          $ref: '#/components/schemas/ErrorBody'
+    CloseReason:
+      type: string
+      enum:
+        - TICKET_INVALID
+        - UNSUPPORTED_PROTOCOL_VERSION
+        - CONNECTION_LIMIT
+        - MATCH_FINISHED
+        - SERVER_DRAINING
+        - MESSAGE_TOO_LARGE
+        - INTERNAL_ERROR
+        - SESSION_REPLACED
+        - KICKED_BY_ADMIN
+        - RATE_LIMITED
+        - HEARTBEAT_TIMEOUT
+      description: Razón de cierre (ver la tabla de la sección 2). Va al inicio de `Close.error` de SignalR.
+
+    # ───────────── Vista del jugador ─────────────
+    Pact:
+      type: object
+      additionalProperties: false
+      required: [pactId, description]
+      properties:
+        pactId:
+          type: string
+          enum: [FINAL_BLOW_WARDEN, NEVER_DOWNED, OPEN_3_CHESTS, REVIVE_2_ALLIES, BETRAY_TWICE_UNSEEN]
+        description:
+          type: string
+          maxLength: 140
+    NullablePact:
+      anyOf:
+        - $ref: '#/components/schemas/Pact'
+        - type: 'null'
+    SelfHero:
+      type: object
+      description: El héroe propio, con toda su información privada (pacto, bendiciones, orden pendiente).
+      additionalProperties: false
+      required: [playerId, displayName, hero, state, hp, maxHp, shield, position, facing, embers, charges, abilityCooldown, stealthRoundsLeft, downRoundsLeft, blessings, pact, decided, pendingOrder]
+      properties:
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+        hero:
+          $ref: '#/components/schemas/HeroKind'
+        state:
+          $ref: '#/components/schemas/HeroState'
+        hp:
+          $ref: '#/components/schemas/Hp'
+        maxHp:
+          type: integer
+          minimum: 1
+          maximum: 8
+        shield:
+          type: integer
+          minimum: 0
+          maximum: 10
+        position:
+          $ref: '#/components/schemas/Position'
+        facing:
+          $ref: '#/components/schemas/Direction'
+        embers:
+          $ref: '#/components/schemas/Embers'
+        charges:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Cargas de Chispa; 0 para los demás héroes.
+        abilityCooldown:
+          type: integer
+          minimum: 0
+          maximum: 4
+        stealthRoundsLeft:
+          type: integer
+          minimum: 0
+          maximum: 2
+        downRoundsLeft:
+          description: Rondas que faltan para extinguirse si está caído; `null` si no lo está.
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 3
+            - type: 'null'
+        blessings:
+          type: array
+          maxItems: 12
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/BlessingId'
+        pact:
+          $ref: '#/components/schemas/NullablePact'
+        decided:
+          type: boolean
+          description: Si ya envió su orden en la ronda abierta.
+        pendingOrder:
+          $ref: '#/components/schemas/NullableOrder'
+    OtherHero:
+      type: object
+      description: |
+        Otro portador, tal como lo ve este jugador. `position` y `facing` son `null` si está en
+        sigilo. Nunca incluye pacto, bendiciones concretas ni orden pendiente.
+      additionalProperties: false
+      required: [playerId, displayName, hero, state, hp, maxHp, position, facing, embers, blessingCount, connected, decided]
+      properties:
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        displayName:
+          $ref: '#/components/schemas/DisplayName'
+        hero:
+          $ref: '#/components/schemas/HeroKind'
+        state:
+          $ref: '#/components/schemas/HeroState'
+        hp:
+          $ref: '#/components/schemas/Hp'
+        maxHp:
+          type: integer
+          minimum: 1
+          maximum: 8
+        position:
+          $ref: '#/components/schemas/NullablePosition'
+        facing:
+          anyOf:
+            - $ref: '#/components/schemas/Direction'
+            - type: 'null'
+        embers:
+          $ref: '#/components/schemas/Embers'
+        blessingCount:
+          type: integer
+          minimum: 0
+          maximum: 12
+        connected:
+          type: boolean
+        decided:
+          type: boolean
+    Enemy:
+      type: object
+      description: Enemigo dentro de la visión del jugador. `telegraph` son las casillas que golpeará en la ronda siguiente.
+      additionalProperties: false
+      required: [enemyId, kind, hp, maxHp, position, facing, phase, telegraph]
+      properties:
+        enemyId:
+          type: integer
+          minimum: 1
+          maximum: 100000
+        kind:
+          $ref: '#/components/schemas/EnemyKind'
+        hp:
+          type: integer
+          minimum: 0
+          maximum: 64
+        maxHp:
+          type: integer
+          minimum: 1
+          maximum: 64
+        position:
+          $ref: '#/components/schemas/Position'
+        facing:
+          anyOf:
+            - $ref: '#/components/schemas/Direction'
+            - type: 'null'
+        phase:
+          description: Fase del Celador (1 o 2); `null` para el resto.
+          anyOf:
+            - type: integer
+              minimum: 1
+              maximum: 2
+            - type: 'null'
+        telegraph:
+          type: array
+          maxItems: 17
+          items:
+            $ref: '#/components/schemas/Position'
+    Tile:
+      type: object
+      additionalProperties: false
+      required: [x, y, kind]
+      properties:
+        x: { type: integer, minimum: 0, maximum: 8 }
+        y: { type: integer, minimum: 0, maximum: 8 }
+        kind:
+          $ref: '#/components/schemas/TileKind'
+    VisibleEvent:
+      type: object
+      description: |
+        Evento de la ronda que este jugador pudo ver. `type` es **extensible**: los clientes deben
+        ignorar tipos desconocidos. `actorId`/`targetId` son un `playerId` o `enemy:{enemyId}`.
+      additionalProperties: false
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED]
+        actorId:
+          type: string
+          maxLength: 36
+        targetId:
+          type: string
+          maxLength: 36
+        position:
+          $ref: '#/components/schemas/Position'
+        amount:
+          type: integer
+          minimum: -99
+          maximum: 99
+    PlayerView:
+      type: object
+      description: Vista completa del jugador; la genera `PlayerViewProjector` y no contiene secretos ajenos.
+      additionalProperties: false
+      required: [status, round, floor, roundDeadline, me, allies, enemies, tiles]
+      properties:
+        status:
+          $ref: '#/components/schemas/MatchStatus'
+        round:
+          type: integer
+          minimum: 0
+          maximum: 60
+          description: Ronda actual; 0 antes de la primera.
+        floor:
+          type: integer
+          minimum: 1
+          maximum: 5
+        roundDeadline:
+          $ref: '#/components/schemas/NullableTimestamp'
+        me:
+          $ref: '#/components/schemas/SelfHero'
+        allies:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/OtherHero'
+        enemies:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/Enemy'
+        tiles:
+          type: array
+          maxItems: 81
+          description: Solo las casillas visibles o recordadas por el jugador.
+          items:
+            $ref: '#/components/schemas/Tile'
+    PlayerViewDelta:
+      type: object
+      description: |
+        Cambios de la vista desde `previousSeq`. Las listas ausentes significan "sin cambios".
+        Un enemigo que sale de la visión aparece en `enemiesRemoved`.
+      additionalProperties: false
+      required: [status, me, events]
+      properties:
+        status:
+          $ref: '#/components/schemas/MatchStatus'
+        floorChanged:
+          description: Nueva sala si el grupo bajó de piso (el cliente descarta sus casillas); si no, `null`.
+          anyOf:
+            - type: integer
+              minimum: 1
+              maximum: 5
+            - type: 'null'
+        me:
+          $ref: '#/components/schemas/SelfHero'
+        alliesChanged:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/OtherHero'
+        enemiesUpserted:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/Enemy'
+        enemiesRemoved:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          items:
+            type: integer
+            minimum: 1
+            maximum: 100000
+        tilesChanged:
+          type: array
+          maxItems: 81
+          items:
+            $ref: '#/components/schemas/Tile'
+        events:
+          type: array
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/VisibleEvent'
+    RevealedPact:
+      type: object
+      additionalProperties: false
+      required: [pactId, description, fulfilled]
+      properties:
+        pactId:
+          type: string
+          enum: [FINAL_BLOW_WARDEN, NEVER_DOWNED, OPEN_3_CHESTS, REVIVE_2_ALLIES, BETRAY_TWICE_UNSEEN]
+        description:
+          type: string
+          maxLength: 140
+        fulfilled:
+          type: boolean
+
+    # ───────────── Mensajes servidor → cliente ─────────────
+    RoundOpened:
+      type: object
+      additionalProperties: false
+      required: [matchId, round, deadline, durationMs, expectedPlayers]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        round:
+          $ref: '#/components/schemas/RoundNumber'
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+        durationMs:
+          type: integer
+          minimum: 1000
+          maximum: 60000
+          description: Duración de la planificación (20 000 por defecto); útil si el reloj del cliente difiere.
+        expectedPlayers:
+          type: integer
+          minimum: 1
+          maximum: 4
+          description: Jugadores vivos de los que se espera orden.
+    PlayerDecided:
+      type: object
+      additionalProperties: false
+      required: [matchId, round, playerId, decidedCount, expectedPlayers]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        round:
+          $ref: '#/components/schemas/RoundNumber'
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        decidedCount:
+          type: integer
+          minimum: 1
+          maximum: 4
+        expectedPlayers:
+          type: integer
+          minimum: 1
+          maximum: 4
+    RoundResolved:
+      type: object
+      additionalProperties: false
+      required: [matchId, round, previousSeq, seq, delta]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        round:
+          $ref: '#/components/schemas/RoundNumber'
+        previousSeq:
+          $ref: '#/components/schemas/Seq'
+        seq:
+          $ref: '#/components/schemas/Seq'
+        delta:
+          $ref: '#/components/schemas/PlayerViewDelta'
+    Snapshot:
+      type: object
+      additionalProperties: false
+      required: [matchId, seq, serverTime, view]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        seq:
+          $ref: '#/components/schemas/Seq'
+        serverTime:
+          $ref: '#/components/schemas/Timestamp'
+        view:
+          $ref: '#/components/schemas/PlayerView'
+    DraftOffer:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, source, options, deadline]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        source:
+          type: string
+          enum: [INITIAL_DRAFT, ALTAR]
+        options:
+          type: array
+          minItems: 2
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/BlessingId'
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+    PlayerConnectionChanged:
+      type: object
+      additionalProperties: false
+      required: [matchId, playerId, state, graceDeadline]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        state:
+          type: string
+          enum: [CONNECTED, DISCONNECTED, ABANDONED]
+        graceDeadline:
+          description: Fin de la gracia de reconexión si está `DISCONNECTED`; si no, `null`.
+          allOf:
+            - $ref: '#/components/schemas/NullableTimestamp'
+    MatchFinished:
+      type: object
+      additionalProperties: false
+      required: [matchId, seq, outcome, rounds, winners, standings, finishedAt, replayUrl]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        seq:
+          $ref: '#/components/schemas/Seq'
+        outcome:
+          type: string
+          enum: [WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, FAULTED]
+          description: |
+            `WARDEN_DEFEATED` = cayó el Celador con un ganador; `DRAW` = cayó con empate en ascuas;
+            `EMBER_EXTINGUISHED` = derrota colectiva (todos caídos o 60 rondas);
+            `ABANDONED` = quedaron menos de 1 humano activo; `FAULTED` = error aislado del servidor.
+        rounds:
+          type: integer
+          minimum: 0
+          maximum: 60
+        winners:
+          type: array
+          maxItems: 4
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Uuid'
+        standings:
+          type: array
+          maxItems: 4
+          items:
+            type: object
+            additionalProperties: false
+            required: [playerId, displayName, hero, finalState, embers, placement, pact]
+            properties:
+              playerId:
+                $ref: '#/components/schemas/Uuid'
+              displayName:
+                $ref: '#/components/schemas/DisplayName'
+              hero:
+                $ref: '#/components/schemas/HeroKind'
+              finalState:
+                $ref: '#/components/schemas/HeroState'
+              embers:
+                $ref: '#/components/schemas/Embers'
+              placement:
+                type: integer
+                minimum: 1
+                maximum: 4
+              pact:
+                anyOf:
+                  - $ref: '#/components/schemas/RevealedPact'
+                  - type: 'null'
+        finishedAt:
+          $ref: '#/components/schemas/Timestamp'
+        replayUrl:
+          type: string
+          format: uri
+          maxLength: 256
+    ServerDraining:
+      type: object
+      additionalProperties: false
+      required: [reason, reconnectAfterMs, closesAt]
+      properties:
+        reason:
+          type: string
+          enum: [DEPLOYMENT, SCALE_IN, SHUTDOWN]
+        reconnectAfterMs:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: Espera sugerida (con *jitter*) antes de reconectar, para no saturar a las otras réplicas.
+        closesAt:
+          $ref: '#/components/schemas/Timestamp'
