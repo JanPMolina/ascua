@@ -44,7 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - run: docker build -t ascua-api:ci .
-      - name: Escanear imagen (falla con vulnerabilidades crÃ­ticas)
+      - name: Escanear imagen (falla con vulnerabilidades críticas)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: ascua-api:ci
