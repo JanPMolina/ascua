@@ -1,0 +1,46 @@
+asyncapi: 3.0.0
+info:
+  title: Ascua — protocolo en tiempo real
+  version: 0.1.0
+  description: |
+    Contrato del hub SignalR `/realtime/match` (WebSocket seguro, protocolo MessagePack).
+    Borrador del esqueleto: se completa en la fase 2 (SubmitOrder, RoundResolved, GetSnapshot, errores y códigos de cierre).
+servers:
+  local:
+    host: localhost:8080
+    protocol: ws
+    pathname: /realtime/match
+channels:
+  match:
+    address: /realtime/match
+    messages:
+      ping:
+        $ref: '#/components/messages/Ping'
+      pong:
+        $ref: '#/components/messages/Pong'
+operations:
+  sendPing:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    messages:
+      - $ref: '#/channels/match/messages/ping'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/pong'
+components:
+  messages:
+    Ping:
+      name: Ping
+      summary: Invocación de prueba de conectividad.
+      payload:
+        type: object
+        additionalProperties: false
+    Pong:
+      name: Pong
+      summary: Respuesta al ping.
+      payload:
+        type: string
+        const: pong

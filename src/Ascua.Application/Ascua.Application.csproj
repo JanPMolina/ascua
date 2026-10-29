@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Ascua.Domain\Ascua.Domain.csproj" />
+  </ItemGroup>
+</Project>

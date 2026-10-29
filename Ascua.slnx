@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Ascua.Domain/Ascua.Domain.csproj" />
+    <Project Path="src/Ascua.Application/Ascua.Application.csproj" />
+    <Project Path="src/Ascua.Infrastructure/Ascua.Infrastructure.csproj" />
+    <Project Path="src/Ascua.Api/Ascua.Api.csproj" />
+    <Project Path="src/Ascua.Bot/Ascua.Bot.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Ascua.Domain.Tests/Ascua.Domain.Tests.csproj" />
+    <Project Path="tests/Ascua.Architecture.Tests/Ascua.Architecture.Tests.csproj" />
+    <Project Path="tests/Ascua.Integration.Tests/Ascua.Integration.Tests.csproj" />
+  </Folder>
+</Solution>

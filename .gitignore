@@ -1,0 +1,22 @@
+# .NET
+bin/
+obj/
+TestResults/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+
+# Secretos y configuración local (nunca al repositorio)
+.env
+*.env
+!.env.example
+appsettings.*.local.json
+*.pfx
+*.pem
+*.key
+
+# Resultados de carga y temporales
+loadtests/reports/
+*.log
