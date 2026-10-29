@@ -30,7 +30,14 @@ public sealed class LayerTests
     {
         var result = Types.InAssembly(typeof(Ascua.Application.Abstractions.IClock).Assembly)
             .ShouldNot()
-            .HaveDependencyOnAny("Ascua.Infrastructure", "Ascua.Api", "Microsoft.AspNetCore")
+            .HaveDependencyOnAny(
+                "Ascua.Infrastructure",
+                "Ascua.Api",
+                "Microsoft.AspNetCore",
+                "Microsoft.EntityFrameworkCore",
+                "Npgsql",
+                "Konscious",
+                "Microsoft.IdentityModel")
             .GetResult();
 
         Assert.True(result.IsSuccessful, string.Join(", ", result.FailingTypeNames ?? []));

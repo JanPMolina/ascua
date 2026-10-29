@@ -1,9 +1,9 @@
 using System.Net;
-using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Ascua.Integration.Tests;
 
-public sealed class HealthTests(WebApplicationFactory<Program> factory) : IClassFixture<WebApplicationFactory<Program>>
+[Collection(ApiCollection.Name)]
+public sealed class HealthTests(AscuaApiFactory factory)
 {
     [Theory]
     [InlineData("/health/live")]
@@ -16,5 +16,18 @@ public sealed class HealthTests(WebApplicationFactory<Program> factory) : IClass
         using var response = await client.GetAsync(new Uri(path, UriKind.Relative));
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OpenApi_documents_auth_endpoints_and_bearer_scheme()
+    {
+        using var client = factory.CreateClient();
+
+        var document = await client.GetStringAsync(new Uri("/openapi/v1.json", UriKind.Relative));
+
+        Assert.Contains("\"openapi\": \"3.1", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/auth/login", document, StringComparison.Ordinal);
+        Assert.Contains("/api/v1/users/me", document, StringComparison.Ordinal);
+        Assert.Contains("\"bearerFormat\": \"JWT\"", document, StringComparison.Ordinal);
     }
 }

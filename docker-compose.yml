@@ -9,6 +9,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Postgres: "Host=postgres;Database=ascua;Username=ascua;Password=${POSTGRES_PASSWORD:-ascua_local}"
       ConnectionStrings__Redis: "redis:6379"
+      Ascua__Database__MigrateOnStartup: "true"
     depends_on:
       postgres:
         condition: service_healthy
