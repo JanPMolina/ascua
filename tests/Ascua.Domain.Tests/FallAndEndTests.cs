@@ -1,0 +1,199 @@
+using Ascua.Domain.Events;
+using Ascua.Domain.Model;
+using Ascua.Domain.Rules;
+using Ascua.Domain.Tests.Support;
+using static Ascua.Domain.Tests.Support.TestWorld;
+
+namespace Ascua.Domain.Tests;
+
+public sealed class FallAndEndTests
+{
+    private static Enemy StrikingAt(int x, int y) =>
+        Enemy(1, EnemyKind.Scavenger, x, y - 1) with { Telegraph = [new Position(x, y)] };
+
+    [Fact]
+    public void A_hero_at_zero_life_falls()
+    {
+        var raven = Hero(A, HeroClass.Raven, 4, 5, seat: 0) with { Hp = 1 };
+        var ally = Hero(B, HeroClass.Anvil, 0, 8, seat: 1);
+
+        var (next, events) = Resolve(State([raven, ally], [StrikingAt(4, 5)]), (A, Interact(Direction.East)));
+
+        Assert.Equal(HeroStatus.Down, next.H(A).Status);
+        Assert.Equal(0, next.H(A).Hp);
+        Assert.True(next.H(A).Progress.HasFallen);
+        Assert.Contains(events, e => e is HeroDowned { Player.Value: "alice" });
+    }
+
+    [Fact]
+    public void Last_breath_saves_the_hero_once()
+    {
+        var raven = Hero(A, HeroClass.Raven, 4, 5, seat: 0) with { Hp = 1, Blessings = [Blessing.LastBreath] };
+        var ally = Hero(B, HeroClass.Anvil, 0, 8, seat: 1);
+        var state = State([raven, ally], [StrikingAt(4, 5)]);
+
+        var (saved, _) = Resolve(state, (A, Interact(Direction.East)));
+        Assert.Equal(1, saved.H(A).Hp);
+        Assert.True(saved.H(A).LastBreathUsed);
+
+        var again = saved with { Enemies = [StrikingAt(4, 5)] };
+        var (fallen, _) = Resolve(again, (A, Interact(Direction.East)));
+        Assert.Equal(HeroStatus.Down, fallen.H(A).Status);
+    }
+
+    [Fact]
+    public void An_adjacent_ally_revives_with_two_life_and_earns_two_embers()
+    {
+        var fallen = Hero(A, HeroClass.Spark, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1 };
+        var rescuer = Hero(B, HeroClass.Root, 4, 5, seat: 1);
+
+        var (next, events) = Resolve(State([fallen, rescuer]), (B, Interact(Direction.North)));
+
+        Assert.Equal(HeroStatus.Active, next.H(A).Status);
+        Assert.Equal(HeroCatalog.ReviveHp, next.H(A).Hp);
+        Assert.Equal(2, next.H(B).Embers);
+        Assert.Equal(1, next.H(B).Progress.Revives);
+        Assert.Contains(events, e => e is HeroRevived);
+    }
+
+    [Fact]
+    public void Three_rounds_down_without_help_extinguishes_and_halves_embers()
+    {
+        var fallen = Hero(A, HeroClass.Spark, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, Embers = 5 };
+        var bystander = Hero(B, HeroClass.Root, 0, 8, seat: 1);
+        var state = State([fallen, bystander]);
+
+        for (var round = 1; round <= 2; round++)
+        {
+            state = Resolve(state, FixedRandom.Never).State;
+            Assert.Equal(HeroStatus.Down, state.H(A).Status);
+            Assert.Equal(round, state.H(A).DownRounds);
+        }
+
+        var (next, events) = Resolve(state, FixedRandom.Never);
+
+        Assert.Equal(HeroStatus.Extinct, next.H(A).Status);
+        Assert.Equal(3, next.H(A).Embers);
+        Assert.Contains(events, e => e is HeroExtinguished { Reason: ExtinctionReason.NotRevived, EmbersLost: 2 });
+    }
+
+    [Fact]
+    public void Downed_heroes_cannot_submit_orders()
+    {
+        var fallen = Hero(A, HeroClass.Spark, 4, 4) with { Hp = 0, Status = HeroStatus.Down };
+        var extinct = Hero(B, HeroClass.Root, 0, 8, seat: 1) with { Status = HeroStatus.Extinct };
+        var state = State([fallen, extinct, Hero(C, HeroClass.Anvil, 8, 8, seat: 2)]);
+
+        Assert.Equal("PLAYER_DOWN", OrderValidator.Validate(state, A, 1, Order.DefaultGuard)?.Code);
+        Assert.Equal("PLAYER_OUT", OrderValidator.Validate(state, B, 1, Order.DefaultGuard)?.Code);
+    }
+
+    [Fact]
+    public void Friendly_fire_deals_half_damage_and_steals_an_ember()
+    {
+        var anvil = Hero(A, HeroClass.Anvil, 4, 4, seat: 0) with { Blessings = [Blessing.StoneFist] };
+        var raven = Hero(B, HeroClass.Raven, 5, 4, seat: 1, facing: Direction.East) with { Embers = 2 };
+
+        var (next, _) = Resolve(State([anvil, raven]), (A, Attack(Direction.East)), (B, Interact(Direction.East)));
+
+        Assert.Equal(3, next.H(B).Hp);
+        Assert.Equal(1, next.H(B).Embers);
+        Assert.Equal(1, next.H(A).Embers);
+        Assert.Equal(1, next.H(A).Progress.SneakyAllyHits);
+    }
+
+    [Fact]
+    public void Slaying_the_warden_gives_victory_to_the_richest_bearer()
+    {
+        var (next, events) = Resolve(BossFight(aEmbers: 0, bEmbers: 3), (A, Attack(Direction.North)));
+
+        Assert.Equal(MatchPhase.Finished, next.Phase);
+        Assert.Equal(OutcomeKind.Victory, next.Outcome!.Kind);
+        Assert.Equal(A, Assert.Single(next.Outcome.Winners));
+        Assert.Equal(5, next.H(A).Embers);
+        Assert.Contains(events, e => e is MatchEnded);
+        Assert.Equal(2, events.OfType<PactRevealed>().Count());
+    }
+
+    [Fact]
+    public void A_tie_at_the_top_is_a_draw()
+    {
+        var (next, _) = Resolve(BossFight(aEmbers: 0, bEmbers: 5), (A, Attack(Direction.North)));
+
+        Assert.Equal(OutcomeKind.Draw, next.Outcome!.Kind);
+        Assert.Equal(2, next.Outcome.Winners.Count);
+    }
+
+    [Fact]
+    public void A_fulfilled_secret_pact_adds_four_embers_at_the_end()
+    {
+        var state = BossFight(aEmbers: 0, bEmbers: 7);
+        state = state with { Heroes = [state.H(A) with { Pact = PactKind.SlayWarden }, state.H(B)] };
+
+        var (next, _) = Resolve(state, (A, Attack(Direction.North)));
+
+        Assert.Equal(A, Assert.Single(next.Outcome!.Winners));
+        var score = next.Outcome.Scores.Single(s => s.Player == A);
+        Assert.True(score.PactFulfilled);
+        Assert.Equal(9, score.Total);
+    }
+
+    [Fact]
+    public void Extinct_bearers_cannot_win()
+    {
+        var state = BossFight(aEmbers: 0, bEmbers: 10);
+        state = state with { Heroes = [state.H(A), state.H(B) with { Status = HeroStatus.Extinct, Hp = 0 }] };
+
+        var (next, _) = Resolve(state, (A, Attack(Direction.North)));
+
+        Assert.Equal(A, Assert.Single(next.Outcome!.Winners));
+    }
+
+    [Fact]
+    public void Everyone_down_is_a_collective_defeat()
+    {
+        var raven = Hero(A, HeroClass.Raven, 4, 5) with { Hp = 1 };
+
+        var (next, _) = Resolve(State([raven], [StrikingAt(4, 5)]), (A, Interact(Direction.East)));
+
+        Assert.Equal(OutcomeKind.CollectiveDefeat, next.Outcome!.Kind);
+        Assert.Equal(DefeatReason.AllFallen, next.Outcome.Reason);
+        Assert.Empty(next.Outcome.Winners);
+    }
+
+    [Fact]
+    public void Running_out_of_rounds_is_a_collective_defeat()
+    {
+        var state = State([Hero(A, HeroClass.Anvil, 4, 4)], round: GameState.DefaultMaxRounds);
+
+        var (next, _) = Resolve(state, FixedRandom.Never);
+
+        Assert.Equal(DefeatReason.RoundLimit, next.Outcome!.Reason);
+        Assert.Equal(GameState.DefaultMaxRounds, next.Round);
+        Assert.Throws<InvalidOperationException>(() => Resolve(next, FixedRandom.Never));
+    }
+
+    [Fact]
+    public void Clearing_a_room_and_reaching_the_stairs_leads_to_the_next_room()
+    {
+        var first = EmptyRoom(0).WithTerrain(new Position(4, 0), Terrain.Stairs);
+        var second = EmptyRoom(1) with { InitialEnemies = [Enemy(7, EnemyKind.Totem, 4, 4)] };
+        var state = State([Hero(A, HeroClass.Anvil, 4, 1, seat: 0), Hero(B, HeroClass.Spark, 8, 8, seat: 1)]) with { Rooms = [first, second] };
+
+        var (next, events) = Resolve(state, (A, Move(Direction.North)));
+
+        Assert.Equal(1, next.RoomIndex);
+        Assert.Equal(MatchFactory.SpawnPoints[0], next.H(A).Position);
+        Assert.Equal(MatchFactory.SpawnPoints[1], next.H(B).Position);
+        Assert.Equal(7, Assert.Single(next.Enemies).Id);
+        Assert.Contains(events, e => e is RoomEntered { RoomIndex: 1 });
+    }
+
+    private static GameState BossFight(int aEmbers, int bEmbers)
+    {
+        var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 1, Phase = 2 };
+        var anvil = Hero(A, HeroClass.Anvil, 4, 3, seat: 0) with { Embers = aEmbers, Pact = PactKind.OpenThreeChests };
+        var spark = Hero(B, HeroClass.Spark, 8, 8, seat: 1) with { Embers = bEmbers, Pact = PactKind.ReviveTwoAllies };
+        return State([anvil, spark], [warden]);
+    }
+}
