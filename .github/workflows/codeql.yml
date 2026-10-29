@@ -21,4 +21,19 @@ jobs:
         with:
           languages: csharp
           build-mode: none
+      # Repo privado personal: GitHub no permite subir resultados de code scanning sin Code Security,
+      # así que se guarda el SARIF como artefacto y el job falla si hay hallazgos de nivel "error".
       - uses: github/codeql-action/analyze@v4
+        with:
+          upload: never
+          output: sarif-results
+      - uses: actions/upload-artifact@v7
+        with:
+          name: codeql-sarif
+          path: sarif-results
+      - name: Fallar si CodeQL encontró errores
+        run: |
+          count=$(jq '[.runs[].results[] | select(.level == "error")] | length' sarif-results/*.sarif)
+          jq -r '.runs[].results[] | "\(.level)\t\(.ruleId)\t\(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine)"' sarif-results/*.sarif
+          echo "Hallazgos de nivel error: $count"
+          test "$count" -eq 0
