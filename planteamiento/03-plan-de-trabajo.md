@@ -47,7 +47,14 @@ Jan entrega y Juan Pablo consume:
 |---|---|---|
 | `ConnectionStrings__Postgres` | cadena con contraseña de desarrollo | host y base sin contraseña (token Entra con identidad administrada) |
 | `ConnectionStrings__Redis` | `redis:6379` | host:6380 con SSL y token Entra |
-| `Ascua__KeyVaultUri` | vacío (usa una clave de desarrollo generada al arrancar) | URI del Key Vault |
+| `Ascua__KeyVaultUri` | vacío (usa una clave de desarrollo generada al arrancar) | URI del Key Vault. Falta implementar `ISigningKeyProvider` para Key Vault (ver `src/Ascua.Infrastructure/Auth/SigningKeys.cs`); hasta entonces la app no arranca si se define |
+| `Ascua__Database__MigrateOnStartup` | `true` (aplica migraciones al arrancar) | `false` por defecto; `true` es seguro con varias réplicas (EF Core toma un *lock* al migrar) o se migra desde el pipeline |
+| `Ascua__Jwt__AllowEphemeralKey` | no hace falta (Development siempre usa clave efímera) | `false`; `true` solo en un ambiente de prueba de una réplica mientras no esté Key Vault |
+| `Ascua__Jwt__Issuer` / `Ascua__Jwt__Audience` | `ascua` / `ascua-api` | igual (o el dominio público) |
+| `Ascua__Jwt__AccessTokenLifetime` / `Ascua__Jwt__RefreshTokenLifetime` | `00:10:00` / `7.00:00:00` | igual |
+| `Ascua__RateLimiting__Auth__PermitLimit` / `__Window` | `10` por `00:01:00` (por IP, endpoints de `/api/v1/auth`) | igual |
+| `Ascua__RateLimiting__User__PermitLimit` / `__Window` | `60` por `00:01:00` (por usuario) | igual |
+| `Ascua__TrustForwardedHeaders` | `false` | `true` (detrás del ingress de Container Apps, para que el *rate limiting* vea la IP real) |
 | `Ascua__Cors__AllowedOrigins` | `http://localhost:8080` | dominio público |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | vacío (exporter apagado) | la del recurso (no es un secreto según Microsoft, pero puede ir en Key Vault) |
 
