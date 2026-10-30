@@ -18,7 +18,9 @@ appsettings.*.local.json
 *.key
 
 # Resultados de carga y temporales
-loadtests/reports/
+loadtests/reports/*
+!loadtests/reports/README.md
+!loadtests/reports/*.md
 *.log
 
 # Worktrees locales de sesiones paralelas

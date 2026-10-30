@@ -1,0 +1,40 @@
+name: Carga (humo)
+
+# Manual: levanta el compose con la réplica limitada y corre una carga corta. Falla si la primera
+# etapa no cumple la meta (p95 < 200 ms, errores < 1 %, ninguna jugada perdida ni duplicada).
+# Los runners de GitHub son ruidosos: sirve de humo, no reemplaza la medición de docs/rendimiento.md.
+on:
+  workflow_dispatch:
+    inputs:
+      stages:
+        description: "Partidas simultáneas por etapa (coma)"
+        default: "4"
+      stage-seconds:
+        description: "Duración de cada etapa (s)"
+        default: "60"
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - name: Correr carga
+        env:
+          STAGES: ${{ inputs.stages }}
+          STAGE_SECONDS: ${{ inputs.stage-seconds }}
+        run: loadtests/run.sh --stages "$STAGES" --stage-seconds "$STAGE_SECONDS" --idle-seconds 10 --label ci
+      - name: Resumen
+        if: always()
+        run: cat loadtests/reports/*-ci/resumen.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: carga-humo
+          path: loadtests/reports/
+      - name: Logs de la API
+        if: failure()
+        run: docker compose -p ascua-carga -f docker-compose.yml -f loadtests/docker-compose.load.yml logs api --tail 200

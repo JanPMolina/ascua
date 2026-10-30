@@ -1,0 +1,28 @@
+# Réplica limitada para la prueba de carga (docs/rendimiento.md). Se usa junto al compose base:
+#   docker compose -p ascua-carga -f docker-compose.yml -f loadtests/docker-compose.load.yml up -d --build api
+# Límites como una réplica mínima de Container Apps (0,5 vCPU / 1 GiB). Postgres y Redis no se limitan:
+# en Azure son servicios administrados aparte.
+services:
+  api:
+    cpus: 0.5
+    mem_limit: 1g
+    environment:
+      # Plazo de ronda reducido para generar carga (planteamiento/02-arquitectura.md §9).
+      Ascua__Realtime__RoundDuration: "${ASCUA_ROUND_DURATION:-00:00:03}"
+      Ascua__Realtime__DraftDuration: "00:00:15"
+      # Los bots se registran desde una sola IP y piden tickets en ráfaga.
+      Ascua__RateLimiting__Auth__PermitLimit: "100000"
+      Ascua__RateLimiting__User__PermitLimit: "100000"
+      # Conmutadores de las optimizaciones (docs/rendimiento.md) para medir antes/después con la misma imagen.
+      Ascua__Redis__DedicatedSocketThreads: "${ASCUA_REDIS_DEDICATED_THREADS:-false}"
+      Ascua__Realtime__PreciseDeadlines: "${ASCUA_PRECISE_DEADLINES:-true}"
+
+  loadtest:
+    profiles: ["load"]
+    build:
+      context: .
+      dockerfile: loadtests/Dockerfile
+    volumes:
+      - ./loadtests/reports:/reports
+    depends_on:
+      - api
