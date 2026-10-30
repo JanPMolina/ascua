@@ -21,6 +21,7 @@ public sealed class MatchEngine(
     IMatchStore store,
     IMatchHotState hot,
     IMatchNotifier notifier,
+    IActiveMatchRegistry activeMatches,
     IRandom rng,
     IClock clock,
     RealtimeOptions options,
@@ -423,6 +424,7 @@ public sealed class MatchEngine(
         {
             logger.LogInformation("Jugador {PlayerId} abandonó la partida {MatchId} en la ronda {Round}", userId, matchId, snapshot.State.Round);
             await notifier.PlayerConnectionChangedAsync(matchId, userId, ConnectionState.Abandoned, null, cancellationToken);
+            await ReleaseActiveMatchAsync(matchId, [userId]);
             if (mutation.Snapshot!.Status == MatchStatus.InProgress)
             {
                 ScheduleCloseCheck(matchId, mutation.Snapshot.State.Round);
@@ -614,6 +616,11 @@ public sealed class MatchEngine(
             }
 
             await hot.SaveAsync(change.After, cancellationToken);
+            if (!change.After.Status.IsActive())
+            {
+                await ReleaseActiveMatchAsync(matchId, [.. change.After.Participants.Select(p => p.UserId)]);
+            }
+
             using (logger.BeginScope(new Dictionary<string, object>
             {
                 ["MatchId"] = matchId,
@@ -671,7 +678,27 @@ public sealed class MatchEngine(
         await store.MarkStatusAsync(current.MatchId, status, clock.UtcNow, cancellationToken);
         var stopped = current with { Status = status, Version = current.Version + 1, Deadline = null };
         await hot.SaveAsync(stopped, cancellationToken);
+        await ReleaseActiveMatchAsync(current.MatchId, [.. current.Participants.Select(p => p.UserId)]);
         await notifier.MatchStoppedAsync(stopped, cancellationToken);
+    }
+
+    /// <summary>
+    /// Quita la marca "partida activa" del lobby para que los jugadores puedan volver a salas o a la cola.
+    /// Si Redis falla, la marca igual vence por su TTL (Ascua:Lobby:ActiveMatchTtl).
+    /// </summary>
+    private async Task ReleaseActiveMatchAsync(Guid matchId, IReadOnlyList<Guid> userIds)
+    {
+        foreach (var userId in userIds)
+        {
+            try
+            {
+                await activeMatches.ReleaseAsync(userId, matchId, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "No se pudo liberar la partida activa {MatchId} del jugador {PlayerId}", matchId, userId);
+            }
+        }
     }
 
     private static T Domain<T>(Func<T> action)

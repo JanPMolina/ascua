@@ -1,9 +1,12 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Ascua.Api.Endpoints;
 using Ascua.Api.Realtime;
 using Ascua.Api.Security;
 using Ascua.Application.Abstractions;
 using Ascua.Domain.Abstractions;
 using Ascua.Infrastructure;
+using Ascua.Infrastructure.Lobby;
 using Ascua.Infrastructure.Persistence;
 using Ascua.Infrastructure.Redis;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
@@ -23,8 +26,13 @@ builder.Services.AddOpenApi(options =>
 });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AscuaDbContext>("postgres", tags: ["ready"]);
-// Redis (estado caliente, backplane, tickets, límites) es obligatorio: el tiempo real vive ahí.
+// Enums como texto en MAYÚSCULAS (HeroClass, estados de sala y cola), igual que en el contrato AsyncAPI.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false)));
+// Redis (estado caliente, backplane, tickets, límites) es obligatorio: el tiempo real y el lobby viven ahí.
 builder.Services.AddAscuaRedis();
+// El lobby deja un IMatchLauncher "no disponible" con TryAdd; AddAscuaRealtime lo reemplaza por el real.
+builder.Services.AddAscuaLobby(builder.Configuration);
 
 builder.Services.AddSingleton<IRandom, SecureRandom>();
 builder.Services.AddSingleton<IClock, SystemClock>();
@@ -82,6 +90,8 @@ app.MapGet("/api/v1/version", () => new { name = "ascua", version = typeof(Progr
 
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
+app.MapRoomEndpoints();
+app.MapMatchmakingEndpoints();
 
 app.MapAscuaRealtime();
 
