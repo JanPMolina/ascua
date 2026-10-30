@@ -11,6 +11,9 @@ public enum MatchStatus
     Abandoned,
     Expired,
     Faulted,
+
+    /// <summary>Un administrador la detuvo (<c>POST /api/v1/admin/matches/{id}/terminate</c>, auditado).</summary>
+    Terminated,
 }
 
 public static class MatchStatusExtensions
@@ -27,6 +30,7 @@ public static class MatchStatusExtensions
         MatchStatus.Abandoned => "ABANDONED",
         MatchStatus.Expired => "EXPIRED",
         MatchStatus.Faulted => "FAULTED",
+        MatchStatus.Terminated => "TERMINATED",
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, null),
     };
 
@@ -38,6 +42,7 @@ public static class MatchStatusExtensions
         "ABANDONED" => MatchStatus.Abandoned,
         "EXPIRED" => MatchStatus.Expired,
         "FAULTED" => MatchStatus.Faulted,
+        "TERMINATED" => MatchStatus.Terminated,
         _ => throw new ArgumentOutOfRangeException(nameof(code), code, null),
     };
 

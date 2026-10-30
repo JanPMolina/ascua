@@ -1,3 +1,5 @@
+using Ascua.Application.Admin;
+using Ascua.Application.Audit;
 using Ascua.Application.Users;
 using Ascua.Infrastructure.Auth;
 using Ascua.Infrastructure.Persistence;
@@ -35,6 +37,11 @@ public static class DependencyInjection
 
         services.AddScoped<AuthService>();
         services.AddScoped<ProfileService>();
+
+        services.AddScoped<IAuditLog, EfAuditLog>();
+        services.AddScoped<IAdminQueries, EfAdminQueries>();
+        services.AddSingleton<IUserAccessGate, RedisUserAccessGate>();
+        services.AddScoped<AdminService>();
 
         return services;
     }

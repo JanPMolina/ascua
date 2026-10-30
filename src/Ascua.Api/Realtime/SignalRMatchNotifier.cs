@@ -108,13 +108,20 @@ public sealed class SignalRMatchNotifier(
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         var group = hub.Clients.Group(MatchHub.Group(snapshot.MatchId));
-        var message = snapshot.Status == MatchStatus.Faulted
-            ? "La partida quedó en estado FAULTED y se detuvo."
-            : "La partida expiró por inactividad.";
-        await group.SendAsync(
-            "Error",
-            RealtimeReplies.Push(snapshot.MatchId, new MatchError(RealtimeErrors.MatchNotActive, message) { Status = snapshot.Status }),
-            cancellationToken);
+        var error = snapshot.Status switch
+        {
+            MatchStatus.Faulted => new MatchError(RealtimeErrors.MatchNotActive, "La partida quedó en estado FAULTED y se detuvo."),
+            MatchStatus.Terminated => new MatchError(RealtimeConnections.KickedByAdmin, "Un administrador terminó la partida; la conexión se cerrará."),
+            _ => new MatchError(RealtimeErrors.MatchNotActive, "La partida expiró por inactividad."),
+        };
+
+        // Terminada por un admin: primero el resultado y luego el aviso; la conexión se corta poco después.
+        if (snapshot.Status == MatchStatus.Terminated)
+        {
+            await group.SendAsync("MatchFinished", RealtimeMapper.Finished(snapshot, options.PublicBaseUrl, clock.UtcNow), cancellationToken);
+        }
+
+        await group.SendAsync("Error", RealtimeReplies.Push(snapshot.MatchId, error with { Status = snapshot.Status }), cancellationToken);
 
         if (snapshot.Status == MatchStatus.Faulted)
         {

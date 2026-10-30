@@ -6,6 +6,7 @@ using Ascua.Api.Security;
 using Ascua.Application.Abstractions;
 using Ascua.Domain.Abstractions;
 using Ascua.Infrastructure;
+using Ascua.Infrastructure.Auth;
 using Ascua.Infrastructure.Lobby;
 using Ascua.Infrastructure.Persistence;
 using Ascua.Infrastructure.Redis;
@@ -60,6 +61,7 @@ if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNEC
 var app = builder.Build();
 
 await app.Services.MigrateDatabaseIfConfiguredAsync();
+await app.Services.BootstrapAdminIfConfiguredAsync();
 
 if (app.Configuration.GetValue<bool>("Ascua:TrustForwardedHeaders"))
 {
@@ -92,6 +94,7 @@ app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapRoomEndpoints();
 app.MapMatchmakingEndpoints();
+app.MapAdminEndpoints();
 
 app.MapAscuaRealtime();
 

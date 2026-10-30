@@ -1,3 +1,4 @@
+using Ascua.Application.Admin;
 using Ascua.Application.Matches;
 using Ascua.Infrastructure.Matches;
 using Ascua.Infrastructure.Redis;
@@ -49,6 +50,7 @@ public static class RealtimeServiceCollectionExtensions
         services.AddSingleton<RealtimeHubFilter>();
         services.AddSingleton<MatchMetrics>();
         services.AddSingleton<RealtimeConnections>();
+        services.AddSingleton<IRealtimeKicker>(sp => sp.GetRequiredService<RealtimeConnections>());
         services.AddSingleton<IMatchStore, EfMatchStore>();
         services.AddSingleton<IMatchHotState, RedisMatchHotState>();
         services.AddSingleton<IRealtimeTicketStore, RedisTicketStore>();

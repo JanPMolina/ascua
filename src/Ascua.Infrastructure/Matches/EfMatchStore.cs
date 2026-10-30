@@ -1,3 +1,4 @@
+using Ascua.Application.Audit;
 using Ascua.Application.Matches;
 using Ascua.Domain.Events;
 using Ascua.Domain.Model;
@@ -128,12 +129,14 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
         return true;
     }
 
-    public async Task MarkStatusAsync(Guid matchId, MatchStatus status, DateTimeOffset now, CancellationToken cancellationToken)
+    public async Task<bool> MarkStatusAsync(
+        Guid matchId, MatchStatus status, DateTimeOffset now, AuditEntry? audit, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AscuaDbContext>();
         var code = status.ToCode();
-        await db.Matches
+        await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+        var updated = await db.Matches
             .Where(m => m.Id == matchId && ActiveStatuses.Contains(m.Status))
             .ExecuteUpdateAsync(
                 s => s
@@ -143,6 +146,20 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
                     .SetProperty(m => m.FinishedAt, now)
                     .SetProperty(m => m.UpdatedAt, now),
                 cancellationToken);
+        if (updated == 0)
+        {
+            return false;
+        }
+
+        // La auditoría se confirma junto con el cambio de estado: o quedan las dos o ninguna.
+        if (audit is not null)
+        {
+            db.AuditLog.Add(audit);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+        return true;
     }
 
     public async Task<IReadOnlyList<Guid>> FindInactiveAsync(DateTimeOffset before, int limit, CancellationToken cancellationToken)

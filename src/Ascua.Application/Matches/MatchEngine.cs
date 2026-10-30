@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using Ascua.Application.Abstractions;
+using Ascua.Application.Audit;
 using Ascua.Domain.Abstractions;
 using Ascua.Domain.Events;
 using Ascua.Domain.Model;
@@ -470,6 +471,42 @@ public sealed class MatchEngine(
         await StopAsync(snapshot, MatchStatus.Expired, cancellationToken);
     }
 
+    /// <summary>
+    /// Un administrador detiene la partida: con el lock de la partida (ninguna ronda se cierra a la vez)
+    /// pasa a TERMINATED, se inserta la auditoría que arma <paramref name="audit"/> en la misma transacción,
+    /// se libera la "partida activa" de los jugadores y se les avisa (<c>MatchFinished</c> + <c>KICKED_BY_ADMIN</c>).
+    /// </summary>
+    public async Task<MatchResult<MatchSnapshot>> TerminateAsync(
+        Guid matchId, Func<MatchSnapshot, AuditEntry> audit, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(audit);
+        await using var lease = await hot.TryLockAsync(matchId, CommandLockWait, cancellationToken);
+        if (lease is null)
+        {
+            return new MatchError(RealtimeErrors.InternalError, "La partida está ocupada; reintente.");
+        }
+
+        var snapshot = await RepairFromStoreAsync(matchId, cancellationToken);
+        if (snapshot is null)
+        {
+            return new MatchError(RealtimeErrors.MatchNotFound, "La partida no existe.");
+        }
+
+        if (!snapshot.Status.IsActive())
+        {
+            return new MatchError(RealtimeErrors.MatchNotActive, "La partida ya no está en curso.") { Status = snapshot.Status };
+        }
+
+        var stopped = await StopAsync(snapshot, MatchStatus.Terminated, cancellationToken, audit(snapshot));
+        if (stopped is null)
+        {
+            return new MatchError(RealtimeErrors.MatchNotActive, "La partida terminó mientras se procesaba la orden.");
+        }
+
+        logger.LogInformation("La partida {MatchId} fue terminada por un administrador en la ronda {Round}", matchId, snapshot.State.Round);
+        return MatchResult<MatchSnapshot>.Ok(stopped);
+    }
+
     /// <summary>Una partida con el plazo vencido en Postgres que nadie cerró (p. ej. Redis perdió sus datos).</summary>
     public async Task RecoverAsync(Guid matchId, CancellationToken cancellationToken)
     {
@@ -673,13 +710,21 @@ public sealed class MatchEngine(
         await StopAsync(current, MatchStatus.Faulted, cancellationToken);
     }
 
-    private async Task StopAsync(MatchSnapshot current, MatchStatus status, CancellationToken cancellationToken)
+    private async Task<MatchSnapshot?> StopAsync(
+        MatchSnapshot current, MatchStatus status, CancellationToken cancellationToken, AuditEntry? audit = null)
     {
-        await store.MarkStatusAsync(current.MatchId, status, clock.UtcNow, cancellationToken);
+        var changed = await store.MarkStatusAsync(current.MatchId, status, clock.UtcNow, audit, cancellationToken);
+        if (!changed && audit is not null)
+        {
+            // Otra réplica la terminó antes: sin cambio no hay nada que auditar ni que avisar.
+            return null;
+        }
+
         var stopped = current with { Status = status, Version = current.Version + 1, Deadline = null };
         await hot.SaveAsync(stopped, cancellationToken);
         await ReleaseActiveMatchAsync(current.MatchId, [.. current.Participants.Select(p => p.UserId)]);
         await notifier.MatchStoppedAsync(stopped, cancellationToken);
+        return stopped;
     }
 
     /// <summary>

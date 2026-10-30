@@ -59,6 +59,10 @@ public sealed class RedisConnectionLimiter(IConnectionMultiplexer redis) : IConn
     public Task ReleaseAsync(Guid userId, string leaseId, CancellationToken cancellationToken) =>
         redis.GetDatabase().SortedSetRemoveAsync(Key(userId), leaseId);
 
+    public async Task<int> CountAsync(Guid userId, CancellationToken cancellationToken) =>
+        (int)await redis.GetDatabase().SortedSetLengthAsync(
+            Key(userId), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), double.PositiveInfinity, Exclude.Start);
+
     public async Task RenewAsync(IEnumerable<(Guid UserId, string LeaseId)> leases, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(leases);
