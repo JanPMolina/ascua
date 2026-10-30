@@ -6,7 +6,7 @@ import { logMessage, setLastSeq } from './log.js';
 import { NO_RECONNECT } from './hub.js';
 import { uuidv7 } from './uuid.js';
 import {
-  ABILITIES, BLESSINGS, DIRECTIONS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
+  ABILITIES, BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
   MATCH_STATUS, ORDER_TYPES, OUTCOMES, label,
 } from './labels.js';
 
@@ -330,8 +330,9 @@ class MatchController {
     const box = $('draft-options');
     box.replaceChildren(...m.options.map((id) => el('button', {
       type: 'button',
+      class: 'blessing',
       onclick: () => this.pickBlessing(id),
-    }, label(BLESSINGS, id))));
+    }, el('b', {}, label(BLESSINGS, id)), BLESSING_EFFECTS[id] ? el('small', {}, BLESSING_EFFECTS[id]) : null)));
     setText('draft-source', m.source === 'ALTAR' ? 'Altar' : 'Draft inicial');
     $('draft').hidden = false;
   }
@@ -385,7 +386,7 @@ class MatchController {
   // ───────────── órdenes ─────────────
 
   handleKey(e) {
-    if (this.disposed || $('screen-match').hidden || !$('draft').hidden) return;
+    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('howto').hidden) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;

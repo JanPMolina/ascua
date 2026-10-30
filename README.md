@@ -18,6 +18,7 @@ docker compose up --build
 ```
 
 - App y cliente de prueba: http://localhost:8080
+- Tutorial interactivo (sin cuenta ni servidor de juego): http://localhost:8080/?tutorial=1. La guía «Cómo jugar» está en la barra superior.
 - API (OpenAPI 3.1 con Scalar): http://localhost:8080/docs
 - Salud: http://localhost:8080/health/live · http://localhost:8080/health/ready
 

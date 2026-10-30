@@ -19,11 +19,15 @@ public sealed partial class WebClientTests(AscuaApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         Assert.Contains("<script type=\"module\" src=\"js/main.js\"></script>", html, StringComparison.Ordinal);
+        // Punto de entrada para quien juega por primera vez: el tutorial no necesita cuenta.
+        Assert.Contains("href=\"?tutorial=1\"", html, StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("/js/main.js", "text/javascript")]
     [InlineData("/js/match.js", "text/javascript")]
+    [InlineData("/js/tutorial.js", "text/javascript")]
+    [InlineData("/js/howto.js", "text/javascript")]
     [InlineData("/css/app.css", "text/css")]
     public async Task Client_assets_are_served(string path, string mediaType)
     {

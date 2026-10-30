@@ -135,6 +135,42 @@ button.active { background: var(--accent); color: #1a120a; border-color: var(--a
 .dialog { max-width: 480px; }
 #draft-options button { flex: 1; padding: .8rem; }
 
+/* ───────── Tutorial y guía ───────── */
+a.button {
+  display: inline-block; text-decoration: none; color: var(--text);
+  background: #4a3420; border: 1px solid #7a5430; border-radius: 6px; padding: .4rem .6rem;
+}
+a.button:hover { background: #5c4027; }
+a.button.secondary { background: var(--panel-2); border-color: var(--line); }
+.welcome { border-color: var(--accent); }
+.welcome p { margin: .2rem 0 .6rem; }
+
+#draft-options button.blessing { display: flex; flex-direction: column; gap: .3rem; text-align: left; }
+#draft-options button.blessing small { color: var(--muted); font-size: .8rem; }
+
+.coach { border-color: var(--warn); }
+.coach-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .4rem; }
+.coach-head h2 { margin: 0; }
+.coach-head small { color: var(--muted); }
+.coach p { margin: .3rem 0; }
+.coach .coach-note { color: var(--warn); }
+.coach-progress { height: 3px; background: var(--panel-2); border-radius: 2px; margin-bottom: .6rem; overflow: hidden; }
+.coach-progress > div { height: 100%; width: 0; background: var(--warn); transition: width .3s; }
+#coach-next { margin-top: .4rem; }
+
+.tut-focus { outline: 2px solid var(--warn); outline-offset: 2px; animation: tut-pulse 1.4s ease-in-out infinite; }
+@keyframes tut-pulse { 50% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .tut-focus { animation: none; } }
+
+.fin-tutorial { border-top: 1px solid var(--line); margin: 1rem 0; padding-top: .6rem; }
+
+.howto { max-width: 640px; width: calc(100vw - 2rem); max-height: calc(100vh - 2rem); overflow: auto; }
+.howto ul, .howto ol { padding-left: 1.2rem; margin: .4rem 0; }
+.howto li { margin: .25rem 0; }
+.howto-nav { margin-top: .8rem; }
+.heroes dt { font-weight: 600; margin-top: .5rem; color: var(--accent); }
+.heroes dd { margin: .1rem 0 0; }
+
 /* ───────── Depuración ───────── */
 .debug { border-top: 1px solid var(--line); background: var(--panel); padding: .4rem 1rem; }
 .debug summary { cursor: pointer; color: var(--muted); }
