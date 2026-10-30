@@ -6,6 +6,9 @@
     <Project Path="src/Ascua.Api/Ascua.Api.csproj" />
     <Project Path="src/Ascua.Bot/Ascua.Bot.csproj" />
   </Folder>
+  <Folder Name="/loadtests/">
+    <Project Path="loadtests/Ascua.LoadTests/Ascua.LoadTests.csproj" />
+  </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ascua.Domain.Tests/Ascua.Domain.Tests.csproj" />
     <Project Path="tests/Ascua.Application.Tests/Ascua.Application.Tests.csproj" />

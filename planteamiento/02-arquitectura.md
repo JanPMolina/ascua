@@ -148,6 +148,7 @@ Container Apps: plan de consumo (cuota gratuita); dev con minReplicas=0.
   1. JSON con vista completa → **MessagePack con deltas**.
   2. Reconstruir el estado desde eventos en cada ronda → **instantánea en Redis**.
   3. Un `SendAsync` por jugador → difusión en lote.
+- **Resultados:** ver [docs/rendimiento.md](../docs/rendimiento.md) (punto de quiebre, CPU/RAM por partida y optimizaciones medidas).
 
 ## 10. ADRs que hay que escribir
 

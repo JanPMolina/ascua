@@ -26,6 +26,13 @@ public sealed class RealtimeOptions
     /// <summary>Cada cuánto el temporizador de cada réplica revisa plazos y gracias vencidos.</summary>
     public TimeSpan TimerInterval { get; set; } = TimeSpan.FromMilliseconds(250);
 
+    /// <summary>
+    /// Además del sondeo, la réplica que abre un plazo programa un temporizador en proceso para cerrarlo
+    /// en el instante exacto (sin esperar hasta <see cref="TimerInterval"/>). El sondeo queda de respaldo
+    /// si esa réplica cae. Ver docs/rendimiento.md.
+    /// </summary>
+    public bool PreciseDeadlines { get; set; } = true;
+
     /// <summary>Cada cuánto se buscan partidas inactivas o con plazos perdidos en Postgres.</summary>
     public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromSeconds(30);
 

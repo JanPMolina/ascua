@@ -18,8 +18,13 @@ appsettings.*.local.json
 *.key
 
 # Resultados de carga y temporales
-loadtests/reports/
+loadtests/reports/*
+!loadtests/reports/README.md
+!loadtests/reports/*.md
 *.log
 
 # Worktrees locales de sesiones paralelas
 .worktrees/
+# Logs locales de NBomber (carpeta de salida por defecto)
+loadtests/**/r/
+nbomber-log-*.txt
