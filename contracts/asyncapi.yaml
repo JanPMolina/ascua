@@ -2,7 +2,7 @@ asyncapi: 3.0.0
 id: urn:ascua:realtime:match
 info:
   title: Ascua — protocolo en tiempo real
-  version: 1.0.0
+  version: 1.1.0
   description: |
     Contrato del hub SignalR **`/realtime/match`** del servidor autoritativo de *Ascua*
     (mazmorra semi-cooperativa por turnos simultáneos, 2-4 jugadores).
@@ -67,6 +67,16 @@ info:
     | 4029 | `RATE_LIMITED` | `true` | Abuso sostenido: más de 50 rechazos `RATE_LIMITED` en 60 s | Espera al menos 60 s antes de reconectar |
     | — | `HEARTBEAT_TIMEOUT` | — | Lo detecta el **cliente**: 30 s sin mensajes del servidor | Reconecta con un ticket nuevo |
 
+    > **Cómo lo implementa el servidor (1.1.0).** SignalR no deja que el servidor fije el texto de
+    > `Close.error`, así que:
+    > - Los rechazos del *upgrade* son Problem Details (RFC 9457) con `code` `ticket-invalid` (401),
+    >   `unsupported-protocol-version` (400) y `connection-limit` (429). La versión se revisa **antes**
+    >   de consumir el ticket: un 400 no lo gasta.
+    > - `SESSION_REPLACED` llega como mensaje `Error` con ese código justo antes de cerrar la conexión vieja.
+    > - `SERVER_DRAINING` llega como mensaje `ServerDraining`; la conexión se corta al apagarse la réplica.
+    > - Tras `MatchFinished` el servidor **no** cierra la conexión: el cliente muestra el resultado y la cierra.
+    > - `RATE_LIMITED` sostenido y `MESSAGE_TOO_LARGE` cierran sin razón legible; el cliente reconecta con *backoff*.
+
     ## 3. Errores
 
     Toda invocación responde con su ACK o con `InvocationError { error: { code, message, … } }`
@@ -95,6 +105,7 @@ info:
     | `RATE_LIMITED` | Sí | Se agotó el *token bucket* de la conexión (capacidad 20, recarga 5/s). `retryAfterMs` indica la espera |
     | `MESSAGE_TOO_LARGE` | No | Mensaje mayor a 4 KB (además cierra la conexión con 1009) |
     | `INTERNAL_ERROR` | Sí | Error del servidor; no se aplicó nada. Se puede reintentar con el **mismo** `clientActionId` |
+    | `SESSION_REPLACED` | No | Solo en el mensaje `Error`: esta conexión se cierra porque el usuario abrió otra en la misma partida (desde 1.1.0) |
 
     Los clientes deben tratar un código desconocido como error genérico no reintentable.
 
@@ -123,6 +134,13 @@ info:
       durante al menos 30 días; luego rechaza la vieja con `UNSUPPORTED_PROTOCOL_VERSION`.
     - Cada mensaje declara `x-since` (versión en que apareció). Los cambios se registran en
       `docs/adr/` y en el changelog de la versión.
+
+    ### Changelog
+
+    - **1.1.0** (aditivo): `VisibleEvent.type` suma `ABILITY_USED` (habilidad usada) y `GUARDED`
+      (GUARDAR elegido); `ErrorCode` suma `SESSION_REPLACED` (solo en `Error`). Se documenta cómo el
+      servidor comunica las razones de cierre (sección 2).
+    - **1.0.0**: versión inicial.
   contact:
     name: Equipo Ascua
     url: https://github.com/JanPMolina/ascua
@@ -1254,6 +1272,7 @@ components:
         - RATE_LIMITED
         - MESSAGE_TOO_LARGE
         - INTERNAL_ERROR
+        - SESSION_REPLACED
       description: Código estable. Nunca cambia de significado; los nuevos se agregan en versiones menores.
     ErrorBody:
       type: object
@@ -1495,7 +1514,7 @@ components:
       properties:
         type:
           type: string
-          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED]
+          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED]
         actorId:
           type: string
           maxLength: 36

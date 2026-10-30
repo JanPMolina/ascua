@@ -157,6 +157,150 @@ namespace Ascua.Infrastructure.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchEventRecord", b =>
+                {
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<long>("Seq")
+                        .HasColumnType("bigint")
+                        .HasColumnName("seq");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("integer")
+                        .HasColumnName("round");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("type");
+
+                    b.HasKey("MatchId", "Seq")
+                        .HasName("ux_match_events_match_id_seq");
+
+                    b.ToTable("match_events", (string)null);
+                });
+
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchPlayerRecord", b =>
+                {
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("Hero")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("hero");
+
+                    b.Property<int>("Seat")
+                        .HasColumnType("integer")
+                        .HasColumnName("seat");
+
+                    b.HasKey("MatchId", "UserId")
+                        .HasName("pk_match_players");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_match_players_user_id");
+
+                    b.ToTable("match_players", (string)null);
+                });
+
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("Deadline")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deadline");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<long>("LastSeq")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_seq");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("room_id");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("integer")
+                        .HasColumnName("round");
+
+                    b.Property<int>("RoundDurationMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("round_duration_ms");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("state");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_matches");
+
+                    b.HasIndex("RoomId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_matches_room_id");
+
+                    b.HasIndex("Status", "UpdatedAt")
+                        .HasDatabaseName("ix_matches_status_updated_at");
+
+                    b.ToTable("matches", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_matches_status", "status IN ('DRAFTING', 'IN_PROGRESS', 'FINISHED', 'ABANDONED', 'EXPIRED', 'FAULTED')");
+                        });
+                });
+
             modelBuilder.Entity("Ascua.Application.Users.RefreshToken", b =>
                 {
                     b.HasOne("Ascua.Application.Users.RefreshToken", null)
@@ -171,6 +315,33 @@ namespace Ascua.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchEventRecord", b =>
+                {
+                    b.HasOne("Ascua.Infrastructure.Persistence.MatchRecord", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_match_events_matches_match_id");
+                });
+
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchPlayerRecord", b =>
+                {
+                    b.HasOne("Ascua.Infrastructure.Persistence.MatchRecord", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_match_players_matches_match_id");
+
+                    b.HasOne("Ascua.Application.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_match_players_users_user_id");
                 });
 #pragma warning restore 612, 618
         }

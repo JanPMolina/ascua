@@ -12,6 +12,7 @@ se escribe una nueva que la **reemplaza** y se actualiza el estado de la anterio
 | [0004](0004-jwt-propio-vs-oidc.md) | JWT propio frente a un proveedor OIDC externo | aceptada | 2026-10-29 |
 | [0005](0005-dotnet-10-openapi-31.md) | .NET 10 en lugar de .NET 8 (OpenAPI 3.1 nativo) | aceptada | 2026-10-29 |
 | [0006](0006-ticket-handshake-websocket.md) | Ticket de un solo uso para el *handshake* WebSocket | aceptada | 2026-10-29 |
+| [0007](0007-salas-y-emparejamiento.md) | Salas y emparejamiento en Redis con escrituras atómicas (Lua + versión optimista) | aceptada | 2026-10-29 |
 
 Contratos relacionados: [`contracts/asyncapi.yaml`](../../contracts/asyncapi.yaml) (tiempo real) y
 el OpenAPI 3.1 que genera la API. Visión general en

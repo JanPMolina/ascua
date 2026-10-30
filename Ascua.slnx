@@ -8,6 +8,7 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Ascua.Domain.Tests/Ascua.Domain.Tests.csproj" />
+    <Project Path="tests/Ascua.Application.Tests/Ascua.Application.Tests.csproj" />
     <Project Path="tests/Ascua.Architecture.Tests/Ascua.Architecture.Tests.csproj" />
     <Project Path="tests/Ascua.Integration.Tests/Ascua.Integration.Tests.csproj" />
   </Folder>

@@ -1,3 +1,4 @@
+using Ascua.Application.Rooms;
 using Ascua.Application.Users;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,7 @@ namespace Ascua.Api.Endpoints;
 /// <summary>
 /// Tipos de Problem Details (RFC 9457) estables de la API. El <c>type</c> es una URN
 /// <c>urn:ascua:problem:&lt;código&gt;</c> y el código también va en la extensión <c>code</c>.
-/// Catálogo documentado en docs/api/autenticacion.md: si se agrega uno, se documenta en el mismo PR.
+/// Catálogo documentado en docs/api/autenticacion.md y docs/api/salas.md: si se agrega uno, se documenta en el mismo PR.
 /// </summary>
 public static class Problems
 {
@@ -24,7 +25,25 @@ public static class Problems
     public static readonly ProblemKind UsernameTaken = new("username-taken", StatusCodes.Status409Conflict, "El nombre de usuario ya está en uso.");
     public static readonly ProblemKind EmailTaken = new("email-taken", StatusCodes.Status409Conflict, "El correo ya está en uso.");
     public static readonly ProblemKind NotFound = new("not-found", StatusCodes.Status404NotFound, "El recurso no existe.");
+    public static readonly ProblemKind RoomNotFound = new("room-not-found", StatusCodes.Status404NotFound, "La sala no existe o no tiene acceso a ella.");
+    public static readonly ProblemKind NotRoomMember = new("not-room-member", StatusCodes.Status403Forbidden, "No está en esta sala.");
+    public static readonly ProblemKind NotRoomHost = new("not-room-host", StatusCodes.Status403Forbidden, "Solo el anfitrión puede iniciar la partida.");
+    public static readonly ProblemKind RoomFull = new("room-full", StatusCodes.Status409Conflict, "La sala está llena.");
+    public static readonly ProblemKind AlreadyInRoom = new("already-in-room", StatusCodes.Status409Conflict, "Ya está en una sala.");
+    public static readonly ProblemKind AlreadyInQueue = new("already-in-queue", StatusCodes.Status409Conflict, "Ya está en la cola de emparejamiento.");
+    public static readonly ProblemKind AlreadyInMatch = new("already-in-match", StatusCodes.Status409Conflict, "Ya tiene una partida activa.");
+    public static readonly ProblemKind RoomNotOpen = new("room-not-open", StatusCodes.Status409Conflict, "La sala ya no acepta cambios: la partida está iniciando o iniciada.");
+    public static readonly ProblemKind HeroTaken = new("hero-taken", StatusCodes.Status409Conflict, "Otro jugador de la sala ya eligió ese héroe.");
+    public static readonly ProblemKind HeroRequired = new("hero-required", StatusCodes.Status409Conflict, "Elija un héroe antes de marcarse listo.");
+    public static readonly ProblemKind NotEnoughReady = new("not-enough-ready", StatusCodes.Status409Conflict, "Hacen falta al menos 2 jugadores y que todos estén listos.");
+    public static readonly ProblemKind RoomBusy = new("room-busy", StatusCodes.Status409Conflict, "La sala cambió demasiadas veces seguidas; reintente.");
+    public static readonly ProblemKind MatchStarting = new("match-starting", StatusCodes.Status409Conflict, "Ya fue emparejado y su partida se está creando.");
+    public static readonly ProblemKind MatchesUnavailable = new("matches-unavailable", StatusCodes.Status503ServiceUnavailable, "Las partidas aún no están disponibles.");
     public static readonly ProblemKind RateLimited = new("rate-limited", StatusCodes.Status429TooManyRequests, "Demasiadas solicitudes; reintente más tarde.");
+    public static readonly ProblemKind TicketInvalid = new("ticket-invalid", StatusCodes.Status401Unauthorized, "El ticket de tiempo real falta, venció o ya se usó.");
+    public static readonly ProblemKind UnsupportedProtocolVersion = new("unsupported-protocol-version", StatusCodes.Status400BadRequest, "La versión del protocolo de tiempo real no es compatible.");
+    public static readonly ProblemKind ConnectionLimit = new("connection-limit", StatusCodes.Status429TooManyRequests, "Ya tiene el máximo de conexiones de tiempo real abiertas.");
+    public static readonly ProblemKind MatchNotActive = new("match-not-active", StatusCodes.Status409Conflict, "La partida ya no está en curso.");
     public static readonly ProblemKind Internal = new("internal", StatusCodes.Status500InternalServerError, "Error interno del servidor.");
 
     /// <summary>
@@ -73,6 +92,27 @@ public static class Problems
     };
 
     public static ProblemHttpResult Result(UserError error) => For(error).ToResult();
+
+    public static ProblemKind For(LobbyError error) => error switch
+    {
+        LobbyError.RoomNotFound => RoomNotFound,
+        LobbyError.RoomFull => RoomFull,
+        LobbyError.AlreadyInRoom => AlreadyInRoom,
+        LobbyError.AlreadyInQueue => AlreadyInQueue,
+        LobbyError.AlreadyInMatch => AlreadyInMatch,
+        LobbyError.NotRoomMember => NotRoomMember,
+        LobbyError.NotRoomHost => NotRoomHost,
+        LobbyError.RoomNotOpen => RoomNotOpen,
+        LobbyError.HeroTaken => HeroTaken,
+        LobbyError.HeroRequired => HeroRequired,
+        LobbyError.NotEnoughReady => NotEnoughReady,
+        LobbyError.RoomBusy => RoomBusy,
+        LobbyError.MatchStarting => MatchStarting,
+        LobbyError.MatchesUnavailable => MatchesUnavailable,
+        _ => throw new ArgumentOutOfRangeException(nameof(error), error, null),
+    };
+
+    public static ProblemHttpResult Result(LobbyError error) => For(error).ToResult();
 
     public static ProblemHttpResult ValidationResult(IDictionary<string, string[]> errors) =>
         TypedResults.Problem(new HttpValidationProblemDetails(errors)
