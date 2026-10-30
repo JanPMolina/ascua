@@ -46,7 +46,7 @@ Jan entrega y Juan Pablo consume:
 | Clave | Local (compose) | Azure (lo define Juan Pablo) |
 |---|---|---|
 | `ConnectionStrings__Postgres` | cadena con contraseña de desarrollo | host y base sin contraseña (token Entra con identidad administrada) |
-| `ConnectionStrings__Redis` | `redis:6379` | host:6380 con SSL y token Entra |
+| `ConnectionStrings__Redis` | `redis:6379` | host:6380 con SSL y token Entra. **Sin modo clúster** (los scripts Lua del lobby tocan varias claves, ADR-0007) |
 | `Ascua__KeyVaultUri` | vacío (usa una clave de desarrollo generada al arrancar) | URI del Key Vault. Falta implementar `ISigningKeyProvider` para Key Vault (ver `src/Ascua.Infrastructure/Auth/SigningKeys.cs`); hasta entonces la app no arranca si se define |
 | `Ascua__Database__MigrateOnStartup` | `true` (aplica migraciones al arrancar) | `false` por defecto; `true` es seguro con varias réplicas (EF Core toma un *lock* al migrar) o se migra desde el pipeline |
 | `Ascua__Jwt__AllowEphemeralKey` | no hace falta (Development siempre usa clave efímera) | `false`; `true` solo en un ambiente de prueba de una réplica mientras no esté Key Vault |
@@ -54,6 +54,12 @@ Jan entrega y Juan Pablo consume:
 | `Ascua__Jwt__AccessTokenLifetime` / `Ascua__Jwt__RefreshTokenLifetime` | `00:10:00` / `7.00:00:00` | igual |
 | `Ascua__RateLimiting__Auth__PermitLimit` / `__Window` | `10` por `00:01:00` (por IP, endpoints de `/api/v1/auth`) | igual |
 | `Ascua__RateLimiting__User__PermitLimit` / `__Window` | `60` por `00:01:00` (por usuario) | igual |
+| `Ascua__Lobby__RoomTtl` | `01:00:00` (una sala sin cambios se borra sola) | igual |
+| `Ascua__Lobby__ActiveMatchTtl` | `04:00:00` (tope de la marca "partida activa" si el tiempo real no la libera) | igual |
+| `Ascua__Matchmaking__MaxWait` | `00:00:30` (pasado esto, la cola arma partidas de 2-3 en lugar de esperar a 4) | igual |
+| `Ascua__Matchmaking__QueueTimeout` | `00:05:00` (quien espera más sin rivales sale de la cola) | igual |
+| `Ascua__Matchmaking__PollInterval` | `00:00:01` (cada cuánto el agrupador procesa la cola) | igual |
+| `Ascua__Matchmaking__Enabled` | `true` | `true` (el agrupador es seguro con varias réplicas; `false` lo apaga en una réplica) |
 | `Ascua__TrustForwardedHeaders` | `false` | `true` (detrás del ingress de Container Apps, para que el *rate limiting* vea la IP real) |
 | `Ascua__Cors__AllowedOrigins` | `http://localhost:8080` | dominio público |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | vacío (exporter apagado) | la del recurso (no es un secreto según Microsoft, pero puede ir en Key Vault) |

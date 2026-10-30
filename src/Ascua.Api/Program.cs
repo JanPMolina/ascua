@@ -1,9 +1,12 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Ascua.Api.Endpoints;
 using Ascua.Api.Realtime;
 using Ascua.Api.Security;
 using Ascua.Application.Abstractions;
 using Ascua.Domain.Abstractions;
 using Ascua.Infrastructure;
+using Ascua.Infrastructure.Lobby;
 using Ascua.Infrastructure.Persistence;
 using Ascua.Infrastructure.Redis;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
@@ -23,10 +26,15 @@ builder.Services.AddOpenApi(options =>
 });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AscuaDbContext>("postgres", tags: ["ready"]);
-// Redis (estado caliente, backplane, tickets, límites). Las pruebas sin Redis no lo registran.
+// Enums como texto en MAYÚSCULAS (HeroClass, estados de sala y cola), igual que en el contrato AsyncAPI.
+builder.Services.ConfigureHttpJsonOptions(options =>
+    options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false)));
+// Redis (estado caliente, backplane, tickets, límites) y el lobby (salas + emparejamiento) que vive en él.
+// Sin Redis configurado los endpoints de salas responden 500; el entorno local y las pruebas lo levantan.
 if (RedisConnection.IsConfigured(builder.Configuration))
 {
     builder.Services.AddAscuaRedis();
+    builder.Services.AddAscuaLobby(builder.Configuration);
 }
 
 builder.Services
@@ -89,6 +97,8 @@ app.MapGet("/api/v1/version", () => new { name = "ascua", version = typeof(Progr
 
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
+app.MapRoomEndpoints();
+app.MapMatchmakingEndpoints();
 
 app.MapHub<MatchHub>("/realtime/match");
 
