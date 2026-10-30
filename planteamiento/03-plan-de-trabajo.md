@@ -74,32 +74,34 @@ Si una clave cambia, se actualiza esta tabla en el mismo PR.
 
 ## Cronograma
 
+> La lista viva de lo que falta, contrastada con la rúbrica, está en [docs/pendientes.md](../docs/pendientes.md). Las casillas de abajo se actualizaron el 30-oct.
+
 ### Fase 0: Cimientos (29-30 oct)
 - [x] Jan: repositorio en GitHub, esqueleto de la solución, `docker compose`, CI base (build, test, format, CodeQL, gitleaks, Dependabot).
-- [ ] Jan y Juan Pablo: congelar las reglas v1 ([01-juego.md](01-juego.md)) y escribir las ADR 1-3.
+- [x] Jan y Juan Pablo: congelar las reglas v1 ([01-juego.md](01-juego.md)) y escribir las ADR 1-3 (hay 7 ADR en `docs/adr/`).
 - [ ] Juan Pablo: grupo de recursos, federación OIDC y *environments* de GitHub (`dev`, `production`).
 
 ### Fase 1: Núcleo (31 oct-3 nov)
-- [ ] Jan: `Resolver` completo y `PlayerViewProjector` con pruebas de no filtración.
-- [ ] Jan: usuarios (Argon2id, JWT, *refresh* rotativo) y salas por REST con Problem Details; OpenAPI 3.1 en `/docs`.
+- [x] Jan: `Resolver` completo y `PlayerViewProjector` con pruebas de no filtración.
+- [x] Jan: usuarios (Argon2id, JWT, *refresh* rotativo) y salas por REST con Problem Details; OpenAPI 3.1 en `/docs`.
 - [ ] Juan Pablo: Bicep de todos los recursos y `infra.yml` levantando **dev** desde cero.
 - [ ] Juan Pablo: `deploy.yml` desplegando la imagen del esqueleto a dev, con las sondas en verde.
 
 ### Fase 2: Tiempo real y nube (4-6 nov)
-- [ ] Jan: `MatchHub` (ticket, `SubmitOrder` idempotente, `CloseRound` con lock, temporizadores, vistas por jugador), reconexión y backplane de Redis.
-- [ ] Jan: `asyncapi.yaml` v1 completo y métricas OpenTelemetry propias.
+- [x] Jan: `MatchHub` (ticket, `SubmitOrder` idempotente, `CloseRound` con lock, temporizadores, vistas por jugador), reconexión y backplane de Redis.
+- [x] Jan: `asyncapi.yaml` v1 completo y métricas OpenTelemetry propias.
 - [ ] Juan Pablo: Key Vault con la clave de firma JWT, autenticación Entra en Postgres y Redis desde la app, Application Insights recibiendo trazas.
 - 🎯 **Hito (6-nov):** una partida de 2 jugadores completa en la URL de dev.
 
 ### Fase 3: Completar requisitos (7-9 nov)
-- [ ] Jan: emparejamiento, historial, reproducción y administración con auditoría.
-- [ ] Jan: límites de tasa, CORS y cabeceras, pruebas de concurrencia, seguridad y resiliencia.
+- [x] Jan: emparejamiento, historial, reproducción y administración con auditoría.
+- [ ] Jan: límites de tasa, CORS y cabeceras, pruebas de concurrencia, seguridad y resiliencia. *Hechos los límites de tasa y las pruebas de concurrencia y seguridad; faltan CORS HTTP, cabeceras y resiliencia.*
 - [ ] Juan Pablo: ambiente **prod** con aprobación manual, revisiones con división de tráfico, drenado y `rollback.yml` **probado y documentado**.
 - [ ] Juan Pablo: alertas (p95 > 200 ms, errores > 1%, reinicios) y dashboard.
 
 ### Fase 4: Rendimiento y cierre (10-11 nov)
-- [ ] Jan: bot con NBomber, prueba de carga local, punto de quiebre y optimización con números de antes y después.
-- [ ] Jan: cliente web mínimo, modelo de amenazas y README.
+- [x] Jan: bot con NBomber, prueba de carga local, punto de quiebre y optimización con números de antes y después.
+- [ ] Jan: cliente web mínimo, modelo de amenazas y README. *Cliente hecho; faltan el modelo de amenazas y completar el README.*
 - [ ] Juan Pablo: correr la carga contra Azure, reportar CPU y memoria por partida y por réplica, estimación de costos, y evidencia de un ambiente reconstruido desde cero.
 - [ ] Jan y Juan Pablo: ensayo de la defensa.
 
