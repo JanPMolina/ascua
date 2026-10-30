@@ -30,11 +30,19 @@ public static class RealtimeSetup
             new Uri("/api/v1/auth/register", UriKind.Relative), new { username, email = $"{username}@example.com", password = Password });
         register.EnsureSuccessStatusCode();
         var profile = (await register.Content.ReadFromJsonAsync<UserProfileResponse>())!;
+        return await LoginAsync(host, new TestPlayer(profile.Id, username, ""));
+    }
 
-        using var login = await http.PostAsJsonAsync(new Uri("/api/v1/auth/login", UriKind.Relative), new { username, password = Password });
+    /// <summary>JWT nuevo para un jugador ya registrado (otra instancia firma con otra clave efímera).</summary>
+    public static async Task<TestPlayer> LoginAsync(WebApplicationFactory<Program> host, TestPlayer player)
+    {
+        ArgumentNullException.ThrowIfNull(player);
+        using var http = host.CreateClient();
+        using var login = await http.PostAsJsonAsync(
+            new Uri("/api/v1/auth/login", UriKind.Relative), new { username = player.Username, password = Password });
         login.EnsureSuccessStatusCode();
         var tokens = (await login.Content.ReadFromJsonAsync<TokenResponse>())!;
-        return new TestPlayer(profile.Id, username, tokens.AccessToken);
+        return player with { AccessToken = tokens.AccessToken };
     }
 
     public static Task<Guid> LaunchAsync(WebApplicationFactory<Program> host, params TestPlayer[] players) =>

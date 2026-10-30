@@ -33,11 +33,12 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 - [ ] **Modelo de amenazas:** `docs/modelo-de-amenazas.md` con STRIDE por componente (REST, hub, Redis, Postgres, Key Vault). Para cada amenaza, la mitigación implementada y la prueba que la cubre. La rúbrica lo pide de forma explícita.
 
 ### Sesiones y concurrencia (20%) y pruebas (10%)
-- [ ] **Prueba de resiliencia por reinicio:** detener la instancia que lleva una partida a mitad de ronda y levantar otra (o una segunda `AscuaApiFactory`). Debe comprobar que la partida continúa desde Postgres/Redis sin perder jugadas confirmadas. El enunciado dice «sobrevive a reinicios» y hoy no hay prueba que lo demuestre.
-- [ ] **Prueba de resiliencia de dependencias:**
+- [x] **Prueba de resiliencia por reinicio:** detener la instancia que lleva una partida a mitad de ronda y levantar otra (o una segunda `AscuaApiFactory`). Debe comprobar que la partida continúa desde Postgres/Redis sin perder jugadas confirmadas. El enunciado dice «sobrevive a reinicios». Cubierta en `ResilienceTests`; ver `docs/api/tiempo-real.md`, sección «Resiliencia».
+- [x] **Prueba de resiliencia de dependencias:**
   - si Redis o Postgres se caen, `/health/ready` pasa a no saludable y el proceso no se cae;
   - al volver la dependencia, la partida sigue.
-- [ ] **Prueba de aislamiento:** una excepción en una partida la deja `FAULTED` sin afectar a otra partida en curso. La métrica `ascua.matches.faulted` ya existe, pero ninguna prueba lo cubre.
+- [x] **Prueba de aislamiento:** una excepción en una partida la deja `FAULTED` sin afectar a otra partida en curso. La prueba también cubre la métrica `ascua.matches.faulted`.
+- [x] **Prueba de limpieza:** una partida inactiva expira (`EXPIRED`) y libera la marca de partida activa.
 
 ### Contratos (10%)
 - [ ] **Nombres de héroes unificados:** REST usa `ANVIL`/`SPARK`/`RAVEN`/`ROOT` y el tiempo real usa `YUNQUE`/`CHISPA`/`CUERVO`/`RAIZ`; el cliente web traduce entre ambos.

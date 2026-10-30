@@ -67,6 +67,20 @@ Al recibir SIGTERM, `RealtimeDrainService` envía `ServerDraining` a las conexio
 espera `DrainDelay` antes de dejar cerrar el servidor. El backplane de Redis de SignalR reparte los
 mensajes entre réplicas.
 
+## Resiliencia (qué garantizan las pruebas)
+
+`tests/Ascua.Integration.Tests/Realtime/ResilienceTests.cs` corre con su propio Postgres y Redis
+(colección `resiliencia`) porque pausa los contenedores. Cada garantía tiene su prueba:
+
+| Garantía | Qué se comprueba |
+|---|---|
+| **Reinicio de instancia** | Se desecha la instancia a mitad de ronda y se levanta otra sobre los mismos datos, dos veces. Sin clientes conectados, el plazo guardado en Redis cierra la ronda en la instancia nueva. Los clientes vuelven con un JWT y un ticket nuevos (`JoinMatch`) y retoman en el `seq` de Postgres. Una orden con ACK antes del reinicio se aplica, el log conserva intacto lo confirmado, el `seq` es contiguo y cada ronda se resuelve una sola vez. |
+| **Caída de Redis o Postgres** | Con la dependencia pausada, `/health/ready` responde 503, `/health/live` sigue en 200 y el proceso no se cae: los errores del temporizador quedan en el log y el ciclo sigue. Al volver la dependencia, ready vuelve a 200. El plazo que venció durante la caída cierra la ronda con GUARD, la partida sigue y se pueden crear partidas nuevas. |
+| **Aislamiento (`FAULTED`)** | Una partida con estado incoherente hace lanzar al dominio al cerrar la ronda. Esa partida queda `FAULTED` en Postgres y sus jugadores reciben `Error` (`MATCH_NOT_ACTIVE`, `status: FAULTED`) y `MatchFinished` (`outcome: FAULTED`). También se libera su marca de partida activa y `ascua.matches.faulted` sube en 1. Mientras tanto, otra partida en la misma instancia resuelve sus rondas sin recibir ningún error. |
+| **Limpieza** | Una partida sin cambios durante `InactivityTimeout` pasa a `EXPIRED`. Los conectados reciben el aviso y se libera la marca de partida activa de todos sus jugadores. |
+
+La concurrencia entre réplicas (dos cerradores, una sola resolución) está en `RealtimeMatchTests`.
+
 ## Configuración (`Ascua:Realtime`)
 
 | Clave | Por defecto |
