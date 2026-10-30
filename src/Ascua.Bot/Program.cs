@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.SignalR.Client;
 // Bot de Ascua: registra N jugadores, arranca una partida con el endpoint de desarrollo
 // (POST /api/v1/dev/matches, solo local/dev) y la juega con órdenes al azar hasta el final.
 // Uso: dotnet run --project src/Ascua.Bot -- [baseUrl] [jugadores 2-4] [espera máx. ms]
-// TODO(Jan): escenarios de carga con NBomber y protocolo MessagePack.
+// La prueba de carga (NBomber, MessagePack, N partidas simultáneas) vive en loadtests/.
 var baseUrl = new Uri(args.Length > 0 ? args[0] : "http://localhost:8080");
 var playerCount = args.Length > 1 ? Math.Clamp(int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture), 2, 4) : 2;
 var maxThinkMs = args.Length > 2 ? int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 500;
