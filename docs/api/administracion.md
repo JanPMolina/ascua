@@ -74,7 +74,7 @@ está registrada y la suspensión rige igual (login, refresh y JWT consultan el 
 |---|---|
 | `id` | UUID v7 |
 | `actor_id` | Admin que actuó; `null` = sistema (bootstrap). Sin FK: la auditoría sobrevive al borrado de cuentas |
-| `action` | `match.terminated`, `user.suspended`, `user.unsuspended`, `user.promoted` |
+| `action` | `match.terminated`, `user.suspended`, `user.unsuspended`, `user.promoted`, `match.full_replay_viewed` (un admin vio la reproducción completa con `?as=full`; `metadata` trae `fromRound`/`toRound`) |
 | `target_type` / `target_id` | `match` o `user` y su id |
 | `reason` | Motivo escrito por el admin |
 | `metadata` | `jsonb` sin datos sensibles (estado anterior, ronda, jugadores, nombre de usuario). Nunca contraseñas, hashes ni tokens |

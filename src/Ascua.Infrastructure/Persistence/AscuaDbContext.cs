@@ -20,6 +20,8 @@ public sealed class AscuaDbContext(DbContextOptions<AscuaDbContext> options) : D
 
     public DbSet<MatchEventRecord> MatchEvents => Set<MatchEventRecord>();
 
+    public DbSet<MatchStateRecord> MatchStates => Set<MatchStateRecord>();
+
     public DbSet<AuditEntry> AuditLog => Set<AuditEntry>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -77,7 +79,11 @@ public sealed class AscuaDbContext(DbContextOptions<AscuaDbContext> options) : D
             player.HasKey(p => new { p.MatchId, p.UserId });
             player.Property(p => p.Hero).HasMaxLength(16).IsRequired();
             player.Property(p => p.DisplayName).HasMaxLength(UsernameMaxLength).IsRequired();
-            player.HasIndex(p => p.UserId).HasDatabaseName("ix_match_players_user_id");
+
+            // Historial paginado: partidas de un usuario de la más nueva a la más vieja (desempate por id).
+            player.HasIndex(p => new { p.UserId, p.CreatedAt, p.MatchId })
+                .IsDescending(false, true, true)
+                .HasDatabaseName("ix_match_players_user_id_created_at");
             player.HasOne<MatchRecord>().WithMany().HasForeignKey(p => p.MatchId).OnDelete(DeleteBehavior.Cascade);
             player.HasOne<User>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Restrict);
         });
@@ -91,6 +97,15 @@ public sealed class AscuaDbContext(DbContextOptions<AscuaDbContext> options) : D
             matchEvent.Property(e => e.Type).HasMaxLength(64).IsRequired();
             matchEvent.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
             matchEvent.HasOne<MatchRecord>().WithMany().HasForeignKey(e => e.MatchId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<MatchStateRecord>(matchState =>
+        {
+            matchState.ToTable("match_states");
+            matchState.HasKey(s => new { s.MatchId, s.Version }).HasName("pk_match_states");
+            matchState.Property(s => s.State).HasColumnType("jsonb").IsRequired();
+            matchState.HasIndex(s => new { s.MatchId, s.Round }).HasDatabaseName("ix_match_states_match_id_round");
+            matchState.HasOne<MatchRecord>().WithMany().HasForeignKey(s => s.MatchId).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<AuditEntry>(audit =>

@@ -58,6 +58,11 @@ public static class RealtimeServiceCollectionExtensions
         services.AddSingleton<IMatchNotifier, SignalRMatchNotifier>();
         services.AddSingleton<MatchEngine>();
 
+        // Historial y reproducción. Si nadie registró auditoría (TryAdd), el acceso de admin queda solo en el log.
+        services.AddSingleton<IMatchHistoryStore, EfMatchHistoryStore>();
+        services.TryAddSingleton<IReplayAccessAudit, LoggingReplayAccessAudit>();
+        services.AddSingleton<MatchHistoryService>();
+
         // Reemplaza cualquier implementación provisional (TryAdd) que haya registrado salas.
         services.RemoveAll<IMatchLauncher>();
         services.AddSingleton<IMatchLauncher>(sp => sp.GetRequiredService<MatchEngine>());

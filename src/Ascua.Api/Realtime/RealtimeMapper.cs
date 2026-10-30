@@ -65,7 +65,7 @@ public static class RealtimeMapper
             visible.Add(new Dictionary<string, object> { ["type"] = "DEFAULT_GUARD_APPLIED", ["actorId"] = participant.PlayerId.Value });
         }
 
-        visible.AddRange(PlayerViewProjector.VisibleEvents(after.State, events, participant.PlayerId).Select(VisibleEvent).OfType<IDictionary<string, object>>());
+        visible.AddRange(VisibleEvents(after.State, events, participant.PlayerId));
 
         return new RoundResolvedMessage
         {
@@ -88,6 +88,13 @@ public static class RealtimeMapper
             },
         };
     }
+
+    /// <summary>
+    /// Eventos de una confirmación que <paramref name="viewer"/> puede ver, proyectados con el estado
+    /// posterior (lo mismo que recibe en vivo en <c>RoundResolved</c>; la reproducción lo reutiliza).
+    /// </summary>
+    public static List<IDictionary<string, object>> VisibleEvents(GameState after, IEnumerable<DomainEvent> events, PlayerId viewer) =>
+        [.. PlayerViewProjector.VisibleEvents(after, events, viewer).Select(VisibleEvent).OfType<IDictionary<string, object>>()];
 
     public static MatchFinishedMessage Finished(MatchSnapshot snapshot, string publicBaseUrl, DateTimeOffset now)
     {
@@ -255,7 +262,8 @@ public static class RealtimeMapper
     private static string Fingerprint(EnemyDto e) =>
         $"{e.Kind}|{e.Hp}|{e.MaxHp}|{e.Position.X},{e.Position.Y}|{e.Facing}|{e.Phase}|{string.Join(';', e.Telegraph.Select(p => $"{p.X},{p.Y}"))}";
 
-    private static Dictionary<string, object>? VisibleEvent(DomainEvent domainEvent) => domainEvent switch
+    /// <summary>Evento del contrato. Solo para eventos ya filtrados (o para la vista completa de un administrador).</summary>
+    internal static Dictionary<string, object>? VisibleEvent(DomainEvent domainEvent) => domainEvent switch
     {
         HeroMoved e => Event("MOVED", actor: e.Player.Value, position: e.To),
         MoveBounced e => Event("BOUNCED", actor: e.Player.Value, position: e.Attempted),
@@ -283,7 +291,7 @@ public static class RealtimeMapper
         _ => null,
     };
 
-    private static Dictionary<string, object> Event(string type, string? actor = null, string? target = null, Position? position = null, int? amount = null)
+    internal static Dictionary<string, object> Event(string type, string? actor = null, string? target = null, Position? position = null, int? amount = null)
     {
         var dto = new Dictionary<string, object> { ["type"] = type };
         if (actor is not null)
@@ -318,7 +326,7 @@ public static class RealtimeMapper
 
     private static string EnemyRef(int enemyId) => $"enemy:{enemyId}";
 
-    private static PositionDto Position(Position p) => new() { X = p.X, Y = p.Y };
+    internal static PositionDto Position(Position p) => new() { X = p.X, Y = p.Y };
 
     public static string Direction(Direction direction) => direction switch
     {
@@ -369,7 +377,7 @@ public static class RealtimeMapper
         _ => "OJO_DE_BUHO",
     };
 
-    private static string EnemyKind(EnemyKind kind) => kind switch
+    public static string EnemyKind(EnemyKind kind) => kind switch
     {
         Domain.Model.EnemyKind.Scavenger => "CARRONERO",
         Domain.Model.EnemyKind.Moth => "POLILLA",
@@ -391,7 +399,7 @@ public static class RealtimeMapper
         _ => "FLOOR",
     };
 
-    private static string PactId(PactKind pact) => pact switch
+    public static string PactId(PactKind pact) => pact switch
     {
         PactKind.SlayWarden => "FINAL_BLOW_WARDEN",
         PactKind.NeverFall => "NEVER_DOWNED",
@@ -400,7 +408,7 @@ public static class RealtimeMapper
         _ => "BETRAY_TWICE_UNSEEN",
     };
 
-    private static string PactDescription(PactKind pact) => pact switch
+    public static string PactDescription(PactKind pact) => pact switch
     {
         PactKind.SlayWarden => "Dar el golpe final al Celador.",
         PactKind.NeverFall => "Terminar sin haber caído.",
@@ -409,7 +417,7 @@ public static class RealtimeMapper
         _ => "Golpear 2 veces a un aliado por la espalda sin que te descubra.",
     };
 
-    private static string Outcome(OutcomeKind? kind) => kind switch
+    public static string Outcome(OutcomeKind? kind) => kind switch
     {
         OutcomeKind.Victory => "WARDEN_DEFEATED",
         OutcomeKind.Draw => "DRAW",

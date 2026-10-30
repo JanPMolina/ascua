@@ -76,6 +76,7 @@ public static class AuditActions
     public const string UserSuspended = "user.suspended";
     public const string UserUnsuspended = "user.unsuspended";
     public const string UserPromoted = "user.promoted";
+    public const string MatchFullReplayViewed = "match.full_replay_viewed";
 }
 
 public static class AuditTargets

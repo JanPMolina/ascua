@@ -61,8 +61,10 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
                 Seat = p.Seat,
                 Hero = p.Hero.ToString(),
                 DisplayName = p.DisplayName,
+                CreatedAt = snapshot.CreatedAt,
             }));
             db.MatchEvents.AddRange(events.Select(e => ToRecord(snapshot.MatchId, e, snapshot.CreatedAt)));
+            db.MatchStates.Add(ToStateRecord(snapshot, round: 0, fromSeq: 0, snapshot.CreatedAt));
 
             try
             {
@@ -91,13 +93,16 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
         await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 
         db.MatchEvents.AddRange(events.Select(e => ToRecord(next.MatchId, e, now)));
+
+        // La instantánea de esta confirmación entra en la misma transacción que sus eventos (reproducción).
+        db.MatchStates.Add(ToStateRecord(next, StepRound(previous, events), previous.State.LastSeq, now));
         try
         {
             await db.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex))
         {
-            // UNIQUE(match_id, seq): otra réplica ya confirmó esos eventos. Se aborta sin efectos.
+            // UNIQUE(match_id, seq) o (match_id, version): otra réplica ya confirmó. Se aborta sin efectos.
             return false;
         }
 
@@ -225,6 +230,21 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
         Payload = MatchJson.Serialize(domainEvent),
         CreatedAt = now,
     };
+
+    private static MatchStateRecord ToStateRecord(MatchSnapshot snapshot, int round, long fromSeq, DateTimeOffset now) => new()
+    {
+        MatchId = snapshot.MatchId,
+        Version = snapshot.Version,
+        Round = round,
+        FromSeq = fromSeq,
+        LastSeq = snapshot.State.LastSeq,
+        State = MatchJson.Serialize(snapshot.State),
+        CreatedAt = now,
+    };
+
+    /// <summary>Ronda de una confirmación: 0 mientras dura el draft inicial; si no, la de sus eventos.</summary>
+    private static int StepRound(MatchSnapshot previous, IReadOnlyList<DomainEvent> events) =>
+        previous.Status == MatchStatus.Drafting ? 0 : events.Count > 0 ? events[^1].Round : previous.State.Round;
 
     private static bool IsUniqueViolation(DbUpdateException ex) =>
         ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation };

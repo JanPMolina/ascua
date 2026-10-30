@@ -24,6 +24,7 @@ builder.Services.AddOpenApi(options =>
 {
     options.AddDocumentTransformer<BearerSecurityTransformer>();
     options.AddOperationTransformer<BearerSecurityTransformer>();
+    options.AddOperationTransformer<MatchHistoryExamplesTransformer>();
 });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AscuaDbContext>("postgres", tags: ["ready"]);
@@ -94,6 +95,7 @@ app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapRoomEndpoints();
 app.MapMatchmakingEndpoints();
+app.MapMatchHistoryEndpoints();
 app.MapAdminEndpoints();
 
 app.MapAscuaRealtime();
