@@ -5,6 +5,7 @@ using Ascua.Application.Abstractions;
 using Ascua.Domain.Abstractions;
 using Ascua.Infrastructure;
 using Ascua.Infrastructure.Persistence;
+using Ascua.Infrastructure.Redis;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -22,7 +23,11 @@ builder.Services.AddOpenApi(options =>
 });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AscuaDbContext>("postgres", tags: ["ready"]);
-// TODO(Jan): check de Redis con la etiqueta "ready".
+// Redis (estado caliente, backplane, tickets, límites). Las pruebas sin Redis no lo registran.
+if (RedisConnection.IsConfigured(builder.Configuration))
+{
+    builder.Services.AddAscuaRedis();
+}
 
 builder.Services
     .AddSignalR(options =>

@@ -20,3 +20,6 @@ appsettings.*.local.json
 # Resultados de carga y temporales
 loadtests/reports/
 *.log
+
+# Worktrees locales de sesiones paralelas
+.worktrees/
