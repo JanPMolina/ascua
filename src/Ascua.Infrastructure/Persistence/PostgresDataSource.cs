@@ -1,3 +1,5 @@
+using Ascua.Infrastructure.Cloud;
+using Azure.Core;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
@@ -12,24 +14,23 @@ public sealed class DatabaseOptions
 
     /// <summary>Aplica las migraciones pendientes al arrancar (compose y pruebas; en Azure lo decide el despliegue).</summary>
     public bool MigrateOnStartup { get; set; }
+
+    /// <summary>
+    /// Azure: autenticarse con un token de Entra de la identidad administrada en lugar de contraseña.
+    /// La cadena lleva <c>Username</c> = nombre del rol de Postgres de esa identidad y no lleva <c>Password</c>.
+    /// </summary>
+    public bool UseEntraAuth { get; set; }
 }
 
 public static class PostgresDataSource
 {
+    /// <summary>Scope de los tokens de Entra para Azure Database for PostgreSQL.</summary>
+    public const string EntraScope = "https://ossrdbms-aad.database.windows.net/.default";
+
     /// <summary>
     /// Construye el <see cref="NpgsqlDataSource"/> a partir de <c>ConnectionStrings:Postgres</c>.
-    /// <para>
-    /// Punto de extensión para Azure (autenticación Entra, sin contraseña): cuando la cadena no trae
-    /// <c>Password</c>, registrar aquí un proveedor periódico de contraseñas que entregue un token de
-    /// <c>DefaultAzureCredential</c> (paquete Azure.Identity) para el scope
-    /// <c>https://ossrdbms-aad.database.windows.net/.default</c>:
-    /// <code>
-    /// builder.UsePeriodicPasswordProvider(async (_, ct) =>
-    ///     (await credential.GetTokenAsync(new TokenRequestContext([scope]), ct)).Token,
-    ///     TimeSpan.FromMinutes(55), TimeSpan.FromSeconds(5));
-    /// </code>
-    /// El usuario de la cadena es el nombre de la identidad administrada y se exige <c>SSL Mode=Require</c>.
-    /// </para>
+    /// Con <c>Ascua:Database:UseEntraAuth=true</c> (Azure) la contraseña es un token de Entra de la identidad
+    /// administrada, renovado cada 55 min (duran ~60-90), y se exige TLS.
     /// </summary>
     public static NpgsqlDataSource Create(IConfiguration configuration)
     {
@@ -42,6 +43,27 @@ public static class PostgresDataSource
 
         var builder = new NpgsqlDataSourceBuilder(connectionString);
         builder.ConnectionStringBuilder.ApplicationName ??= "ascua-api";
+
+        if (configuration.GetValue<bool>($"{DatabaseOptions.SectionName}:{nameof(DatabaseOptions.UseEntraAuth)}"))
+        {
+            if (!string.IsNullOrEmpty(builder.ConnectionStringBuilder.Password))
+            {
+                throw new InvalidOperationException(
+                    "Con Ascua:Database:UseEntraAuth=true la cadena de Postgres no debe llevar Password: se usa la identidad administrada.");
+            }
+
+            if (builder.ConnectionStringBuilder.SslMode is SslMode.Disable or SslMode.Allow or SslMode.Prefer)
+            {
+                builder.ConnectionStringBuilder.SslMode = SslMode.Require;
+            }
+
+            var credential = AzureCredentials.Get(configuration);
+            builder.UsePeriodicPasswordProvider(
+                async (_, ct) => (await credential.GetTokenAsync(new TokenRequestContext([EntraScope]), ct)).Token,
+                TimeSpan.FromMinutes(55),
+                TimeSpan.FromSeconds(5));
+        }
+
         return builder.Build();
     }
 }

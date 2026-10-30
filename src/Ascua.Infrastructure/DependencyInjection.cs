@@ -3,7 +3,9 @@ using Ascua.Application.Audit;
 using Ascua.Application.Matches;
 using Ascua.Application.Users;
 using Ascua.Infrastructure.Auth;
+using Ascua.Infrastructure.Cloud;
 using Ascua.Infrastructure.Persistence;
+using Azure.Security.KeyVault.Secrets;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -69,9 +71,12 @@ public static class DependencyInjection
 
         if (!string.IsNullOrWhiteSpace(keyVaultUri))
         {
-            // TODO(Juan Pablo): KeyVaultSigningKeyProvider con DefaultAzureCredential (ver ISigningKeyProvider).
-            throw new InvalidOperationException(
-                "Ascua:KeyVaultUri está configurado pero aún no hay un ISigningKeyProvider para Key Vault.");
+            // Azure: la clave vive en Key Vault y se lee con la identidad administrada (sin secretos en la config).
+            var client = new SecretClient(new Uri(keyVaultUri), AzureCredentials.Get(sp.GetRequiredService<IConfiguration>()));
+            return KeyVaultSigningKeyProvider.CreateAsync(
+                new KeyVaultSigningKeySource(client, jwt.KeyVaultSecretName),
+                sp.GetRequiredService<ILogger<KeyVaultSigningKeyProvider>>(),
+                jwt.KeyRefreshInterval).GetAwaiter().GetResult();
         }
 
         if (environment.IsDevelopment() || jwt.AllowEphemeralKey)
