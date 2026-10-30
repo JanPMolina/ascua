@@ -71,6 +71,7 @@ Proyecto3.pdf            Enunciado
 - [Reglas del juego](planteamiento/01-juego.md)
 - [Arquitectura](planteamiento/02-arquitectura.md)
 - [Plan de trabajo y roles](planteamiento/03-plan-de-trabajo.md)
+- [Modelo de amenazas](docs/modelo-de-amenazas.md)
 - [Pendientes hacia v1.0.0](docs/pendientes.md)
 - [Rendimiento y prueba de carga](docs/rendimiento.md)
 - [Decisiones de arquitectura (ADR)](docs/adr/README.md)
