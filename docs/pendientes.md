@@ -51,14 +51,14 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
   - carpeta `loadtests/` en la estructura;
   - enlaces a `docs/api/`, `docs/rendimiento.md`, las ADR, el modelo de amenazas y esta lista;
   - cómo correr la prueba de carga.
-- [ ] **Runbooks** en `docs/runbooks/`:
+- [x] **Runbooks** en `docs/runbooks/`:
   - partida `FAULTED`;
   - suspender un usuario y terminar una partida desde administración;
   - Redis o Postgres caídos;
   - rotación de la clave JWT.
 
   El runbook de rollback lo escribe Juan Pablo.
-- [ ] **Limpieza:** quitar el `TODO(Jan)` obsoleto de `src/Ascua.Bot/Program.cs`; los escenarios de NBomber ya viven en `loadtests/`.
+- [x] **Limpieza:** quitar el `TODO(Jan)` obsoleto de `src/Ascua.Bot/Program.cs`; los escenarios de NBomber ya viven en `loadtests/`.
 
 ### Mantenimiento del repositorio
 - [ ] **PRs de Dependabot:**
