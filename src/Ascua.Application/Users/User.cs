@@ -70,4 +70,11 @@ public sealed class User
         IsSuspended = false;
         UpdatedAt = now;
     }
+
+    /// <summary>Solo lo usa el bootstrap del primer administrador (<c>Ascua:Admin:BootstrapUsername</c>).</summary>
+    public void PromoteToAdmin(DateTimeOffset now)
+    {
+        Role = UserRole.Admin;
+        UpdatedAt = now;
+    }
 }

@@ -130,7 +130,12 @@ public static class RealtimeMapper
         {
             MatchId = Id(snapshot.MatchId),
             Seq = snapshot.State.LastSeq,
-            Outcome = snapshot.Status == MatchStatus.Faulted ? "FAULTED" : Outcome(outcome?.Kind),
+            Outcome = snapshot.Status switch
+            {
+                MatchStatus.Faulted => "FAULTED",
+                MatchStatus.Terminated => "TERMINATED",
+                _ => Outcome(outcome?.Kind),
+            },
             Rounds = Math.Clamp(snapshot.State.Round, 0, 60),
             Winners = [.. (outcome?.Winners ?? []).Select(w => w.Value)],
             Standings = standings,

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Ascua.Api.Endpoints;
+using Ascua.Application.Admin;
 using Ascua.Application.Matches;
 using Ascua.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authentication;
@@ -18,7 +19,8 @@ public sealed partial class TicketAuthentication(
     IOptionsMonitor<AuthenticationSchemeOptions> options,
     ILoggerFactory loggerFactory,
     UrlEncoder encoder,
-    IRealtimeTicketStore tickets) : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
+    IRealtimeTicketStore tickets,
+    IUserAccessGate access) : AuthenticationHandler<AuthenticationSchemeOptions>(options, loggerFactory, encoder)
 {
     public const string SchemeName = "RealtimeTicket";
     public const string MatchClaim = "ascua:match";
@@ -35,6 +37,12 @@ public sealed partial class TicketAuthentication(
         if (owner is not { } bound)
         {
             return AuthenticateResult.Fail("Ticket vencido o ya usado.");
+        }
+
+        // Un ticket pedido justo antes de una suspensión no debe abrir el socket.
+        if (await access.IsSuspendedAsync(bound.UserId, Context.RequestAborted))
+        {
+            return AuthenticateResult.Fail("La cuenta está suspendida.");
         }
 
         var identity = new ClaimsIdentity(

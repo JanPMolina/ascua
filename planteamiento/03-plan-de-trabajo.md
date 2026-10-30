@@ -67,6 +67,7 @@ Jan entrega y Juan Pablo consume:
 | `Ascua__Realtime__MaxConnectionsPerUser` / `__HubTokenLimit` / `__HubTokensPerSecond` | `3` / `20` / `5` | igual |
 | `Ascua__Realtime__PublicBaseUrl` | `http://localhost:8080` | URL pública (arma `replayUrl` en `MatchFinished`) |
 | `Ascua__Realtime__EnableDevEndpoints` | `true` en docker-compose (`POST /api/v1/dev/matches` para el bot) | `false` (nunca en prod) |
+| `Ascua__Admin__BootstrapUsername` | vacío (o tu usuario de pruebas, ya registrado) | nombre de un usuario **ya registrado** que se promueve a `admin` al arrancar (idempotente y auditado como acción del sistema). No contiene credenciales: la contraseña es la que ese usuario eligió al registrarse. Se puede quitar después del primer arranque |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | vacío (exporter apagado) | la del recurso (no es un secreto según Microsoft, pero puede ir en Key Vault) |
 
 Si una clave cambia, se actualiza esta tabla en el mismo PR.

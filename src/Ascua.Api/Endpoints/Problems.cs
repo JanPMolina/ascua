@@ -1,3 +1,4 @@
+using Ascua.Application.Admin;
 using Ascua.Application.Rooms;
 using Ascua.Application.Users;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -8,7 +9,7 @@ namespace Ascua.Api.Endpoints;
 /// <summary>
 /// Tipos de Problem Details (RFC 9457) estables de la API. El <c>type</c> es una URN
 /// <c>urn:ascua:problem:&lt;código&gt;</c> y el código también va en la extensión <c>code</c>.
-/// Catálogo documentado en docs/api/autenticacion.md y docs/api/salas.md: si se agrega uno, se documenta en el mismo PR.
+/// Catálogo documentado en docs/api/autenticacion.md, docs/api/salas.md y docs/api/administracion.md: si se agrega uno, se documenta en el mismo PR.
 /// </summary>
 public static class Problems
 {
@@ -44,6 +45,10 @@ public static class Problems
     public static readonly ProblemKind UnsupportedProtocolVersion = new("unsupported-protocol-version", StatusCodes.Status400BadRequest, "La versión del protocolo de tiempo real no es compatible.");
     public static readonly ProblemKind ConnectionLimit = new("connection-limit", StatusCodes.Status429TooManyRequests, "Ya tiene el máximo de conexiones de tiempo real abiertas.");
     public static readonly ProblemKind MatchNotActive = new("match-not-active", StatusCodes.Status409Conflict, "La partida ya no está en curso.");
+    public static readonly ProblemKind UserNotFound = new("user-not-found", StatusCodes.Status404NotFound, "El usuario no existe.");
+    public static readonly ProblemKind MatchNotFound = new("match-not-found", StatusCodes.Status404NotFound, "La partida no existe.");
+    public static readonly ProblemKind CannotTargetSelf = new("cannot-target-self", StatusCodes.Status409Conflict, "Un administrador no puede suspenderse a sí mismo.");
+    public static readonly ProblemKind MatchBusy = new("match-busy", StatusCodes.Status409Conflict, "La partida está cerrando una ronda; reintente en un momento.");
     public static readonly ProblemKind Internal = new("internal", StatusCodes.Status500InternalServerError, "Error interno del servidor.");
 
     /// <summary>
@@ -113,6 +118,18 @@ public static class Problems
     };
 
     public static ProblemHttpResult Result(LobbyError error) => For(error).ToResult();
+
+    public static ProblemKind For(AdminError error) => error switch
+    {
+        AdminError.UserNotFound => UserNotFound,
+        AdminError.MatchNotFound => MatchNotFound,
+        AdminError.MatchNotActive => MatchNotActive,
+        AdminError.CannotTargetSelf => CannotTargetSelf,
+        AdminError.Busy => MatchBusy,
+        _ => throw new ArgumentOutOfRangeException(nameof(error), error, null),
+    };
+
+    public static ProblemHttpResult Result(AdminError error) => For(error).ToResult();
 
     public static ProblemHttpResult ValidationResult(IDictionary<string, string[]> errors) =>
         TypedResults.Problem(new HttpValidationProblemDetails(errors)
