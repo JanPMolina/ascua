@@ -10,11 +10,23 @@ services:
       ConnectionStrings__Postgres: "Host=postgres;Database=ascua;Username=ascua;Password=${POSTGRES_PASSWORD:-ascua_local}"
       ConnectionStrings__Redis: "redis:6379"
       Ascua__Database__MigrateOnStartup: "true"
+      # Habilita POST /api/v1/dev/matches (partida sin sala) para el bot y las pruebas manuales.
+      Ascua__Realtime__EnableDevEndpoints: "true"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Bot que registra 2 jugadores y juega una partida completa: docker compose --profile bot up --build
+  bot:
+    profiles: ["bot"]
+    build:
+      context: .
+      dockerfile: src/Ascua.Bot/Dockerfile
+    command: ["http://api:8080", "2", "300"]
+    depends_on:
+      - api
 
   postgres:
     image: postgres:17-alpine

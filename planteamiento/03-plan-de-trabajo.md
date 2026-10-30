@@ -56,6 +56,11 @@ Jan entrega y Juan Pablo consume:
 | `Ascua__RateLimiting__User__PermitLimit` / `__Window` | `60` por `00:01:00` (por usuario) | igual |
 | `Ascua__TrustForwardedHeaders` | `false` | `true` (detrás del ingress de Container Apps, para que el *rate limiting* vea la IP real) |
 | `Ascua__Cors__AllowedOrigins` | `http://localhost:8080` | dominio público |
+| `Ascua__Realtime__RoundDuration` / `__DraftDuration` | `00:00:20` / `00:00:30` | igual (en pruebas de carga se baja la ronda a 3 s) |
+| `Ascua__Realtime__ReconnectGrace` / `__JoinTimeout` / `__InactivityTimeout` | `00:01:00` / `00:02:00` / `00:10:00` | igual |
+| `Ascua__Realtime__MaxConnectionsPerUser` / `__HubTokenLimit` / `__HubTokensPerSecond` | `3` / `20` / `5` | igual |
+| `Ascua__Realtime__PublicBaseUrl` | `http://localhost:8080` | URL pública (arma `replayUrl` en `MatchFinished`) |
+| `Ascua__Realtime__EnableDevEndpoints` | `true` en docker-compose (`POST /api/v1/dev/matches` para el bot) | `false` (nunca en prod) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | vacío (exporter apagado) | la del recurso (no es un secreto según Microsoft, pero puede ir en Key Vault) |
 
 Si una clave cambia, se actualiza esta tabla en el mismo PR.
