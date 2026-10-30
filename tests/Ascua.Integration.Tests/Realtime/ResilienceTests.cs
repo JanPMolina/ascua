@@ -310,7 +310,9 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
         await EventuallyAsync(
             async () => ((await client.GetSnapshotAsync(matchId)).Seq, (await MatchAsync(host, matchId)).LastSeq),
             seqs => seqs.Item1 == seqs.Item2,
-            "el seq del cliente coincida con el de Postgres");
+            "el seq del cliente coincida con el de Postgres",
+            // GetSnapshot gasta fichas del token bucket del hub (recarga 5/s): sondear más lento no lo agota.
+            interval: TimeSpan.FromMilliseconds(500));
         return (client, ack);
     }
 
@@ -366,7 +368,8 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
     }
 
     /// <summary>Sondea hasta que se cumpla la condición (sin esperas fijas largas).</summary>
-    private static async Task<T> EventuallyAsync<T>(Func<Task<T>> probe, Func<T, bool> done, string what, TimeSpan? timeout = null)
+    private static async Task<T> EventuallyAsync<T>(
+        Func<Task<T>> probe, Func<T, bool> done, string what, TimeSpan? timeout = null, TimeSpan? interval = null)
     {
         var giveUpAt = DateTime.UtcNow + (timeout ?? TimeSpan.FromSeconds(30));
         while (true)
@@ -382,7 +385,7 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
                 throw new TimeoutException($"Se agotó la espera a que {what}. Último valor: {value}");
             }
 
-            await Task.Delay(100);
+            await Task.Delay(interval ?? TimeSpan.FromMilliseconds(100));
         }
     }
 
