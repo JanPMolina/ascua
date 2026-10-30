@@ -4,25 +4,28 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Testcontainers.PostgreSql;
+using Testcontainers.Redis;
 
 namespace Ascua.Integration.Tests;
 
 /// <summary>
-/// API real contra un Postgres efímero (Testcontainers). Se comparte entre todas las clases de la
+/// API real contra un Postgres y un Redis efímeros (Testcontainers). Se comparte entre todas las clases de la
 /// colección "api"; cada prueba usa nombres de usuario únicos para no chocar con las demás.
 /// </summary>
 public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+    private readonly RedisContainer _redis = new RedisBuilder("redis:7-alpine").Build();
 
     public CapturingLoggerProvider Logs { get; } = new();
 
-    public async Task InitializeAsync() => await _postgres.StartAsync();
+    public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
 
     async Task IAsyncLifetime.DisposeAsync()
     {
         await base.DisposeAsync();
         await _postgres.DisposeAsync();
+        await _redis.DisposeAsync();
     }
 
     /// <summary>Otra instancia de la API sobre la misma base, con configuración adicional.</summary>
@@ -35,6 +38,8 @@ public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLife
         builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = _postgres.GetConnectionString(),
+            ["ConnectionStrings:Redis"] = _redis.GetConnectionString(),
+            ["Ascua:Realtime:EnableDevEndpoints"] = "true",
             ["Ascua:Database:MigrateOnStartup"] = "true",
             ["Ascua:RateLimiting:Auth:PermitLimit"] = "100000",
             ["Ascua:RateLimiting:User:PermitLimit"] = "100000",

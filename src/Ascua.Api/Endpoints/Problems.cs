@@ -25,6 +25,10 @@ public static class Problems
     public static readonly ProblemKind EmailTaken = new("email-taken", StatusCodes.Status409Conflict, "El correo ya está en uso.");
     public static readonly ProblemKind NotFound = new("not-found", StatusCodes.Status404NotFound, "El recurso no existe.");
     public static readonly ProblemKind RateLimited = new("rate-limited", StatusCodes.Status429TooManyRequests, "Demasiadas solicitudes; reintente más tarde.");
+    public static readonly ProblemKind TicketInvalid = new("ticket-invalid", StatusCodes.Status401Unauthorized, "El ticket de tiempo real falta, venció o ya se usó.");
+    public static readonly ProblemKind UnsupportedProtocolVersion = new("unsupported-protocol-version", StatusCodes.Status400BadRequest, "La versión del protocolo de tiempo real no es compatible.");
+    public static readonly ProblemKind ConnectionLimit = new("connection-limit", StatusCodes.Status429TooManyRequests, "Ya tiene el máximo de conexiones de tiempo real abiertas.");
+    public static readonly ProblemKind MatchNotActive = new("match-not-active", StatusCodes.Status409Conflict, "La partida ya no está en curso.");
     public static readonly ProblemKind Internal = new("internal", StatusCodes.Status500InternalServerError, "Error interno del servidor.");
 
     /// <summary>

@@ -77,6 +77,10 @@ Todas las respuestas de error usan `application/problem+json` con `type` = `urn:
 | `email-taken` | 409 | Correo en uso |
 | `rate-limited` | 429 | Límite de tasa excedido |
 | `internal` | 500 | Error no controlado (sin detalles internos) |
+| `ticket-invalid` | 401 | Upgrade de `/realtime/match` con ticket ausente, vencido o ya usado (ver `docs/api/tiempo-real.md`) |
+| `unsupported-protocol-version` | 400 | Upgrade de `/realtime/match` sin `protocolVersion=1` |
+| `connection-limit` | 429 | El usuario ya tiene 3 conexiones de tiempo real abiertas |
+| `match-not-active` | 409 | `POST /realtime/tickets` para una partida terminada, expirada o `FAULTED` |
 
 ## Persistencia
 
