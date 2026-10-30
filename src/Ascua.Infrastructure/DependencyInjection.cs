@@ -1,3 +1,6 @@
+using Ascua.Application.Admin;
+using Ascua.Application.Audit;
+using Ascua.Application.Matches;
 using Ascua.Application.Users;
 using Ascua.Infrastructure.Auth;
 using Ascua.Infrastructure.Persistence;
@@ -35,6 +38,13 @@ public static class DependencyInjection
 
         services.AddScoped<AuthService>();
         services.AddScoped<ProfileService>();
+
+        services.AddScoped<IAuditLog, EfAuditLog>();
+        // Reemplaza la auditoría provisional del replay completo (el tiempo real la registra con TryAdd).
+        services.AddSingleton<IReplayAccessAudit, AuditLogReplayAccessAudit>();
+        services.AddScoped<IAdminQueries, EfAdminQueries>();
+        services.AddSingleton<IUserAccessGate, RedisUserAccessGate>();
+        services.AddScoped<AdminService>();
 
         return services;
     }

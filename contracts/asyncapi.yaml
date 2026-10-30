@@ -2,7 +2,7 @@ asyncapi: 3.0.0
 id: urn:ascua:realtime:match
 info:
   title: Ascua — protocolo en tiempo real
-  version: 1.1.0
+  version: 1.2.0
   description: |
     Contrato del hub SignalR **`/realtime/match`** del servidor autoritativo de *Ascua*
     (mazmorra semi-cooperativa por turnos simultáneos, 2-4 jugadores).
@@ -63,7 +63,7 @@ info:
     | 1009 | `MESSAGE_TOO_LARGE` | `true` | Un mensaje entrante superó 4 KB | Reconecta; corrige el cliente. La partida **sigue** (cuenta la gracia) |
     | 1011 | `INTERNAL_ERROR` | `true` | Fallo inesperado de la réplica | Reconecta con *backoff* exponencial (1, 2, 4… máx. 30 s) |
     | 4001 | `SESSION_REPLACED` | `false` | El mismo usuario abrió otra conexión a la misma partida; la vieja se cierra | No reconecta: la sesión nueva ya está activa |
-    | 4003 | `KICKED_BY_ADMIN` | `false` | Un administrador expulsó al jugador (queda auditado) | Muestra el aviso. No reconecta |
+    | 4003 | `KICKED_BY_ADMIN` | `false` | Un administrador terminó la partida o suspendió la cuenta (queda auditado) | Muestra el aviso. No reconecta (una cuenta suspendida tampoco puede pedir tickets) |
     | 4029 | `RATE_LIMITED` | `true` | Abuso sostenido: más de 50 rechazos `RATE_LIMITED` en 60 s | Espera al menos 60 s antes de reconectar |
     | — | `HEARTBEAT_TIMEOUT` | — | Lo detecta el **cliente**: 30 s sin mensajes del servidor | Reconecta con un ticket nuevo |
 
@@ -73,6 +73,9 @@ info:
     >   `unsupported-protocol-version` (400) y `connection-limit` (429). La versión se revisa **antes**
     >   de consumir el ticket: un 400 no lo gasta.
     > - `SESSION_REPLACED` llega como mensaje `Error` con ese código justo antes de cerrar la conexión vieja.
+    > - `KICKED_BY_ADMIN` llega como mensaje `Error` con ese código. Si se suspendió la cuenta, la conexión
+    >   se cierra enseguida; si se terminó la partida, antes llega `MatchFinished` (`outcome: TERMINATED`) y la
+    >   conexión se cierra unos 2 s después (desde 1.2.0).
     > - `SERVER_DRAINING` llega como mensaje `ServerDraining`; la conexión se corta al apagarse la réplica.
     > - Tras `MatchFinished` el servidor **no** cierra la conexión: el cliente muestra el resultado y la cierra.
     > - `RATE_LIMITED` sostenido y `MESSAGE_TOO_LARGE` cierran sin razón legible; el cliente reconecta con *backoff*.
@@ -106,6 +109,7 @@ info:
     | `MESSAGE_TOO_LARGE` | No | Mensaje mayor a 4 KB (además cierra la conexión con 1009) |
     | `INTERNAL_ERROR` | Sí | Error del servidor; no se aplicó nada. Se puede reintentar con el **mismo** `clientActionId` |
     | `SESSION_REPLACED` | No | Solo en el mensaje `Error`: esta conexión se cierra porque el usuario abrió otra en la misma partida (desde 1.1.0) |
+    | `KICKED_BY_ADMIN` | No | Solo en el mensaje `Error`: un administrador terminó la partida (`details.status: TERMINATED`) o suspendió la cuenta; la conexión se cierra (desde 1.2.0) |
 
     Los clientes deben tratar un código desconocido como error genérico no reintentable.
 
@@ -136,6 +140,9 @@ info:
       `docs/adr/` y en el changelog de la versión.
 
     ### Changelog
+
+    - **1.2.0** (aditivo): `ErrorCode` suma `KICKED_BY_ADMIN` (solo en `Error`); `MatchStatus` y
+      `MatchFinished.outcome` suman `TERMINATED` (partida detenida por un administrador, auditada).
 
     - **1.1.0** (aditivo): `VisibleEvent.type` suma `ABILITY_USED` (habilidad usada) y `GUARDED`
       (GUARDAR elegido); `ErrorCode` suma `SESSION_REPLACED` (solo en `Error`). Se documenta cómo el
@@ -1094,7 +1101,7 @@ components:
       description: '`DOWN` = caído; `EXTINCT` = extinto; `RETIRED` = abandonó.'
     MatchStatus:
       type: string
-      enum: [LOBBY, DRAFTING, IN_PROGRESS, FINISHED, FAULTED, ABANDONED, EXPIRED]
+      enum: [LOBBY, DRAFTING, IN_PROGRESS, FINISHED, FAULTED, ABANDONED, EXPIRED, TERMINATED]
     BlessingId:
       type: string
       enum: [BRASA_VIVA, PASO_IGNEO, PUNO_DE_PIEDRA, CORAZON_DOBLE, HOJA_HAMBRIENTA, ESPEJO_ROTO, LAMPARA, GANZUA, ULTIMO_ALIENTO, CODICIA, ESCARCHA, OJO_DE_BUHO]
@@ -1273,6 +1280,7 @@ components:
         - MESSAGE_TOO_LARGE
         - INTERNAL_ERROR
         - SESSION_REPLACED
+        - KICKED_BY_ADMIN
       description: Código estable. Nunca cambia de significado; los nuevos se agregan en versiones menores.
     ErrorBody:
       type: object
@@ -1742,11 +1750,12 @@ components:
           $ref: '#/components/schemas/Seq'
         outcome:
           type: string
-          enum: [WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, FAULTED]
+          enum: [WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, FAULTED, TERMINATED]
           description: |
             `WARDEN_DEFEATED` = cayó el Celador con un ganador; `DRAW` = cayó con empate en ascuas;
             `EMBER_EXTINGUISHED` = derrota colectiva (todos caídos o 60 rondas);
-            `ABANDONED` = quedaron menos de 1 humano activo; `FAULTED` = error aislado del servidor.
+            `ABANDONED` = quedaron menos de 1 humano activo; `FAULTED` = error aislado del servidor;
+            `TERMINATED` = un administrador detuvo la partida (sin ganadores; pactos sin revelar).
         rounds:
           type: integer
           minimum: 0

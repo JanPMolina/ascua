@@ -1,3 +1,4 @@
+using Ascua.Application.Admin;
 using Ascua.Application.Matches;
 using Ascua.Infrastructure.Matches;
 using Ascua.Infrastructure.Redis;
@@ -50,12 +51,18 @@ public static class RealtimeServiceCollectionExtensions
         services.AddSingleton<RealtimeHubFilter>();
         services.AddSingleton<MatchMetrics>();
         services.AddSingleton<RealtimeConnections>();
+        services.AddSingleton<IRealtimeKicker>(sp => sp.GetRequiredService<RealtimeConnections>());
         services.AddSingleton<IMatchStore, EfMatchStore>();
         services.AddSingleton<IMatchHotState, RedisMatchHotState>();
         services.AddSingleton<IRealtimeTicketStore, RedisTicketStore>();
         services.AddSingleton<IConnectionLimiter, RedisConnectionLimiter>();
         services.AddSingleton<IMatchNotifier, SignalRMatchNotifier>();
         services.AddSingleton<MatchEngine>();
+
+        // Historial y reproducción. Si nadie registró auditoría (TryAdd), el acceso de admin queda solo en el log.
+        services.AddSingleton<IMatchHistoryStore, EfMatchHistoryStore>();
+        services.TryAddSingleton<IReplayAccessAudit, LoggingReplayAccessAudit>();
+        services.AddSingleton<MatchHistoryService>();
 
         // Reemplaza cualquier implementación provisional (TryAdd) que haya registrado salas.
         services.RemoveAll<IMatchLauncher>();

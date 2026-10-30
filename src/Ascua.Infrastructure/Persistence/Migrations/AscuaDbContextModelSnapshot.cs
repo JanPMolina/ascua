@@ -22,6 +22,74 @@ namespace Ascua.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Ascua.Application.Audit.AuditEntry", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_id");
+
+                    b.Property<string>("CorrelationId")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("correlation_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Ip")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ip");
+
+                    b.Property<string>("Metadata")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("metadata");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("TargetId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_audit_log");
+
+                    b.HasIndex("ActorId")
+                        .HasDatabaseName("ix_audit_log_actor_id");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_audit_log_created_at");
+
+                    b.HasIndex("TargetType", "TargetId")
+                        .HasDatabaseName("ix_audit_log_target");
+
+                    b.ToTable("audit_log", (string)null);
+                });
+
             modelBuilder.Entity("Ascua.Application.Users.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -202,6 +270,10 @@ namespace Ascua.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -221,8 +293,9 @@ namespace Ascua.Infrastructure.Persistence.Migrations
                     b.HasKey("MatchId", "UserId")
                         .HasName("pk_match_players");
 
-                    b.HasIndex("UserId")
-                        .HasDatabaseName("ix_match_players_user_id");
+                    b.HasIndex("UserId", "CreatedAt", "MatchId")
+                        .IsDescending(false, true, true)
+                        .HasDatabaseName("ix_match_players_user_id_created_at");
 
                     b.ToTable("match_players", (string)null);
                 });
@@ -297,8 +370,48 @@ namespace Ascua.Infrastructure.Persistence.Migrations
 
                     b.ToTable("matches", null, t =>
                         {
-                            t.HasCheckConstraint("ck_matches_status", "status IN ('DRAFTING', 'IN_PROGRESS', 'FINISHED', 'ABANDONED', 'EXPIRED', 'FAULTED')");
+                            t.HasCheckConstraint("ck_matches_status", "status IN ('DRAFTING', 'IN_PROGRESS', 'FINISHED', 'ABANDONED', 'EXPIRED', 'FAULTED', 'TERMINATED')");
                         });
+                });
+
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchStateRecord", b =>
+                {
+                    b.Property<Guid>("MatchId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("match_id");
+
+                    b.Property<long>("Version")
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("FromSeq")
+                        .HasColumnType("bigint")
+                        .HasColumnName("from_seq");
+
+                    b.Property<long>("LastSeq")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_seq");
+
+                    b.Property<int>("Round")
+                        .HasColumnType("integer")
+                        .HasColumnName("round");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("state");
+
+                    b.HasKey("MatchId", "Version")
+                        .HasName("pk_match_states");
+
+                    b.HasIndex("MatchId", "Round")
+                        .HasDatabaseName("ix_match_states_match_id_round");
+
+                    b.ToTable("match_states", (string)null);
                 });
 
             modelBuilder.Entity("Ascua.Application.Users.RefreshToken", b =>
@@ -342,6 +455,16 @@ namespace Ascua.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
                         .HasConstraintName("fk_match_players_users_user_id");
+                });
+
+            modelBuilder.Entity("Ascua.Infrastructure.Persistence.MatchStateRecord", b =>
+                {
+                    b.HasOne("Ascua.Infrastructure.Persistence.MatchRecord", null)
+                        .WithMany()
+                        .HasForeignKey("MatchId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_match_states_matches_match_id");
                 });
 #pragma warning restore 612, 618
         }
