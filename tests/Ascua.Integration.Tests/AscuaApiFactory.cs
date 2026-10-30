@@ -25,6 +25,11 @@ public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public MatchLaunchRecorder Launcher { get; } = new();
 
+    /// <summary>Contenedores propios de esta instancia (las pruebas de resiliencia los pausan).</summary>
+    public PostgreSqlContainer Postgres => _postgres;
+
+    public RedisContainer Redis => _redis;
+
     public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
 
     async Task IAsyncLifetime.DisposeAsync()
