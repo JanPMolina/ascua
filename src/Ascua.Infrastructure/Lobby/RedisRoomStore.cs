@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Ascua.Application.Rooms;
 using Ascua.Domain.Model;
+using Ascua.Infrastructure.Matches;
 using StackExchange.Redis;
 using Room = Ascua.Application.Rooms.Room;
 
@@ -44,7 +45,7 @@ internal static class LobbyKeys
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new JsonStringEnumConverter() },
+        Converters = { new HeroClassJsonConverter(), new JsonStringEnumConverter() },
     };
 }
 

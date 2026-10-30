@@ -110,7 +110,7 @@ internal static class Cleanup
         foreach (var hero in ctx.Heroes.ToList())
         {
             var charges = hero.Charges;
-            if (hero is { IsActive: true, Class: HeroClass.Spark } && !ctx.Attacked.Contains(hero.Player))
+            if (hero is { IsActive: true, Class: HeroClass.Chispa } && !ctx.Attacked.Contains(hero.Player))
             {
                 charges = Math.Min(HeroCatalog.MaxCharges, charges + 1);
             }

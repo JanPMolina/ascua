@@ -1,0 +1,7 @@
+# Reglas del lint del contrato REST en el CI (job `contracts`): npx @redocly/cli lint contracts/openapi.json
+extends:
+  - recommended
+rules:
+  # La URL del servidor depende del despliegue (la agrega la API al servir el documento); la copia
+  # versionada no la incluye para que sea la misma en local, en el CI y en Azure.
+  no-empty-servers: off

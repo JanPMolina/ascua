@@ -37,7 +37,7 @@ internal static class HeroMovement
                     bounced.Add(new Intent(player, hero.Position, target));
                 }
             }
-            else if (order.Type == OrderType.Skill && hero.Class == HeroClass.Raven)
+            else if (order.Type == OrderType.Skill && hero.Class == HeroClass.Cuervo)
             {
                 ctx.Emit(new SkillUsed(player, hero.Class, direction) { Audience = RoundContext.AudienceOf(hero) });
                 hero = hero with

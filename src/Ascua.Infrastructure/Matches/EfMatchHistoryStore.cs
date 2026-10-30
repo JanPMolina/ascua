@@ -50,7 +50,7 @@ public sealed class EfMatchHistoryStore(IServiceScopeFactory scopes) : IMatchHis
                 r.FinishedAt,
                 r.Round,
                 r.PlayerCount,
-                new MatchParticipant(r.Player.UserId, r.Player.Seat, Enum.Parse<HeroClass>(r.Player.Hero), r.Player.DisplayName),
+                new MatchParticipant(r.Player.UserId, r.Player.Seat, HeroNames.Parse(r.Player.Hero), r.Player.DisplayName),
                 r.Result is null ? null : MatchJson.Deserialize<GameOutcome>(r.Result)))
             .ToList();
         return new MatchHistoryPage(items, page, pageSize, total);
