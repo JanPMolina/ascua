@@ -23,7 +23,7 @@ Una sola lista blanca para REST y WebSocket: `Ascua:Cors:AllowedOrigins` (`Ascua
 
 `UseCors` va después de los archivos estáticos y antes de la autenticación y del *rate limiting*. Así, un preflight `OPTIONS` se responde con `204` sin pedir token y sin gastar cupo. Un origen fuera de la lista recibe la respuesta sin ningún `Access-Control-Allow-*`, y el navegador no deja leerla.
 
-En el WebSocket, `UseWebSockets` rechaza con `403` un upgrade cuyo `Origin` no está en la lista. Un cliente que no es navegador (el bot o la prueba de carga) no envía `Origin` y se autentica con el ticket.
+En el WebSocket, `UseWebSockets` rechaza con `403` un upgrade cuyo `Origin` no está en la lista. Un cliente que no es navegador (el bot o la prueba de carga) no envía `Origin` y se autentica con el ticket. La prueba `WebSocket_upgrade_from_foreign_origin_is_rejected_before_spending_the_ticket` lo verifica contra un Kestrel real, porque el cliente WebSocket del TestServer se salta esa verificación: un `Origin` ajeno recibe `403`; con el mismo ticket, el origen permitido sí abre el socket (el rechazo no gastó el ticket); y sin `Origin` también entra.
 
 ## Encabezados de seguridad
 

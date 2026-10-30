@@ -1,14 +1,19 @@
 using System.Net;
+using System.Net.WebSockets;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using Ascua.Api.Security;
+using Ascua.Integration.Tests.Realtime;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 
 namespace Ascua.Integration.Tests;
 
-/// <summary>Transporte: CORS con lista blanca, encabezados de seguridad en toda respuesta y HSTS fuera de Development.</summary>
+/// <summary>
+/// Transporte: CORS y orígenes WebSocket con lista blanca, encabezados de seguridad en toda respuesta y HSTS
+/// fuera de Development.
+/// </summary>
 [Collection(ApiCollection.Name)]
 public sealed partial class SecurityHeadersTests(AscuaApiFactory factory) : IDisposable
 {
@@ -141,6 +146,60 @@ public sealed partial class SecurityHeadersTests(AscuaApiFactory factory) : IDis
         Assert.Equal("max-age=31536000", Header(overHttps, "Strict-Transport-Security"));
         // Por HTTP plano (o en localhost) el navegador lo ignoraría; ASP.NET Core ni lo envía.
         Assert.False(overHttp.Headers.Contains("Strict-Transport-Security"));
+    }
+
+    /// <summary>
+    /// Kestrel real, no TestServer: el cliente WebSocket del TestServer instala su propio
+    /// <c>IHttpWebSocketFeature</c> y <c>UseWebSockets</c> se salta entonces la verificación de <c>Origin</c>.
+    /// </summary>
+    [Fact]
+    public async Task WebSocket_upgrade_from_foreign_origin_is_rejected_before_spending_the_ticket()
+    {
+        using var kestrel = factory.WithWebHostBuilder(_ => { });
+        // Loopback y puerto libre: ignora ASPNETCORE_HTTP_PORTS (8080 en la imagen del SDK) y no choca con nada.
+        kestrel.UseKestrel(options => options.Listen(IPAddress.Loopback, 0));
+        kestrel.StartServer();
+        var alice = await RealtimeSetup.RegisterAsync(kestrel);
+        var bruno = await RealtimeSetup.RegisterAsync(kestrel);
+        var matchId = await RealtimeSetup.LaunchAsync(kestrel, alice, bruno);
+        var ticket = await RealtimeSetup.TicketAsync(kestrel, alice, matchId);
+
+        using var foreign = await OpenWebSocketAsync(kestrel, ticket, ForeignOrigin);
+        Assert.Equal(HttpStatusCode.Forbidden, foreign.HttpStatusCode);
+        Assert.NotEqual(WebSocketState.Open, foreign.State);
+
+        // El rechazo ocurre antes de autenticar: el mismo ticket sigue sirviendo desde el origen permitido.
+        using var allowed = await OpenWebSocketAsync(kestrel, ticket, AllowedOrigin);
+        Assert.Equal(HttpStatusCode.SwitchingProtocols, allowed.HttpStatusCode);
+        Assert.Equal(WebSocketState.Open, allowed.State);
+
+        // Un cliente que no es navegador (bot, prueba de carga) no envía Origin y entra con su ticket.
+        using var withoutOrigin = await OpenWebSocketAsync(kestrel, await RealtimeSetup.TicketAsync(kestrel, alice, matchId), origin: null);
+        Assert.Equal(HttpStatusCode.SwitchingProtocols, withoutOrigin.HttpStatusCode);
+        Assert.Equal(WebSocketState.Open, withoutOrigin.State);
+    }
+
+    private static async Task<ClientWebSocket> OpenWebSocketAsync(WebApplicationFactory<Program> host, string ticket, string? origin)
+    {
+        using var http = host.CreateClient();
+        var uri = new UriBuilder(new Uri(http.BaseAddress!, $"realtime/match?protocolVersion=1&access_token={ticket}")) { Scheme = "ws" }.Uri;
+        var socket = new ClientWebSocket();
+        socket.Options.CollectHttpResponseDetails = true;
+        if (origin is not null)
+        {
+            socket.Options.SetRequestHeader("Origin", origin);
+        }
+
+        try
+        {
+            await socket.ConnectAsync(uri, CancellationToken.None);
+        }
+        catch (WebSocketException)
+        {
+            // El código de la respuesta queda en HttpStatusCode; la prueba lo verifica.
+        }
+
+        return socket;
     }
 
     private async Task<HttpResponseMessage> PreflightAsync(string origin, string method, string path, string headers)
