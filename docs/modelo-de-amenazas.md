@@ -79,7 +79,7 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 | STRIDE | Amenaza | Mitigación | Prueba |
 |---|---|---|---|
 | S | Abrir el WebSocket sin autenticarse o con un ticket ajeno | Ticket de **un solo uso**, 32 bytes de CSPRNG, guardado en Redis solo como hash SHA-256, con TTL de 30 s y atado a usuario y partida; la versión del protocolo se revisa antes de gastarlo (ADR-0006) | `Ticket_is_single_use_and_protocol_version_is_checked_before_spending_it` |
-| S | Abrir el WebSocket desde un origen malicioso (CSWSH) | Lista blanca de orígenes (`Ascua:Cors:AllowedOrigins`) en el *handshake* | Configurado en `TicketAuthentication`. **Falta una prueba propia; ver Pendiente** |
+| S | Abrir el WebSocket desde un origen malicioso (CSWSH) | Lista blanca de orígenes (`Ascua:Cors:AllowedOrigins`) en el *handshake* | `WebSocket_upgrade_from_foreign_origin_is_rejected_before_spending_the_ticket` |
 | E | Actuar en una partida ajena o fuera del turno | Se verifica que el usuario sea participante en `JoinMatch` y en cada orden; el dominio rechaza a extraños y las órdenes de otra ronda | `Non_participant_cannot_get_a_ticket_join_or_act`, `Strangers_cannot_send_orders`, `Orders_for_another_round_are_stale` |
 | T | Enviar resultados en lugar de intenciones | El cliente solo manda órdenes (`MOVE`, `ATTACK`…); el servidor resuelve todo. Una orden inválida se reemplaza por `GUARD` | `Malformed_orders_are_rejected_with_a_stable_code`, `The_resolver_replaces_invalid_orders_with_guard`, `Order_for_another_round_or_with_bad_schema_is_rejected_without_closing_the_match` |
 | T | Repetir o duplicar una jugada | `clientActionId` idempotente; un solo cerrador por ronda (lock en Redis) más `UNIQUE(match_id, seq)` en Postgres | `Resent_order_is_acknowledged_once_and_applied_once`, `Two_replicas_closing_the_same_round_produce_a_single_resolution` |
@@ -88,7 +88,8 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 | D | Inundar el hub con mensajes | *Token bucket* por conexión (`HubTokenLimit`/`HubTokensPerSecond`); más de 50 rechazos en 60 s cierra la conexión con 4029 | Configurado en `RealtimeConnections` |
 | D | Mandar mensajes gigantes | `MaximumReceiveMessageSize` de 4 KiB | Configurado en `RealtimeServiceCollectionExtensions` |
 | D | Abrir conexiones sin límite | Máximo 3 conexiones por usuario en todas las réplicas | `A_user_cannot_open_more_than_three_connections` |
-| D | Que una partida con un bug tumbe el proceso o a las demás | Aislamiento por partida: la excepción la marca `FAULTED`, sin afectar al resto | Código en `MatchEngine`. **Falta la prueba; ver Pendiente** |
+| D | Que una partida con un bug tumbe el proceso o a las demás | Aislamiento por partida: la excepción la marca `FAULTED`, sin afectar al resto | `An_exception_in_one_match_faults_only_that_match_and_releases_its_players` |
+| D | Que las partidas abandonadas acumulen recursos | Las partidas sin actividad pasan a `EXPIRED` y liberan la marca de partida activa | `An_abandoned_match_expires_and_releases_the_active_match_mark` |
 | R | Negar haber abandonado | Al vencer la gracia de reconexión se aplica el abandono, y queda como evento en `match_events` | `Leaving_an_in_progress_match_counts_as_abandonment` |
 
 ### 4. Historial y reproducción (REST `/api/v1/matches`)
@@ -116,16 +117,16 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 | I | Un secreto en el repositorio | gitleaks en cada push y PR; en local, la clave JWT es efímera y no hay contraseñas por defecto | Job `secrets-scan` del CI |
 | I | Robar la clave de firma JWT | En Azure vive en Key Vault y se lee con identidad administrada; rotación en [runbooks/rotar-clave-jwt.md](runbooks/rotar-clave-jwt.md) | **Pendiente (Juan Pablo):** `KeyVaultSigningKeyProvider` |
 | S/I | Robar la cadena de conexión de Postgres o Redis | En Azure se usa autenticación Entra con identidad administrada, sin contraseñas en la configuración | **Pendiente (Juan Pablo)** |
-| T | Perder o duplicar jugadas confirmadas por un reinicio o una carrera | *Event sourcing* liviano en Postgres con `UNIQUE(match_id, seq)`; Redis se puede reconstruir desde Postgres (ADR-0003) | `Two_players_play_a_full_match_with_contiguous_seq_and_immutable_result`. **Falta la prueba de reinicio; ver Pendiente** |
-| D | Que se caiga Redis o Postgres | `/health/ready` saca a la réplica del balanceo sin reiniciarla; [runbook](runbooks/dependencias-caidas.md) | **Falta la prueba de resiliencia; ver Pendiente** |
+| T | Perder o duplicar jugadas confirmadas por un reinicio o una carrera | *Event sourcing* liviano en Postgres con `UNIQUE(match_id, seq)`; Redis se puede reconstruir desde Postgres (ADR-0003) | `Two_players_play_a_full_match_with_contiguous_seq_and_immutable_result`, `A_match_continues_with_contiguous_seq_after_restarting_the_instance_mid_round` |
+| D | Que se caiga Redis o Postgres | `/health/ready` saca a la réplica del balanceo sin reiniciarla; [runbook](runbooks/dependencias-caidas.md) | `A_dependency_outage_turns_readiness_red_without_killing_the_process_and_the_match_resumes` (Redis y Postgres) |
 
 ### 7. Transporte y navegador
 
 | STRIDE | Amenaza | Mitigación | Prueba |
 |---|---|---|---|
-| I/T | Interceptar el tráfico | Solo HTTPS y WSS: TLS en el ingress de Container Apps | Configuración de Juan Pablo |
-| T | XSS en el cliente web | CSP estricta (`script-src 'self'`, sin *inline*); el cliente pinta con `textContent`, nunca con HTML | `Vendored_scripts_match_their_subresource_integrity_hashes` (las librerías externas van con SRI). **Faltan las cabeceras del servidor; ver Pendiente** |
-| S | *Clickjacking* o CSRF | La API usa `Authorization: Bearer` (sin cookies), así que CSRF no aplica; `frame-ancestors 'none'` llega con las cabeceras de seguridad | **Pendiente** |
+| I/T | Interceptar el tráfico | Solo HTTPS y WSS: TLS en el ingress de Container Apps; HSTS fuera de Development | `Hsts_is_sent_over_https_only_outside_development`; el ingress lo configura Juan Pablo |
+| T | XSS en el cliente web | CSP estricta (`script-src 'self'`, sin *inline*); el cliente pinta con `textContent`, nunca con HTML | `Client_policy_forbids_inline_code_and_foreign_origins`, `Every_response_carries_security_headers`, `Docs_inline_script_is_allowed_by_hash_not_by_unsafe_inline`, `Vendored_scripts_match_their_subresource_integrity_hashes` (las librerías externas van con SRI) |
+| S | *Clickjacking* o CSRF | La API usa `Authorization: Bearer` (sin cookies), así que CSRF no aplica; `frame-ancestors 'none'` y `X-Frame-Options: DENY` en toda respuesta; CORS con lista blanca y sin credenciales ([seguridad-transporte.md](seguridad-transporte.md)) | `Every_response_carries_security_headers`, `Preflight_from_foreign_origin_gets_no_cors_headers`, `Actual_request_exposes_only_allowed_origin_and_needed_headers` |
 
 ### 8. Cadena de suministro y contenedor
 
@@ -145,6 +146,8 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 
 ## Pendiente
 
-- [ ] CORS de la API REST y cabeceras de seguridad HTTP con su prueba de integración (CSP, `nosniff`, `frame-ancestors`, HSTS), más una prueba del rechazo de orígenes en el WebSocket.
-- [ ] Pruebas de resiliencia: reinicio de instancia, caída de Redis o Postgres, y aislamiento `FAULTED`.
-- [ ] Juan Pablo: Key Vault, Entra en Postgres y Redis, OIDC.
+Lo de código ya está cubierto. Queda solo lo de Azure (Juan Pablo):
+- [ ] `KeyVaultSigningKeyProvider`.
+- [ ] Autenticación Entra en Postgres y Redis.
+- [ ] Federación OIDC y *environments* con aprobación.
+- [ ] TLS en el ingress.

@@ -1,6 +1,6 @@
 # Pendientes hacia `v1.0.0`
 
-Actualizado el **30-oct-2026** con `main` en `b26abda`. La entrega es el **12-nov-2026**: ese día se pone el tag `v1.0.0` y el profesor evalúa esa versión.
+Actualizado el **30-oct-2026** con `main` en `e0155f0`. La entrega es el **12-nov-2026**: ese día se pone el tag `v1.0.0` y el profesor evalúa esa versión.
 
 Esta lista se contrastó con el enunciado ([Proyecto3.pdf](../Proyecto3.pdf)) y su rúbrica. Cada pendiente indica qué criterio afecta.
 - **Al cerrar un pendiente:** se marca `[x]` en el mismo PR que lo resuelve.
@@ -47,11 +47,7 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 - [x] **Sincronía OpenAPI ↔ código:** agregar una prueba o un paso de CI que compare el `openapi.json` generado con una copia versionada, para que la rúbrica («sincronizados con el código») quede demostrada.
 
 ### Documentación (5%)
-- [ ] **README:**
-  - URL pública (cuando Juan Pablo la tenga);
-  - carpeta `loadtests/` en la estructura;
-  - enlaces a `docs/api/`, `docs/rendimiento.md`, las ADR, el modelo de amenazas y esta lista;
-  - cómo correr la prueba de carga.
+- [ ] **README:** falta solo la URL pública (cuando Juan Pablo la tenga). Ya tiene la carpeta `loadtests/` en la estructura, los enlaces a `docs/api/`, `docs/rendimiento.md`, las ADR, el modelo de amenazas, los runbooks y esta lista, y cómo correr la prueba de carga.
 - [x] **Runbooks** en `docs/runbooks/`:
   - partida `FAULTED`;
   - suspender un usuario y terminar una partida desde administración;
@@ -62,11 +58,8 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 - [x] **Limpieza:** quitar el `TODO(Jan)` obsoleto de `src/Ascua.Bot/Program.cs`; los escenarios de NBomber ya viven en `loadtests/`.
 
 ### Mantenimiento del repositorio
-- [ ] **PRs de Dependabot:**
-  - #5 (trivy-action 0.36.0): **cerrar**, porque `main` ya usa `v0.36.0`.
-  - #4 (gitleaks-action v3): revisar que el job `secrets-scan` siga pasando antes de fusionar.
-  - #6, #7 y #9 (Azure Monitor, Test SDK, xUnit runner): fusionar si el CI pasa.
-- [ ] **Limpieza local:** borrar los *worktrees* viejos en `.worktrees/` y archivar las sesiones de Claude cuyos PR ya se fusionaron.
+- [x] **PRs de Dependabot:** #5 cerrado (`main` ya tenía trivy-action `v0.36.0`); #4 (gitleaks-action v3), #6, #7 y #9 fusionados con el CI en verde. Los próximos los abre Dependabot solo.
+- [x] **Limpieza local:** *worktrees* y ramas de PR ya fusionados borrados.
 
 ## Juan Pablo: Azure
 
