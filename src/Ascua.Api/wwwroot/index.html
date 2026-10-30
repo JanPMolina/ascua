@@ -3,9 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <!-- Sin scripts ni estilos inline: todo sale del mismo origen. connect-src 'self' cubre ws/wss al mismo host. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
-  <meta name="referrer" content="no-referrer">
+  <!-- Sin scripts ni estilos inline: la CSP y la Referrer-Policy las envía el servidor (Security/SecurityHeaders.cs). -->
   <title>Ascua — cliente de prueba</title>
   <link rel="stylesheet" href="css/app.css">
   <script src="vendor/signalr-10.0.11/signalr.min.js" integrity="sha384-N+pL/4qXZHZcvsa6hVMd5/7cdF3lC59ZMNHeQyRo5q9jmC7yw0hcJILPjUDSU7ZS" defer></script>
