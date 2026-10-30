@@ -47,6 +47,9 @@ public sealed class MatchPlayerRecord
     public string Hero { get; set; } = null!;
 
     public string DisplayName { get; set; } = null!;
+
+    /// <summary>Copia de <c>matches.created_at</c> para paginar el historial por usuario con un solo índice.</summary>
+    public DateTimeOffset CreatedAt { get; set; }
 }
 
 /// <summary>Evento de <c>match_events</c> (append-only, <c>UNIQUE(match_id, seq)</c>). Solo se lee en el servidor.</summary>
@@ -61,6 +64,31 @@ public sealed class MatchEventRecord
     public string Type { get; set; } = null!;
 
     public string Payload { get; set; } = null!;
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>
+/// Fila de <c>match_states</c> (append-only): la verdad completa tras cada confirmación, con el rango de
+/// eventos que la produjo (<see cref="FromSeq"/>, <see cref="LastSeq"/>]. Es la base de la reproducción
+/// determinista; como <c>matches.state</c>, nunca sale a un cliente sin pasar por el proyector de vistas.
+/// </summary>
+public sealed class MatchStateRecord
+{
+    public Guid MatchId { get; set; }
+
+    /// <summary>Versión de la partida tras la confirmación (1 = creación).</summary>
+    public long Version { get; set; }
+
+    /// <summary>Ronda a la que pertenece la confirmación; 0 = draft inicial.</summary>
+    public int Round { get; set; }
+
+    /// <summary>Último seq anterior a esta confirmación (exclusivo).</summary>
+    public long FromSeq { get; set; }
+
+    public long LastSeq { get; set; }
+
+    public string State { get; set; } = null!;
 
     public DateTimeOffset CreatedAt { get; set; }
 }
