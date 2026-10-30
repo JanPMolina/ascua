@@ -25,3 +25,6 @@ loadtests/reports/*
 
 # Worktrees locales de sesiones paralelas
 .worktrees/
+# Logs locales de NBomber (carpeta de salida por defecto)
+loadtests/**/r/
+nbomber-log-*.txt
