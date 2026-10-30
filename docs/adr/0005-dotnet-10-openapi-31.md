@@ -20,8 +20,8 @@ En .NET 10, `Microsoft.AspNetCore.OpenApi` genera **OpenAPI 3.1 de forma nativa*
 Usar **.NET 10 (LTS)**, fijado en `global.json`, con `Nullable=enable` y `TreatWarningsAsErrors=true`:
 
 - `AddOpenApi()` + `MapOpenApi()` para el documento 3.1 y **Scalar** como UI en `/docs`.
-- El documento se exporta en *build* a `contracts/openapi.json` y el CI lo compara para detectar
-  cambios de contrato no intencionados.
+- El documento se versiona en `contracts/openapi.json`: una prueba de integración lo compara con el
+  que genera la API y el CI lo valida con Redocly, para detectar cambios de contrato no intencionados.
 - Imagen base *chiseled* de .NET 10 sin root.
 
 ## Alternativas consideradas

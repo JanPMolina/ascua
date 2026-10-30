@@ -40,10 +40,10 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 - [ ] **Prueba de aislamiento:** una excepción en una partida la deja `FAULTED` sin afectar a otra partida en curso. La métrica `ascua.matches.faulted` ya existe, pero ninguna prueba lo cubre.
 
 ### Contratos (10%)
-- [ ] **Nombres de héroes unificados:** REST usa `ANVIL`/`SPARK`/`RAVEN`/`ROOT` y el tiempo real usa `YUNQUE`/`CHISPA`/`CUERVO`/`RAIZ`; el cliente web traduce entre ambos.
+- [x] **Nombres de héroes unificados:** REST usa `ANVIL`/`SPARK`/`RAVEN`/`ROOT` y el tiempo real usa `YUNQUE`/`CHISPA`/`CUERVO`/`RAIZ`; el cliente web traduce entre ambos.
   - Hay que elegir un solo juego de nombres.
   - Debe actualizarse a la vez en OpenAPI, AsyncAPI, el bot, la prueba de carga y el cliente.
-- [ ] **Sincronía OpenAPI ↔ código:** agregar una prueba o un paso de CI que compare el `openapi.json` generado con una copia versionada, para que la rúbrica («sincronizados con el código») quede demostrada.
+- [x] **Sincronía OpenAPI ↔ código:** agregar una prueba o un paso de CI que compare el `openapi.json` generado con una copia versionada, para que la rúbrica («sincronizados con el código») quede demostrada.
 
 ### Documentación (5%)
 - [ ] **README:**

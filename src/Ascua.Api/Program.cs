@@ -25,6 +25,7 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecurityTransformer>();
     options.AddOperationTransformer<BearerSecurityTransformer>();
     options.AddOperationTransformer<MatchHistoryExamplesTransformer>();
+    options.AddSchemaTransformer<ProblemCodeSchemaTransformer>();
 });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AscuaDbContext>("postgres", tags: ["ready"]);
@@ -89,7 +90,8 @@ app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => fa
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
 app.MapGet("/api/v1/version", () => new { name = "ascua", version = typeof(Program).Assembly.GetName().Version?.ToString() })
-    .WithName("GetVersion");
+    .WithName("GetVersion")
+    .WithSummary("Nombre y versión del servidor.");
 
 app.MapAuthEndpoints();
 app.MapUserEndpoints();

@@ -28,6 +28,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Validar AsyncAPI
         run: npx --yes @asyncapi/cli@3 validate contracts/asyncapi.yaml
+      # Reglas en redocly.yaml. Que la copia coincida con el código lo comprueba OpenApiContractTests (build-test).
+      - name: Validar OpenAPI 3.1
+        run: npx --yes @redocly/cli@2.72.1 lint contracts/openapi.json
 
   secrets-scan:
     runs-on: ubuntu-latest

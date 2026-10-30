@@ -37,6 +37,21 @@ dotnet run --project src/Ascua.Api
 dotnet run --project src/Ascua.Bot -- http://localhost:8080
 ```
 
+### Contrato REST (`contracts/openapi.json`)
+
+Es la copia versionada del OpenAPI 3.1 que genera la API en `/openapi/v1.json` (sin `servers`, que
+depende del despliegue). La prueba `OpenApiContractTests` falla si el código y la copia difieren, y el
+CI además la valida con Redocly (`redocly.yaml`). Si cambias un endpoint a propósito, regénerala y
+revisa el diff antes de hacer commit:
+
+```bash
+ASCUA_UPDATE_OPENAPI=1 dotnet test Ascua.slnx --filter OpenApiContractTests
+```
+
+```bash
+npx --yes @redocly/cli@2.72.1 lint contracts/openapi.json
+```
+
 ## Estructura
 
 ```
@@ -47,7 +62,7 @@ src/
   Ascua.Api/             REST, hub SignalR, auth, salud, cliente web (wwwroot)
   Ascua.Bot/             Bot y pruebas de carga
 tests/                   Unitarias, arquitectura, integración (+ concurrencia, seguridad, resiliencia)
-contracts/               AsyncAPI 3.0 (tiempo real)
+contracts/               AsyncAPI 3.0 (tiempo real) y OpenAPI 3.1 (REST)
 infra/                   Bicep (Azure)
 docs/                    ADRs, modelo de amenazas, runbooks, costos
 planteamiento/           Reglas del juego, arquitectura y plan de trabajo
