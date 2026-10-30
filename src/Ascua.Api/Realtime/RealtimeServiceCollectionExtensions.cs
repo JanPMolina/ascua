@@ -44,6 +44,7 @@ public static class RealtimeServiceCollectionExtensions
         {
             options.Configuration = ConfigurationOptions.Parse(configuration.GetConnectionString(RedisConnection.ConnectionStringName) ?? "localhost");
             options.Configuration.ChannelPrefix = RedisChannel.Literal("ascua:signalr");
+            RedisConnection.ApplySocketManager(options.Configuration, configuration);
         });
 
         services.AddSingleton<RealtimeHubFilter>();

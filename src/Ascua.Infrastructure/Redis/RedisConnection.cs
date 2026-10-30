@@ -9,6 +9,8 @@ public static class RedisConnection
 {
     public const string ConnectionStringName = "Redis";
 
+    public const string DedicatedSocketThreadsKey = "Ascua:Redis:DedicatedSocketThreads";
+
     /// <summary>
     /// Registra un <see cref="IConnectionMultiplexer"/> compartido y su check de salud (etiqueta "ready").
     /// La cadena se lee al resolver para que las pruebas puedan sobrescribirla.
@@ -24,11 +26,28 @@ public static class RedisConnection
                 throw new InvalidOperationException($"Falta ConnectionStrings:{ConnectionStringName}.");
             }
 
-            return ConnectionMultiplexer.Connect(connectionString);
+            var options = ConfigurationOptions.Parse(connectionString);
+            ApplySocketManager(options, sp.GetRequiredService<IConfiguration>());
+            return ConnectionMultiplexer.Connect(options);
         });
 
         services.AddHealthChecks().AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
         return services;
+    }
+
+    /// <summary>
+    /// E/S de Redis en el thread pool de .NET (<see cref="SocketManager.ThreadPool"/>) en lugar de los hilos
+    /// dedicados que trae StackExchange.Redis por defecto. Con una cuota de CPU fraccionaria (0,5 vCPU en
+    /// Container Apps) esos hilos gastaban la cuota en <c>sched_yield</c>; ver docs/rendimiento.md.
+    /// <c>Ascua:Redis:DedicatedSocketThreads=true</c> vuelve al comportamiento por defecto (para comparar).
+    /// </summary>
+    public static void ApplySocketManager(ConfigurationOptions options, IConfiguration configuration)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        if (!configuration.GetValue<bool>(DedicatedSocketThreadsKey))
+        {
+            options.SocketManager = SocketManager.ThreadPool;
+        }
     }
 
     public static bool IsConfigured(IConfiguration configuration) =>
