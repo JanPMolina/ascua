@@ -15,6 +15,7 @@ public sealed record StageResult(
     double P95,
     double P99,
     double Max,
+    double DeadlineP95,
     double OrderRttP95,
     long OrdersSent,
     long OrdersAccepted,
@@ -57,7 +58,7 @@ public sealed record LoadReport(string Label, string BaseUrl, DateTime StartedAt
         var stages = new List<StageResult>();
         if (options.IdleDuration > TimeSpan.Zero && idleCpu is not null)
         {
-            stages.Add(new StageResult("reposo", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, idleCpu, idleMem, null, null));
+            stages.Add(new StageResult("reposo", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, idleCpu, idleMem, null, null));
         }
 
         for (var i = 0; i < options.Stages.Count; i++)
@@ -88,6 +89,7 @@ public sealed record LoadReport(string Label, string BaseUrl, DateTime StartedAt
                 Percentile(latencies, 0.95),
                 Percentile(latencies, 0.99),
                 latencies.Length > 0 ? Math.Round(latencies[^1], 1) : 0,
+                Percentile([.. inStage.Where(s => s.Kind == Kind.RoundLatencyDeadline).Select(s => s.Value).Order()], 0.95),
                 Percentile(rtts, 0.95),
                 Count(Kind.OrderSent),
                 Count(Kind.OrderAccepted),
@@ -135,12 +137,12 @@ public sealed record LoadReport(string Label, string BaseUrl, DateTime StartedAt
         md.AppendLine(CultureInfo.InvariantCulture, $"- Desfase de reloj servidor−cliente estimado (mediana): {(ClockOffsetMedianMs is { } o ? $"{o:0.0} ms" : "n/d")}");
         md.AppendLine(CultureInfo.InvariantCulture, $"- Punto de quiebre: {Breakpoint ?? "no se alcanzó en las etapas probadas"}");
         md.AppendLine();
-        md.AppendLine("| Etapa | Activas | Rondas (por plazo) | p50 ms | p95 ms | p99 ms | máx ms | RTT orden p95 | Órdenes env/ACK | Tardías | Errores | Huecos seq | Perdidas | Dup. | Sin difusión | Tasa error | CPU % | RAM MiB | CPU %/partida | MiB/partida (cota) | Meta |");
-        md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+        md.AppendLine("| Etapa | Activas | Rondas (por plazo) | p50 ms | p95 ms | p99 ms | máx ms | p95 por plazo | RTT orden p95 | Órdenes env/ACK | Tardías | Errores | Huecos seq | Perdidas | Dup. | Sin difusión | Tasa error | CPU % | RAM MiB | CPU %/partida | MiB/partida (cota) | Meta |");
+        md.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
         foreach (var s in Stages)
         {
             md.AppendLine(CultureInfo.InvariantCulture,
-                $"| {s.Name} | {s.AvgActiveMatches} | {s.Rounds} ({s.RoundsByDeadline}) | {s.P50} | {s.P95} | {s.P99} | {s.Max} | {s.OrderRttP95} | {s.OrdersSent}/{s.OrdersAccepted} | {s.Stale} | {s.OrderErrors + s.SetupErrors} | {s.SeqGaps} | {s.LostOrders} | {s.Duplicates} | {s.MissingBroadcasts} | {s.ErrorRate:P2} | {N(s.CpuPercent)} | {N(s.MemoryMiB)} | {N(s.CpuPerMatch)} | {N(s.MemoryPerMatchMiB)} | {(s.Matches == 0 ? "—" : s.MeetsGoal ? "✅" : "❌")} |");
+                $"| {s.Name} | {s.AvgActiveMatches} | {s.Rounds} ({s.RoundsByDeadline}) | {s.P50} | {s.P95} | {s.P99} | {s.Max} | {s.DeadlineP95} | {s.OrderRttP95} | {s.OrdersSent}/{s.OrdersAccepted} | {s.Stale} | {s.OrderErrors + s.SetupErrors} | {s.SeqGaps} | {s.LostOrders} | {s.Duplicates} | {s.MissingBroadcasts} | {s.ErrorRate:P2} | {N(s.CpuPercent)} | {N(s.MemoryMiB)} | {N(s.CpuPerMatch)} | {N(s.MemoryPerMatchMiB)} | {(s.Matches == 0 ? "—" : s.MeetsGoal ? "✅" : "❌")} |");
         }
 
         return md.ToString();
