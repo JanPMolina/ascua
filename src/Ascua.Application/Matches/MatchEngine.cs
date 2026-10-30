@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
@@ -33,6 +34,9 @@ public sealed class MatchEngine(
 
     private static readonly IReadOnlySet<PlayerId> NoDefaults = new HashSet<PlayerId>();
 
+    /// <summary>Último plazo programado en esta réplica por partida (ver <see cref="ScheduleDeadline"/>).</summary>
+    private readonly ConcurrentDictionary<Guid, DateTimeOffset> _localDeadlines = new();
+
     public async Task<Guid> LaunchAsync(LaunchMatchRequest request, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -66,6 +70,7 @@ public sealed class MatchEngine(
 
         var stored = await store.CreateAsync(snapshot, events, cancellationToken);
         await hot.SaveAsync(stored, cancellationToken);
+        ScheduleDeadline(stored);
         if (stored.MatchId == snapshot.MatchId)
         {
             // Quien nunca entra cuenta como desconectado: al vencer el plazo se aplica el abandono.
@@ -543,6 +548,53 @@ public sealed class MatchEngine(
             }
         });
 
+    /// <summary>
+    /// Cierre puntual: un temporizador en proceso procesa el plazo apenas vence. Es solo una aceleración:
+    /// el sondeo de Redis (RoundTimerService) sigue siendo la garantía, y el lock por partida y la versión
+    /// evitan un doble cierre si ambos llegan a la vez.
+    /// </summary>
+    private void ScheduleDeadline(MatchSnapshot snapshot)
+    {
+        if (!options.PreciseDeadlines || !snapshot.Status.IsActive() || snapshot.Deadline is not { } deadline)
+        {
+            return;
+        }
+
+        var delay = deadline - clock.UtcNow + TimeSpan.FromMilliseconds(1);
+        if (delay > options.DraftDuration + options.RoundDuration)
+        {
+            return;
+        }
+
+        _localDeadlines[snapshot.MatchId] = deadline;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                // Task.Delay usa el reloj monotónico y puede despertar un instante antes según IClock (reloj
+                // de pared): si se procesara antes de tiempo, el plazo "no vencido" quedaría para el sondeo.
+                await Task.Delay(delay > TimeSpan.Zero ? delay : TimeSpan.Zero);
+                while (deadline - clock.UtcNow is var remaining && remaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(remaining + TimeSpan.FromMilliseconds(1));
+                }
+
+                // Si la ronda cerró antes (todos decidieron) ya hay otro plazo programado: este no hace nada.
+                if (!_localDeadlines.TryRemove(new KeyValuePair<Guid, DateTimeOffset>(snapshot.MatchId, deadline)))
+                {
+                    return;
+                }
+
+                await ProcessDeadlineAsync(snapshot.MatchId, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                // El sondeo lo cerrará en su próximo ciclo; aquí solo se registra.
+                logger.LogWarning(ex, "No se pudo procesar el plazo de la partida {MatchId}", snapshot.MatchId);
+            }
+        });
+    }
+
     private MatchChange Advance(
         MatchSnapshot current,
         GameState next,
@@ -616,6 +668,7 @@ public sealed class MatchEngine(
             }
 
             await hot.SaveAsync(change.After, cancellationToken);
+            ScheduleDeadline(change.After);
             if (!change.After.Status.IsActive())
             {
                 await ReleaseActiveMatchAsync(matchId, [.. change.After.Participants.Select(p => p.UserId)]);
