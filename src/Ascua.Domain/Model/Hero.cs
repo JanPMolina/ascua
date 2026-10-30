@@ -2,20 +2,20 @@ using System.Collections.Immutable;
 
 namespace Ascua.Domain.Model;
 
-/// <summary>Los 4 héroes. En el juego se llaman Yunque, Chispa, Cuervo y Raíz.</summary>
+/// <summary>Los 4 héroes, con sus nombres del juego (en el cable viajan como YUNQUE, CHISPA, CUERVO y RAIZ).</summary>
 public enum HeroClass
 {
     /// <summary>Yunque: tanque, 25% de bloqueo frontal; habilidad Muralla.</summary>
-    Anvil,
+    Yunque,
 
     /// <summary>Chispa: daño a distancia, acumula cargas; habilidad Descarga.</summary>
-    Spark,
+    Chispa,
 
     /// <summary>Cuervo: pícaro, daño ×2 por la espalda; habilidad Paso sombrío.</summary>
-    Raven,
+    Cuervo,
 
     /// <summary>Raíz: soporte, sus objetos de curación curan +1; habilidad Brote.</summary>
-    Root,
+    Raiz,
 }
 
 public enum HeroStatus
@@ -43,10 +43,10 @@ public static class HeroCatalog
 
     public static HeroStats For(HeroClass heroClass) => heroClass switch
     {
-        HeroClass.Anvil => new(MaxHp: 6, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 3, BlockPercent: 25),
-        HeroClass.Spark => new(MaxHp: 4, Range: 3, Damage: 1, Initiative: 3, SkillCooldown: 0, BlockPercent: 0),
-        HeroClass.Raven => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 4, SkillCooldown: 4, BlockPercent: 0),
-        HeroClass.Root => new(MaxHp: 5, Range: 1, Damage: 1, Initiative: 2, SkillCooldown: 3, BlockPercent: 0),
+        HeroClass.Yunque => new(MaxHp: 6, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 3, BlockPercent: 25),
+        HeroClass.Chispa => new(MaxHp: 4, Range: 3, Damage: 1, Initiative: 3, SkillCooldown: 0, BlockPercent: 0),
+        HeroClass.Cuervo => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 4, SkillCooldown: 4, BlockPercent: 0),
+        HeroClass.Raiz => new(MaxHp: 5, Range: 1, Damage: 1, Initiative: 2, SkillCooldown: 3, BlockPercent: 0),
         _ => throw new ArgumentOutOfRangeException(nameof(heroClass), heroClass, null),
     };
 }

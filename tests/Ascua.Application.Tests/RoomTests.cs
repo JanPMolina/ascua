@@ -29,14 +29,14 @@ public sealed class RoomTests
     {
         var guest = Guid.NewGuid();
         var room = NewRoom().Join(guest, "guest", Now).Value!
-            .ChooseHero(Host, HeroClass.Anvil).Value!
+            .ChooseHero(Host, HeroClass.Yunque).Value!
             .SetReady(Host, true).Value!;
 
-        Assert.Equal(LobbyError.HeroTaken, room.ChooseHero(guest, HeroClass.Anvil).Error);
+        Assert.Equal(LobbyError.HeroTaken, room.ChooseHero(guest, HeroClass.Yunque).Error);
 
-        room = room.ChooseHero(Host, HeroClass.Spark).Value!;
+        room = room.ChooseHero(Host, HeroClass.Chispa).Value!;
         Assert.False(room.Members[0].Ready);
-        Assert.Equal(HeroClass.Spark, room.Members[0].Hero);
+        Assert.Equal(HeroClass.Chispa, room.Members[0].Hero);
     }
 
     [Fact]
@@ -64,10 +64,10 @@ public sealed class RoomTests
     public void Only_the_host_starts_and_everyone_present_must_be_ready()
     {
         var guest = Guid.NewGuid();
-        var room = NewRoom().ChooseHero(Host, HeroClass.Anvil).Value!.SetReady(Host, true).Value!;
+        var room = NewRoom().ChooseHero(Host, HeroClass.Yunque).Value!.SetReady(Host, true).Value!;
         Assert.Equal(LobbyError.NotEnoughReady, room.BeginStart(Host).Error);
 
-        room = room.Join(guest, "guest", Now).Value!.ChooseHero(guest, HeroClass.Raven).Value!;
+        room = room.Join(guest, "guest", Now).Value!.ChooseHero(guest, HeroClass.Cuervo).Value!;
         Assert.Equal(LobbyError.NotEnoughReady, room.BeginStart(Host).Error);
 
         room = room.SetReady(guest, true).Value!;
@@ -91,7 +91,7 @@ public sealed class RoomTests
         var stranger = Guid.NewGuid();
         var room = NewRoom();
 
-        Assert.Equal(LobbyError.NotRoomMember, room.ChooseHero(stranger, HeroClass.Root).Error);
+        Assert.Equal(LobbyError.NotRoomMember, room.ChooseHero(stranger, HeroClass.Raiz).Error);
         Assert.Equal(LobbyError.NotRoomMember, room.SetReady(stranger, false).Error);
         Assert.Equal(LobbyError.NotRoomMember, room.Leave(stranger).Error);
         Assert.Equal(LobbyError.NotRoomMember, room.BeginStart(stranger).Error);
