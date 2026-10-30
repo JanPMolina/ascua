@@ -3,14 +3,231 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Sin scripts ni estilos inline: todo sale del mismo origen. connect-src 'self' cubre ws/wss al mismo host. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
   <title>Ascua — cliente de prueba</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; background: #141210; color: #eee; }
-    code { color: #f5a65b; }
-  </style>
+  <link rel="stylesheet" href="css/app.css">
+  <script src="vendor/signalr-10.0.11/signalr.min.js" integrity="sha384-N+pL/4qXZHZcvsa6hVMd5/7cdF3lC59ZMNHeQyRo5q9jmC7yw0hcJILPjUDSU7ZS" defer></script>
+  <script src="vendor/signalr-10.0.11/signalr-protocol-msgpack.min.js" integrity="sha384-n6iFjTkQ2ZSd8IQ2S54Pdvo3eSmk/ulGO1Uc2ZNzAS7A6mGgJGQ9ZG0u75b2MWrp" defer></script>
+  <script type="module" src="js/main.js"></script>
 </head>
 <body>
-  <h1>Ascua</h1>
-  <p>Cliente de prueba (pendiente). API: <a href="/docs">/docs</a> · Salud: <code>/health/live</code></p>
+  <header class="topbar">
+    <h1>Ascua <small>cliente de prueba</small></h1>
+    <span id="demo-badge" class="badge warn" hidden>MODO DEMO (sin servidor)</span>
+    <span class="spacer"></span>
+    <span id="user-label"></span>
+    <button id="btn-logout" type="button" hidden>Cerrar sesión</button>
+  </header>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <main>
+    <!-- ───────── Autenticación ───────── -->
+    <section id="screen-auth" class="screen" hidden>
+      <div class="cards">
+        <form id="form-login" class="card" novalidate>
+          <h2>Iniciar sesión</h2>
+          <label>Usuario <input name="username" autocomplete="username" required minlength="1" maxlength="32"></label>
+          <label>Contraseña <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <button type="submit">Entrar</button>
+        </form>
+        <form id="form-register" class="card" novalidate>
+          <h2>Crear cuenta</h2>
+          <label>Usuario <input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+"></label>
+          <label>Correo <input name="email" type="email" autocomplete="email" required maxlength="254"></label>
+          <label>Contraseña (10+) <input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128"></label>
+          <button type="submit">Registrarme</button>
+        </form>
+      </div>
+      <p class="hint">Los tokens se guardan solo en memoria: al recargar la página hay que volver a entrar.
+        <a href="?demo=1">Probar el modo demo</a> · <a href="/docs">API (/docs)</a></p>
+    </section>
+
+    <!-- ───────── Lobby ───────── -->
+    <section id="screen-lobby" class="screen" hidden>
+      <div class="cards">
+        <div class="card">
+          <h2>Salas públicas</h2>
+          <div class="row">
+            <button id="btn-rooms-refresh" type="button">Actualizar</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>Sala</th><th>Anfitrión</th><th>Jugadores</th><th></th></tr></thead>
+            <tbody id="rooms-body"></tbody>
+          </table>
+          <p id="rooms-empty" class="hint" hidden>No hay salas públicas abiertas.</p>
+        </div>
+        <div class="card">
+          <h2>Crear o unirse</h2>
+          <form id="form-create-room" class="row">
+            <input name="name" placeholder="Nombre de la sala" required minlength="3" maxlength="32" autocomplete="off" aria-label="Nombre de la sala">
+            <label class="inline"><input type="checkbox" name="private"> Privada</label>
+            <button type="submit">Crear sala</button>
+          </form>
+          <form id="form-join-code" class="row">
+            <input name="code" placeholder="Código de invitación" required maxlength="16" pattern="[A-Za-z0-9]+" autocomplete="off" aria-label="Código de invitación">
+            <button type="submit">Unirse</button>
+          </form>
+          <h2>Cola rápida</h2>
+          <form id="form-queue" class="row">
+            <select name="hero" aria-label="Héroe para la cola"></select>
+            <button type="submit">Buscar partida</button>
+          </form>
+          <details class="card-sub">
+            <summary>Avanzado: entrar a una partida por id</summary>
+            <form id="form-match-id" class="row">
+              <input name="matchId" placeholder="matchId (uuid)" required maxlength="36" autocomplete="off">
+              <button type="submit">Conectar</button>
+            </form>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── Sala ───────── -->
+    <section id="screen-room" class="screen" hidden>
+      <div class="card">
+        <h2>Sala <span id="room-name"></span> <small id="room-visibility"></small></h2>
+        <p id="room-code-line" class="hint">Código de invitación: <code id="room-code"></code></p>
+        <table class="table">
+          <thead><tr><th>Asiento</th><th>Jugador</th><th>Héroe</th><th>Listo</th></tr></thead>
+          <tbody id="room-members"></tbody>
+        </table>
+        <div class="row">
+          <label class="inline">Mi héroe <select id="room-hero" aria-label="Mi héroe"></select></label>
+          <button id="btn-ready" type="button">Marcar listo</button>
+          <button id="btn-start" type="button">Iniciar partida</button>
+          <button id="btn-leave-room" type="button" class="secondary">Salir de la sala</button>
+        </div>
+        <p class="hint">La sala se actualiza sola cada 2 s; cuando el anfitrión inicia, todos entran a la partida.</p>
+      </div>
+    </section>
+
+    <!-- ───────── Cola ───────── -->
+    <section id="screen-queue" class="screen" hidden>
+      <div class="card">
+        <h2>Buscando partida…</h2>
+        <p id="queue-status" class="hint"></p>
+        <button id="btn-queue-cancel" type="button" class="secondary">Cancelar</button>
+      </div>
+    </section>
+
+    <!-- ───────── Partida ───────── -->
+    <section id="screen-match" class="screen" hidden>
+      <div class="match">
+        <div class="board-col">
+          <div class="statusline">
+            <span id="conn-state" class="badge">desconectado</span>
+            <span>Piso <b id="m-floor">–</b></span>
+            <span>Ronda <b id="m-round">–</b></span>
+            <span id="m-status" class="badge"></span>
+            <span class="spacer"></span>
+            <span class="timer">⏱ <b id="m-timer">–</b></span>
+          </div>
+          <div class="timerbar"><div id="m-timerbar"></div></div>
+          <canvas id="board" width="540" height="540" aria-label="Tablero 9×9"></canvas>
+          <p class="legend">
+            <span class="sw sw-wall"></span>muro <span class="sw sw-chest"></span>cofre <span class="sw sw-stairs"></span>escalera
+            <span class="sw sw-spikes"></span>pinchos <span class="sw sw-fire"></span>fuego <span class="sw sw-tele"></span>ataque anunciado
+            <span class="sw sw-fog"></span>recordado (fuera de visión)
+          </p>
+        </div>
+
+        <div class="side-col">
+          <div class="card">
+            <h3 id="me-title">Mi héroe</h3>
+            <div class="bar"><div id="me-hpbar" class="bar-hp"></div><span id="me-hp"></span></div>
+            <div class="stats">
+              <span>Escudo <b id="me-shield">0</b></span>
+              <span>Ascuas <b id="me-embers">0</b></span>
+              <span>Cargas <b id="me-charges">0</b></span>
+              <span>Enfr. habilidad <b id="me-cooldown">0</b></span>
+              <span>Sigilo <b id="me-stealth">0</b></span>
+              <span>Estado <b id="me-state">–</b></span>
+            </div>
+            <h4>Bendiciones</h4>
+            <ul id="me-blessings" class="chips"></ul>
+            <h4>Pacto secreto</h4>
+            <p id="me-pact" class="pact">–</p>
+          </div>
+
+          <div class="card">
+            <h3>Jugadores <small id="m-decided"></small></h3>
+            <ul id="players" class="players"></ul>
+          </div>
+
+          <div class="card">
+            <h3>Orden</h3>
+            <div class="modes" role="radiogroup" aria-label="Tipo de orden">
+              <button type="button" class="mode" data-mode="MOVE">Mover</button>
+              <button type="button" class="mode" data-mode="ATTACK">Atacar ⇧</button>
+              <button type="button" class="mode" data-mode="ABILITY">Habilidad Q</button>
+              <button type="button" class="mode" data-mode="INTERACT">Interactuar E</button>
+            </div>
+            <div class="dpad">
+              <button type="button" class="dir" data-dir="N">↑ N</button>
+              <button type="button" class="dir" data-dir="W">← O</button>
+              <button type="button" id="btn-guard" class="dir">Guardar ␣</button>
+              <button type="button" class="dir" data-dir="E">E →</button>
+              <button type="button" class="dir" data-dir="S">↓ S</button>
+            </div>
+            <p class="hint">Teclado: flechas = mover · Shift+flecha = atacar · Q y flecha = habilidad · E y flecha = interactuar · Espacio = guardar · Esc = cancelar.</p>
+            <p id="order-status" class="order-status">Sin orden en esta ronda.</p>
+          </div>
+
+          <div class="card">
+            <h3>Eventos de la ronda</h3>
+            <ul id="events" class="events"></ul>
+          </div>
+
+          <div class="row">
+            <button id="btn-leave-match" type="button" class="secondary">Abandonar partida</button>
+            <button id="btn-demo-drop" type="button" class="secondary" hidden>Simular caída de conexión</button>
+            <button id="btn-demo-finish" type="button" class="secondary" hidden>Simular fin de partida</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Draft de bendiciones -->
+      <div id="draft" class="overlay" hidden>
+        <div class="card dialog">
+          <h2>Elige una bendición</h2>
+          <p class="hint" id="draft-source"></p>
+          <div id="draft-options" class="row"></div>
+          <p class="hint">Plazo: <b id="draft-timer"></b> (si vence, el servidor elige al azar).</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ───────── Fin ───────── -->
+    <section id="screen-finished" class="screen" hidden>
+      <div class="card">
+        <h2 id="fin-title">Fin de la partida</h2>
+        <p id="fin-summary"></p>
+        <table class="table">
+          <thead><tr><th>#</th><th>Jugador</th><th>Héroe</th><th>Estado final</th><th>Ascuas</th><th>Pacto revelado</th><th>Cumplido</th></tr></thead>
+          <tbody id="fin-standings"></tbody>
+        </table>
+        <button id="btn-back-lobby" type="button">Volver al lobby</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ───────── Depuración ───────── -->
+  <details id="debug" class="debug">
+    <summary>Depuración — log de mensajes (<span id="log-count">0</span>)</summary>
+    <div class="row">
+      <label class="inline"><input type="checkbox" id="log-payloads"> mostrar payload</label>
+      <button id="btn-log-clear" type="button" class="secondary">Limpiar</button>
+      <button id="btn-log-copy" type="button" class="secondary">Copiar como JSON</button>
+      <span id="log-seq" class="hint"></span>
+    </div>
+    <table class="table log">
+      <thead><tr><th>hora</th><th>dir.</th><th>seq</th><th>tipo</th><th>detalle</th></tr></thead>
+      <tbody id="log-body"></tbody>
+    </table>
+  </details>
 </body>
 </html>
