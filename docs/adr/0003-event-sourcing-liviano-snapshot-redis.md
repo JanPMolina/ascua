@@ -45,3 +45,18 @@ cerrar cualquier ronda (ADR-0001), así que el estado no puede vivir en la memor
   Los eventos son un contrato interno: cambiar su forma exige *upcasting* o migración.
 - **Seguridad:** como el log contiene secretos, nunca se expone tal cual; toda salida pasa por el
   proyector de vistas y los logs usan `LogRedactor`.
+
+## Enmienda (2026-10-30): instantánea durable en Postgres
+
+Al implementar el hub se vio que los eventos del dominio describen **resultados** (movió, recibió
+daño…), no el estado completo: no existe un "aplicador" de eventos que reconstruya `GameState`, y
+volver a resolver con las órdenes no reproduce el azar (CSPRNG sin semilla guardada). Por eso:
+
+- `matches.state` (jsonb) guarda la instantánea completa en el `last_seq` de la partida y se
+  actualiza **en la misma transacción** que inserta los eventos de la ronda, con control optimista
+  por `matches.version`. Si Redis pierde la instantánea, se recupera de ahí, no reproduciendo eventos.
+- `match_events` sigue siendo el log append-only (un trigger impide `UPDATE`/`DELETE`) para auditoría
+  y para la reproducción por jugador; `matches.result` se escribe una sola vez (otro trigger lo protege).
+- La prueba de propiedad "reconstruir desde eventos == instantánea" se reemplaza por "serializar y
+  deserializar la instantánea resuelve igual" (`MatchJsonTests`). Si más adelante se escribe el
+  aplicador de eventos, esta enmienda se revisa.

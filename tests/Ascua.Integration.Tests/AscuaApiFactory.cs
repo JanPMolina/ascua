@@ -14,7 +14,7 @@ namespace Ascua.Integration.Tests;
 /// <summary>
 /// API real contra un Postgres y un Redis efímeros (Testcontainers). Se comparte entre todas las clases de la
 /// colección "api"; cada prueba usa nombres de usuario únicos para no chocar con las demás.
-/// El <see cref="IMatchLauncher"/> es un falso (<see cref="Launcher"/>) mientras no exista el del tiempo real.
+/// El <see cref="IMatchLauncher"/> es el real envuelto por <see cref="Launcher"/>, que anota los pedidos.
 /// </summary>
 public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
@@ -23,7 +23,7 @@ public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLife
 
     public CapturingLoggerProvider Logs { get; } = new();
 
-    public RecordingMatchLauncher Launcher { get; } = new();
+    public MatchLaunchRecorder Launcher { get; } = new();
 
     public async Task InitializeAsync() => await Task.WhenAll(_postgres.StartAsync(), _redis.StartAsync());
 
@@ -46,6 +46,8 @@ public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLife
         builder.ConfigureAppConfiguration(config => config.AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Postgres"] = _postgres.GetConnectionString(),
+            ["ConnectionStrings:Redis"] = _redis.GetConnectionString(),
+            ["Ascua:Realtime:EnableDevEndpoints"] = "true",
             ["Ascua:Matchmaking:MaxWait"] = "00:00:01",
             ["Ascua:Matchmaking:PollInterval"] = "00:00:00.200",
             ["Ascua:Database:MigrateOnStartup"] = "true",
@@ -56,21 +58,26 @@ public sealed class AscuaApiFactory : WebApplicationFactory<Program>, IAsyncLife
             ["Logging:LogLevel:Microsoft.AspNetCore"] = "Trace",
         }));
         builder.ConfigureLogging(logging => logging.AddProvider(Logs));
-        builder.ConfigureTestServices(services => services.AddSingleton<IMatchLauncher>(Launcher));
+        // Las salas y la cola lanzan partidas reales (MatchEngine); el decorador solo anota cada pedido.
+        builder.ConfigureTestServices(services =>
+            services.AddSingleton(sp => Launcher.Wrap(sp.GetRequiredService<MatchEngine>())));
     }
 }
 
-/// <summary>Lanzador falso: idempotente por sala/grupo (como exige el contrato) y guarda cada pedido.</summary>
-public sealed class RecordingMatchLauncher : IMatchLauncher
+/// <summary>Anota cada <see cref="LaunchMatchRequest"/> que llega al lanzador real, en todas las instancias de la API.</summary>
+public sealed class MatchLaunchRecorder
 {
-    private readonly ConcurrentDictionary<Guid, Guid> _matches = new();
-
     public ConcurrentQueue<LaunchMatchRequest> Requests { get; } = new();
 
-    public Task<Guid> LaunchAsync(LaunchMatchRequest request, CancellationToken cancellationToken)
+    public IMatchLauncher Wrap(IMatchLauncher inner) => new Recording(this, inner);
+
+    private sealed class Recording(MatchLaunchRecorder recorder, IMatchLauncher inner) : IMatchLauncher
     {
-        Requests.Enqueue(request);
-        return Task.FromResult(_matches.GetOrAdd(request.RoomId, _ => Guid.NewGuid()));
+        public Task<Guid> LaunchAsync(LaunchMatchRequest request, CancellationToken cancellationToken)
+        {
+            recorder.Requests.Enqueue(request);
+            return inner.LaunchAsync(request, cancellationToken);
+        }
     }
 }
 

@@ -13,6 +13,12 @@ public sealed class AscuaDbContext(DbContextOptions<AscuaDbContext> options) : D
 
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+    public DbSet<MatchRecord> Matches => Set<MatchRecord>();
+
+    public DbSet<MatchPlayerRecord> MatchPlayers => Set<MatchPlayerRecord>();
+
+    public DbSet<MatchEventRecord> MatchEvents => Set<MatchEventRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>(user =>
@@ -48,6 +54,40 @@ public sealed class AscuaDbContext(DbContextOptions<AscuaDbContext> options) : D
             // Columna de sistema xmin como token de concurrencia: dos rotaciones simultáneas del mismo
             // refresh token no pueden ganar ambas (la segunda recibe DbUpdateConcurrencyException).
             token.Property<uint>("xmin").IsRowVersion();
+        });
+
+        modelBuilder.Entity<MatchRecord>(match =>
+        {
+            match.ToTable("matches", t =>
+                t.HasCheckConstraint("ck_matches_status", "status IN ('DRAFTING', 'IN_PROGRESS', 'FINISHED', 'ABANDONED', 'EXPIRED', 'FAULTED')"));
+            match.HasKey(m => m.Id);
+            match.Property(m => m.Status).HasMaxLength(16).IsRequired();
+            match.Property(m => m.State).HasColumnType("jsonb").IsRequired();
+            match.Property(m => m.Result).HasColumnType("jsonb");
+            match.HasIndex(m => m.RoomId).IsUnique().HasDatabaseName("ux_matches_room_id");
+            match.HasIndex(m => new { m.Status, m.UpdatedAt }).HasDatabaseName("ix_matches_status_updated_at");
+        });
+
+        modelBuilder.Entity<MatchPlayerRecord>(player =>
+        {
+            player.ToTable("match_players");
+            player.HasKey(p => new { p.MatchId, p.UserId });
+            player.Property(p => p.Hero).HasMaxLength(16).IsRequired();
+            player.Property(p => p.DisplayName).HasMaxLength(UsernameMaxLength).IsRequired();
+            player.HasIndex(p => p.UserId).HasDatabaseName("ix_match_players_user_id");
+            player.HasOne<MatchRecord>().WithMany().HasForeignKey(p => p.MatchId).OnDelete(DeleteBehavior.Cascade);
+            player.HasOne<User>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<MatchEventRecord>(matchEvent =>
+        {
+            matchEvent.ToTable("match_events");
+
+            // La clave primaria es UNIQUE(match_id, seq): la garantía final de un solo cerrador por ronda.
+            matchEvent.HasKey(e => new { e.MatchId, e.Seq }).HasName("ux_match_events_match_id_seq");
+            matchEvent.Property(e => e.Type).HasMaxLength(64).IsRequired();
+            matchEvent.Property(e => e.Payload).HasColumnType("jsonb").IsRequired();
+            matchEvent.HasOne<MatchRecord>().WithMany().HasForeignKey(e => e.MatchId).OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

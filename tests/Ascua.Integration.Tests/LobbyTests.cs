@@ -170,6 +170,33 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
     }
 
     [Fact]
+    public async Task Leaving_the_real_match_frees_players_to_queue_again()
+    {
+        var host = await NewUserAsync();
+        var guest = await NewUserAsync();
+        var room = await CreateRoomAsync(host, "PUBLIC");
+        var id = room.GetProperty("id").GetString();
+        (await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/join", guest)).Dispose();
+        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "ANVIL" });
+        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "SPARK" });
+        await PutOkAsync(host, $"/api/v1/rooms/{id}/ready", new { ready = true });
+        await PutOkAsync(guest, $"/api/v1/rooms/{id}/ready", new { ready = true });
+        using var started = await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/start", host);
+        var matchId = (await ReadAsync(started)).GetProperty("matchId").GetGuid();
+
+        var engine = factory.Services.GetRequiredService<MatchEngine>();
+        Assert.Null((await engine.RetireAsync(matchId, host.Id, default)).Error);
+        Assert.Null((await engine.RetireAsync(matchId, guest.Id, default)).Error);
+
+        var registry = factory.Services.GetRequiredService<IActiveMatchRegistry>();
+        Assert.Null(await registry.GetAsync(host.Id, default));
+        Assert.Null(await registry.GetAsync(guest.Id, default));
+        using var queue = await SendAsync(HttpMethod.Post, "/api/v1/matchmaking/queue", host);
+        Assert.Equal(HttpStatusCode.OK, queue.StatusCode);
+        (await SendAsync(HttpMethod.Delete, "/api/v1/matchmaking/queue", host)).Dispose();
+    }
+
+    [Fact]
     public async Task Start_without_realtime_service_is_503_and_the_room_reopens()
     {
         using var unavailable = factory
@@ -270,7 +297,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         // Cuatro agrupadores a la vez (además del BackgroundService de la API) sobre la misma cola.
         var processor = new MatchmakingProcessor(
             queue,
-            factory.Launcher,
+            factory.Services.GetRequiredService<IMatchLauncher>(),
             new MatchmakingPolicy(TimeSpan.Zero, TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(1)),
             factory.Services.GetRequiredService<LobbyPolicy>(),
             factory.Services.GetRequiredService<IClock>(),

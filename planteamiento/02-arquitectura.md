@@ -58,8 +58,9 @@ Temporizador (BackgroundService en CADA réplica):   │
   ZRANGEBYSCORE round-deadlines -inf now ───────────┤
                                                     ▼
 CloseRound(matchId, N):
-  a. Lock: SET match:{id}:close:{N} {replica} NX PX 5000      ← un solo cerrador, aunque haya varias réplicas
-  b. Carga la instantánea (Redis; si falta → reconstruye desde los eventos de Postgres)
+  a. Lock: SET ascua:{m:id}:lock {token} NX PX 5000      ← un solo cerrador, aunque haya varias réplicas
+                                                          (por partida: también serializa drafts y abandonos)
+  b. Carga la instantánea (Redis; si falta → la recupera de matches.state en Postgres)
   c. Completa las órdenes faltantes con GUARDAR
   d. Domain.Resolver.Resolve(...)  → eventos con seq = lastSeq+1...
   e. Postgres en una transacción: INSERT eventos (UNIQUE(match_id, seq)) + UPDATE match.version
@@ -101,7 +102,7 @@ Lobby ──(≥2 listos)──► Drafting ──► InProgress ──► Finis
 | Requisito | Implementación |
 |---|---|
 | Autenticación HTTP | JWT con firma ES256 cuya clave vive en Key Vault. *Refresh* rotativo guardado como hash en Postgres; si se reutiliza uno viejo, se revoca toda la familia |
-| Autenticación WS | `POST /realtime/tickets` → ticket opaco de un solo uso con 30 s de vida (`GETDEL` en Redis). Se envía en el *handshake*; si es inválido, se aborta la conexión |
+| Autenticación WS | `POST /api/v1/realtime/tickets` → ticket opaco de un solo uso con 30 s de vida (`GETDEL` en Redis). Se envía en el *handshake*; si es inválido, se aborta la conexión |
 | Autorización | Política por partida en cada método del hub: participante, vivo, ronda abierta. En REST, cada usuario solo accede a lo suyo; el rol `admin` va en un *claim* |
 | Validación | DTOs con `[MaxLength]`/rangos y FluentValidation. `MaximumReceiveMessageSize` = 4 KB. Un mensaje inválido devuelve `Error{code}` sin cerrar la partida |
 | Límites | `AddRateLimiter` por usuario (HTTP 429 con `Retry-After`), *token bucket* por conexión con un `IHubFilter` y máximo 3 conexiones por usuario (contador en Redis) |

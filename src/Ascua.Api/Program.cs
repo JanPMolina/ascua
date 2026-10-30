@@ -29,28 +29,17 @@ builder.Services.AddHealthChecks()
 // Enums como texto en MAYÚSCULAS (HeroClass, estados de sala y cola), igual que en el contrato AsyncAPI.
 builder.Services.ConfigureHttpJsonOptions(options =>
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseUpper, allowIntegerValues: false)));
-// Redis (estado caliente, backplane, tickets, límites) y el lobby (salas + emparejamiento) que vive en él.
-// Sin Redis configurado los endpoints de salas responden 500; el entorno local y las pruebas lo levantan.
-if (RedisConnection.IsConfigured(builder.Configuration))
-{
-    builder.Services.AddAscuaRedis();
-    builder.Services.AddAscuaLobby(builder.Configuration);
-}
-
-builder.Services
-    .AddSignalR(options =>
-    {
-        options.MaximumReceiveMessageSize = 4 * 1024;
-        options.KeepAliveInterval = TimeSpan.FromSeconds(10);
-        options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
-    })
-    .AddMessagePackProtocol();
+// Redis (estado caliente, backplane, tickets, límites) es obligatorio: el tiempo real y el lobby viven ahí.
+builder.Services.AddAscuaRedis();
+// El lobby deja un IMatchLauncher "no disponible" con TryAdd; AddAscuaRealtime lo reemplaza por el real.
+builder.Services.AddAscuaLobby(builder.Configuration);
 
 builder.Services.AddSingleton<IRandom, SecureRandom>();
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddAscuaInfrastructure(builder.Configuration);
 builder.Services.AddAscuaAuthentication();
 builder.Services.AddAscuaRateLimiting(builder.Configuration);
+builder.Services.AddAscuaRealtime(builder.Environment);
 
 // Detrás del ingress de Container Apps la IP real llega en X-Forwarded-For; sin esto el rate
 // limiting por IP vería siempre la del proxy. Solo se confía en el último salto (el ingress).
@@ -82,8 +71,12 @@ app.UseStatusCodePages();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+// Antes de autenticar: una versión de protocolo no soportada no debe gastar el ticket.
+app.UseWebSockets(RealtimeHandshake.WebSocketOptions(app.Configuration));
+app.UseRealtimeProtocolVersion();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseRealtimeConnectionLimit();
 app.UseRateLimiter();
 
 app.MapOpenApi();
@@ -100,7 +93,7 @@ app.MapUserEndpoints();
 app.MapRoomEndpoints();
 app.MapMatchmakingEndpoints();
 
-app.MapHub<MatchHub>("/realtime/match");
+app.MapAscuaRealtime();
 
 await app.RunAsync();
 
