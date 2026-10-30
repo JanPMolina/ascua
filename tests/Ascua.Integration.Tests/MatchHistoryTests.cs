@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Ascua.Api.Endpoints;
 using Ascua.Api.Realtime;
+using Ascua.Application.Audit;
 using Ascua.Application.Matches;
 using Ascua.Application.Users;
 using Ascua.Domain.Model;
@@ -216,8 +217,14 @@ public sealed class MatchHistoryTests(AscuaApiFactory factory)
         Assert.Equal(2, last.Heroes.Count);
         Assert.Contains(last.Heroes, h => h.PlayerId == b.Id.ToString("D") && !string.IsNullOrEmpty(h.Pact));
         Assert.All(full.Rounds.SelectMany(r => r.Events), e => Assert.True(e.ContainsKey("seq")));
-        Assert.Contains(factory.Logs.Entries, entry =>
-            entry.Contains("Auditoría", StringComparison.Ordinal) && entry.Contains(matchId.ToString(), StringComparison.Ordinal));
+        await using (var scope = host.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<AscuaDbContext>();
+            var entry = await db.AuditLog.SingleAsync(e =>
+                e.Action == AuditActions.MatchFullReplayViewed && e.TargetId == matchId.ToString("D"));
+            Assert.Equal(admin.Id, entry.ActorId);
+            Assert.Equal(AuditTargets.Match, entry.TargetType);
+        }
 
         // Sin as=full, el admin no tiene vista de jugador en una partida ajena.
         using var notMine = await adminHttp.GetAsync(new Uri(path, UriKind.Relative));

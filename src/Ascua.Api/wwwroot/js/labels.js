@@ -19,7 +19,7 @@ export const HERO_STATES = { ALIVE: 'vivo', DOWN: 'caído', EXTINCT: 'extinto', 
 
 export const MATCH_STATUS = {
   LOBBY: 'sala', DRAFTING: 'draft', IN_PROGRESS: 'en curso', FINISHED: 'terminada',
-  FAULTED: 'fallida', ABANDONED: 'abandonada', EXPIRED: 'expirada',
+  FAULTED: 'fallida', ABANDONED: 'abandonada', EXPIRED: 'expirada', TERMINATED: 'terminada por un admin',
 };
 
 export const ORDER_TYPES = { MOVE: 'Mover', ATTACK: 'Atacar', ABILITY: 'Habilidad', INTERACT: 'Interactuar', GUARD: 'Guardar' };
@@ -43,6 +43,7 @@ export const OUTCOMES = {
   EMBER_EXTINGUISHED: 'La Ascua se apagó (derrota colectiva)',
   ABANDONED: 'Partida abandonada',
   FAULTED: 'La partida falló en el servidor',
+  TERMINATED: 'Un administrador terminó la partida',
 };
 
 export const EVENTS = {

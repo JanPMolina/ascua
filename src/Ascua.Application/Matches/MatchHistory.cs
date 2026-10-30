@@ -39,7 +39,7 @@ public interface IMatchHistoryStore
 /// <summary>
 /// Registro de los accesos de un administrador a la vista completa de una partida
 /// (planteamiento/02-arquitectura.md, sección 4: "esa acción queda auditada").
-/// TODO(admin-auditoria): reemplazar la implementación por una que escriba en <c>audit_log</c>.
+/// La implementación real (Infrastructure) escribe en <c>audit_log</c>.
 /// </summary>
 public interface IReplayAccessAudit
 {

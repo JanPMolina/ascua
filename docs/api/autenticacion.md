@@ -71,7 +71,11 @@ Todas las respuestas de error usan `application/problem+json` con `type` = `urn:
 | `invalid-refresh-token` | 401 | Refresh token desconocido o expirado |
 | `refresh-token-reused` | 401 | Refresh token ya rotado o revocado; se revocó la familia |
 | `forbidden` | 403 | Autenticado pero sin permiso |
-| `account-suspended` | 403 | La cuenta está suspendida |
+| `account-suspended` | 403 | La cuenta está suspendida: en login, en refresh (si la familia no estaba revocada) y con cualquier access token emitido antes de la suspensión (ver docs/api/administracion.md) |
+| `user-not-found` | 404 | Administración: el usuario no existe |
+| `match-not-found` | 404 | Administración: la partida no existe |
+| `cannot-target-self` | 409 | Administración: un admin no puede suspenderse a sí mismo |
+| `match-busy` | 409 | Administración: la partida estaba cerrando una ronda; reintentar |
 | `not-found` | 404 | Ruta o recurso inexistente |
 | `username-taken` | 409 | Nombre de usuario en uso |
 | `email-taken` | 409 | Correo en uso |

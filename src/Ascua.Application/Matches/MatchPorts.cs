@@ -1,3 +1,4 @@
+using Ascua.Application.Audit;
 using Ascua.Domain.Events;
 using Ascua.Domain.Model;
 
@@ -23,8 +24,11 @@ public interface IMatchStore
     /// </summary>
     Task<bool> CommitAsync(MatchSnapshot previous, MatchSnapshot next, IReadOnlyList<DomainEvent> events, CancellationToken cancellationToken);
 
-    /// <summary>Marca un estado terminal fuera del dominio (FAULTED, EXPIRED) sin exigir versión.</summary>
-    Task MarkStatusAsync(Guid matchId, MatchStatus status, DateTimeOffset now, CancellationToken cancellationToken);
+    /// <summary>
+    /// Marca un estado terminal fuera del dominio (FAULTED, EXPIRED, TERMINATED) sin exigir versión. Si se
+    /// pasa <paramref name="audit"/>, se inserta en la misma transacción. Devuelve si la partida seguía viva.
+    /// </summary>
+    Task<bool> MarkStatusAsync(Guid matchId, MatchStatus status, DateTimeOffset now, AuditEntry? audit, CancellationToken cancellationToken);
 
     /// <summary>Partidas vivas sin cambios desde <paramref name="before"/> (para expirarlas).</summary>
     Task<IReadOnlyList<Guid>> FindInactiveAsync(DateTimeOffset before, int limit, CancellationToken cancellationToken);
@@ -129,6 +133,9 @@ public interface IConnectionLimiter
     Task<bool> TryAcquireAsync(Guid userId, string leaseId, int max, CancellationToken cancellationToken);
 
     Task ReleaseAsync(Guid userId, string leaseId, CancellationToken cancellationToken);
+
+    /// <summary>Conexiones vivas del usuario en todas las réplicas (arriendos sin vencer).</summary>
+    Task<int> CountAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>Renueva las conexiones vivas de esta réplica (las de una réplica caída expiran solas).</summary>
     Task RenewAsync(IEnumerable<(Guid UserId, string LeaseId)> leases, CancellationToken cancellationToken);

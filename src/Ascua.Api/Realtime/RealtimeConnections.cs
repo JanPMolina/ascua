@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Ascua.Application.Admin;
 using Ascua.Application.Matches;
 using Microsoft.AspNetCore.SignalR;
 using StackExchange.Redis;
@@ -13,9 +14,17 @@ namespace Ascua.Api.Realtime;
 public sealed class RealtimeConnections(
     IConnectionMultiplexer redis,
     IHubContext<MatchHub> hub,
-    ILogger<RealtimeConnections> logger)
+    ILogger<RealtimeConnections> logger) : IRealtimeKicker
 {
+    public const string KickedByAdmin = "KICKED_BY_ADMIN";
+
+    /// <summary>Margen entre avisar el fin de una partida terminada por un admin y cortar sus conexiones.</summary>
+    public static readonly TimeSpan MatchKickDelay = TimeSpan.FromSeconds(2);
+
     private static readonly RedisChannel ControlChannel = RedisChannel.Literal("ascua:realtime:control");
+
+    // Las órdenes kick-* se aplican primero en la réplica que las emite; al volver por Redis se ignoran aquí.
+    private readonly string _replicaId = Guid.NewGuid().ToString("N");
 
     private readonly ConcurrentDictionary<string, HubCallerContext> _connections = new();
     private readonly ConcurrentDictionary<string, Guid> _leases = new();
@@ -45,24 +54,77 @@ public sealed class RealtimeConnections(
         }
     }
 
+    /// <summary>Cierra en todas las réplicas las conexiones del usuario (suspendido) con <c>KICKED_BY_ADMIN</c>.</summary>
+    public async Task KickUserAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        await KickLocalAsync(c => UserOf(c) == userId);
+        await redis.GetSubscriber().PublishAsync(ControlChannel, $"kick-user|{_replicaId}|{userId:D}");
+    }
+
+    /// <summary>
+    /// Cierra en todas las réplicas las conexiones de la partida terminada. Espera <see cref="MatchKickDelay"/>
+    /// para que antes lleguen <c>MatchFinished</c> y el <c>Error</c> <c>KICKED_BY_ADMIN</c> (van por el backplane).
+    /// </summary>
+    public Task KickMatchAsync(Guid matchId, CancellationToken cancellationToken)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(MatchKickDelay, CancellationToken.None);
+                await KickLocalAsync(c => MatchOf(c) == matchId, notify: false);
+                await redis.GetSubscriber().PublishAsync(ControlChannel, $"kick-match|{_replicaId}|{matchId:D}");
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "No se pudieron cerrar las conexiones de la partida {MatchId}", matchId);
+            }
+        }, CancellationToken.None);
+        return Task.CompletedTask;
+    }
+
     public Task SubscribeAsync() =>
         redis.GetSubscriber().SubscribeAsync(ControlChannel, async (_, message) =>
         {
             var parts = ((string?)message)?.Split('|');
-            if (parts is ["abort", var connectionId, var reason])
+            try
             {
-                try
+                switch (parts)
                 {
-                    await AbortLocalAsync(connectionId, reason);
+                    case ["abort", var connectionId, var reason]:
+                        await AbortLocalAsync(connectionId, reason);
+                        break;
+                    case ["kick-user", var origin, var user] when origin != _replicaId && Guid.TryParse(user, out var userId):
+                        await KickLocalAsync(c => UserOf(c) == userId);
+                        break;
+                    case ["kick-match", var origin, var match] when origin != _replicaId && Guid.TryParse(match, out var matchId):
+                        await KickLocalAsync(c => MatchOf(c) == matchId, notify: false);
+                        break;
                 }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "No se pudo cerrar la conexión {ConnectionId}", connectionId);
-                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "No se pudo procesar el mensaje de control {Message}", parts?.FirstOrDefault());
             }
         });
 
     public Task UnsubscribeAsync() => redis.GetSubscriber().UnsubscribeAsync(ControlChannel);
+
+    private async Task KickLocalAsync(Func<HubCallerContext, bool> predicate, bool notify = true)
+    {
+        foreach (var context in _connections.Values.Where(predicate).ToList())
+        {
+            if (notify)
+            {
+                await AbortLocalAsync(context.ConnectionId, KickedByAdmin);
+            }
+            else
+            {
+                logger.LogInformation("Cerrando la conexión {ConnectionId}: {Reason}", context.ConnectionId, KickedByAdmin);
+                context.Abort();
+            }
+        }
+    }
 
     private async Task<bool> AbortLocalAsync(string connectionId, string reason)
     {
@@ -73,11 +135,19 @@ public sealed class RealtimeConnections(
 
         // SignalR no deja al servidor poner la razón en Close.error: se envía antes como Error{code}.
         logger.LogInformation("Cerrando la conexión {ConnectionId}: {Reason}", connectionId, reason);
-        await hub.Clients.Client(connectionId).SendAsync(
-            "Error", RealtimeReplies.Error(reason, "La conexión se cierra: se abrió otra sesión de este usuario en la partida."));
+        var message = reason == KickedByAdmin
+            ? "Un administrador cerró esta conexión."
+            : "La conexión se cierra: se abrió otra sesión de este usuario en la partida.";
+        await hub.Clients.Client(connectionId).SendAsync("Error", RealtimeReplies.Error(reason, message));
         context.Abort();
         return true;
     }
+
+    private static Guid? UserOf(HubCallerContext context) =>
+        Guid.TryParse(context.UserIdentifier, out var id) ? id : null;
+
+    private static Guid? MatchOf(HubCallerContext context) =>
+        Guid.TryParse(context.User?.FindFirst(TicketAuthentication.MatchClaim)?.Value, out var id) ? id : null;
 }
 
 /// <summary>
