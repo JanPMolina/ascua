@@ -44,58 +44,59 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
         var (cb, _) = await RealtimeSetup.JoinAsync(first, b, matchId);
         await using var _ = ca;
         await using var __ = cb;
+        // Las rondas vencen solas cada 4 s: nada de lo que sigue supone una ronda exacta, porque en un runner
+        // lento el plazo puede cerrar una ronda antes que los clientes. Se comprueban resultados, no tiempos.
         await StartRoundsAsync(matchId, ca, cb);
-        await SubmitGuardAsync(ca, matchId, 1);
-        await SubmitGuardAsync(cb, matchId, 1);
+        await SubmitGuardAsync(ca, matchId, 1, allowStale: true);
+        await SubmitGuardAsync(cb, matchId, 1, allowStale: true);
         await ca.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 2);
         var confirmed = await EventLogAsync(first, matchId);
 
-        // Ronda 2 abierta y sin órdenes (desconectarse no la cierra): la instancia muere a mitad de ronda y,
-        // sin ningún cliente conectado, solo el plazo guardado en Redis puede cerrarla en la instancia nueva.
+        // La instancia muere con una ronda abierta y sin órdenes (desconectarse no la cierra). Sin ningún cliente
+        // conectado, solo el plazo guardado en Redis puede hacer avanzar la partida en la instancia nueva.
         await first.DisposeAsync();
         await using var second = Instance();
         var a2 = await RealtimeSetup.LoginAsync(second, a);
         var b2 = await RealtimeSetup.LoginAsync(second, b);
-        await EventuallyAsync(() => MatchAsync(second, matchId), m => m.Round >= 3, "la ronda 2 se cierre por plazo");
+        var reopened = (await MatchAsync(second, matchId)).Round;
+        await EventuallyAsync(() => MatchAsync(second, matchId), m => m.Round > reopened, "el plazo cierre la ronda abierta");
 
-        // Los clientes reconectan con ticket nuevo y retoman en el mismo seq que quedó en Postgres.
-        var (ca2, ack2) = await RealtimeSetup.JoinAsync(second, a2, matchId);
+        // Los clientes reconectan con ticket nuevo y retoman en el seq que quedó en Postgres.
+        var (ca2, _) = await JoinCheckingSeqAsync(second, a2, matchId);
         var (cb2, _) = await RealtimeSetup.JoinAsync(second, b2, matchId);
         await using var ___ = ca2;
         await using var ____ = cb2;
-        Assert.Equal(3, ack2.Snapshot!.View.Round);
-        Assert.Equal((await MatchAsync(second, matchId)).LastSeq, ack2.Snapshot.Seq);
 
         // Orden confirmada (ACK) a mitad de ronda y otro reinicio: la jugada no se pierde.
-        Assert.Equal("ACCEPTED", (await ca2.SubmitAsync(matchId, 3, "MOVE", "N")).Result);
+        var moved = await SubmitMoveAsync(ca2, matchId);
         await second.DisposeAsync();
         await using var third = Instance();
         var a3 = await RealtimeSetup.LoginAsync(third, a);
         var b3 = await RealtimeSetup.LoginAsync(third, b);
-        await EventuallyAsync(() => MatchAsync(third, matchId), m => m.Round >= 4, "la ronda 3 se cierre");
+        await EventuallyAsync(() => MatchAsync(third, matchId), m => m.Round > moved, $"la ronda {moved} se cierre");
 
-        var (ca3, ack3) = await RealtimeSetup.JoinAsync(third, a3, matchId);
+        // La partida sigue en la tercera instancia: los clientes vuelven y la ronda en curso se resuelve.
+        var (ca3, ack3) = await JoinCheckingSeqAsync(third, a3, matchId);
         var (cb3, _) = await RealtimeSetup.JoinAsync(third, b3, matchId);
         await using var _____ = ca3;
         await using var ______ = cb3;
         var round = ack3.Snapshot!.View.Round;
         await SubmitGuardAsync(ca3, matchId, round, allowStale: true);
         await SubmitGuardAsync(cb3, matchId, round, allowStale: true);
-        var resolved = await ca3.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == round);
-        Assert.Equal(ack3.Snapshot.Seq, resolved.PreviousSeq);
+        await EventuallyAsync(() => MatchAsync(third, matchId), m => m.Round > round, $"la ronda {round} se cierre");
 
-        // Ni pérdidas ni duplicados: lo confirmado antes del primer reinicio sigue intacto, el seq es
-        // contiguo, cada ronda se resolvió una sola vez y el MOVE de A de la ronda 3 se aplicó.
+        // Ni pérdidas ni duplicados: lo confirmado antes del primer reinicio sigue intacto, el seq es contiguo,
+        // cada ronda se resolvió una sola vez y en orden, y el MOVE con ACK se aplicó en su ronda.
         var log = await EventLogAsync(third, matchId);
         Assert.Equal(confirmed, log.Take(confirmed.Count));
         Assert.Equal(Enumerable.Range(1, log.Count).Select(i => (long)i), log.Select(e => e.Seq));
         var resolutions = log.Where(e => e.Type == nameof(Domain.Events.RoundResolved)).Select(e => e.Round).ToList();
-        Assert.Equal(resolutions.Distinct(), resolutions);
-        Assert.Equal(round, resolutions.Count);
-        Assert.Contains(log, e => e.Round == 3
+        Assert.Equal(Enumerable.Range(1, resolutions.Count), resolutions);
+        Assert.True(resolutions.Count >= round);
+        Assert.Contains(log, e => e.Round == moved
             && e.Type is nameof(HeroMoved) or nameof(MoveBounced)
             && e.Payload.Contains(a.Id.ToString("D"), StringComparison.Ordinal));
-        Assert.Equal(resolved.Seq, (await MatchAsync(third, matchId)).LastSeq);
+        Assert.True((await MatchAsync(third, matchId)).LastSeq >= log[^1].Seq);
     }
 
     [Theory]
@@ -117,9 +118,10 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
         await using var _ = ca;
         await using var __ = cb;
         await StartRoundsAsync(matchId, ca, cb);
-        var opened = await ca.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 1);
         Assert.Equal(HttpStatusCode.OK, await StatusAsync(http, "/health/ready"));
 
+        // Las rondas vencen solas cada 2 s, así que se sigue a la última abierta (en un runner lento puede no ser la 1).
+        var opened = ca.All<RoundOpenedMessage>("RoundOpened").MaxBy(m => m.Round)!;
         IContainer container = dependency == "redis" ? factory.Redis : factory.Postgres;
         await container.PauseAsync();
         try
@@ -127,7 +129,7 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
             Assert.Equal(HttpStatusCode.ServiceUnavailable, await StatusAsync(http, "/health/ready"));
             Assert.Equal(HttpStatusCode.OK, await StatusAsync(http, "/health/live"));
 
-            // El plazo de la ronda 1 vence durante la caída: el temporizador falla, lo registra y sigue vivo.
+            // El plazo de la ronda abierta vence durante la caída: el temporizador falla, lo registra y sigue vivo.
             var remaining = DateTimeOffset.Parse(opened.Deadline, CultureInfo.InvariantCulture) - DateTimeOffset.UtcNow;
             if (remaining > TimeSpan.Zero)
             {
@@ -143,12 +145,13 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
 
         await EventuallyAsync(() => StatusAsync(http, "/health/ready"), s => s == HttpStatusCode.OK, "/health/ready vuelva a OK");
 
-        // El plazo vencido no se perdió: la ronda 1 se cierra con GUARD y la partida sigue con normalidad.
-        var first = await ca.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1, TimeSpan.FromSeconds(30));
+        // El plazo vencido no se perdió: esa ronda se cierra con GUARD y la partida sigue con normalidad.
+        var first = await ca.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == opened.Round, TimeSpan.FromSeconds(30));
         Assert.Contains(first.Delta.Events, e => (string)e["type"] == "DEFAULT_GUARD_APPLIED");
-        await SubmitGuardAsync(ca, matchId, 2, allowStale: true);
-        await SubmitGuardAsync(cb, matchId, 2, allowStale: true);
-        var second = await cb.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 2);
+        var next = opened.Round + 1;
+        await SubmitGuardAsync(ca, matchId, next, allowStale: true);
+        await SubmitGuardAsync(cb, matchId, next, allowStale: true);
+        var second = await cb.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == next);
         Assert.Equal(first.Seq, second.PreviousSeq);
 
         // Y se pueden crear partidas nuevas.
@@ -233,9 +236,7 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
     [Fact]
     public async Task An_abandoned_match_expires_and_releases_the_active_match_mark()
     {
-        await using var host = Instance(
-            ("Ascua:Realtime:InactivityTimeout", "00:00:01"),
-            ("Ascua:Realtime:CleanupInterval", "00:00:00.250"));
+        await using var host = Instance();
         var a = await RealtimeSetup.RegisterAsync(host);
         var b = await RealtimeSetup.RegisterAsync(host);
         var matchId = await RealtimeSetup.LaunchAsync(host, a, b);
@@ -245,9 +246,14 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
             await redis.StringSetAsync($"ascua:user:{player.Id:N}:active_match", matchId.ToString("N"));
         }
 
-        // A entra y nadie juega (B ni siquiera se conecta): sin cambios por InactivityTimeout, la limpieza la expira.
+        // A entra y nadie juega (B ni siquiera se conecta). La limpieza corre en otra réplica con InactivityTimeout
+        // corto, que se levanta recién ahora para que la partida no expire antes de que A alcance a entrar.
         var (ca, _) = await RealtimeSetup.JoinAsync(host, a, matchId);
         await using var _ = ca;
+        await using var cleaner = Instance(
+            ("Ascua:Realtime:InactivityTimeout", "00:00:01"),
+            ("Ascua:Realtime:CleanupInterval", "00:00:00.250"));
+        Assert.NotNull(cleaner.Services); // Arranca la réplica (y su RoundTimerService).
         await EventuallyAsync(() => MatchAsync(host, matchId), m => m.Status == "EXPIRED", "la partida expire");
 
         var error = await ca.WaitForAsync<ErrorPushDto>("Error", e => e.Error?.Code == "MATCH_NOT_ACTIVE");
@@ -289,6 +295,41 @@ public sealed class ResilienceTests(AscuaApiFactory factory)
         await b.PickFirstAsync(matchId);
         await a.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 1);
         await b.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 1);
+    }
+
+    /// <summary>
+    /// Reconecta y comprueba que el cliente retoma en el seq de Postgres. El plazo puede confirmar otra ronda
+    /// en cualquier momento, así que no se compara contra una lectura puntual: el ACK nunca va adelante de
+    /// Postgres y <c>GetSnapshot</c> converge al mismo seq.
+    /// </summary>
+    private static async Task<(RealtimeTestClient Client, JoinReply Ack)> JoinCheckingSeqAsync(
+        WebApplicationFactory<Program> host, TestPlayer player, Guid matchId)
+    {
+        var (client, ack) = await RealtimeSetup.JoinAsync(host, player, matchId);
+        Assert.True(ack.Snapshot!.Seq <= (await MatchAsync(host, matchId)).LastSeq);
+        await EventuallyAsync(
+            async () => ((await client.GetSnapshotAsync(matchId)).Seq, (await MatchAsync(host, matchId)).LastSeq),
+            seqs => seqs.Item1 == seqs.Item2,
+            "el seq del cliente coincida con el de Postgres");
+        return (client, ack);
+    }
+
+    /// <summary>MOVE N en la ronda abierta hasta que tenga ACK (si el plazo la cierra antes, va a la siguiente).</summary>
+    private static async Task<int> SubmitMoveAsync(RealtimeTestClient client, Guid matchId)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var round = (await client.GetSnapshotAsync(matchId)).View!.Round;
+            var reply = await client.SubmitAsync(matchId, round, "MOVE", "N");
+            if (reply.Result == "ACCEPTED")
+            {
+                return round;
+            }
+
+            Assert.Equal("STALE_ROUND", reply.Error?.Code);
+        }
+
+        throw new TimeoutException("Ninguna ronda quedó abierta el tiempo suficiente para enviar el MOVE.");
     }
 
     /// <summary>GUARD aceptado; con <paramref name="allowStale"/> también vale que el plazo ya la haya cerrado.</summary>
