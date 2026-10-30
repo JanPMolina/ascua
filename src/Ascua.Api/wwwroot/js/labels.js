@@ -32,6 +32,22 @@ export const BLESSINGS = {
   ESCARCHA: 'Escarcha', OJO_DE_BUHO: 'Ojo de búho',
 };
 
+/** Qué hace cada bendición (planteamiento/01-juego.md §10); se muestra en el draft y en la guía. */
+export const BLESSING_EFFECTS = {
+  BRASA_VIVA: 'Al atacar: 20% de quemar (1 de daño por ronda, 2 rondas).',
+  PASO_IGNEO: 'Al moverte: 15% de dejar fuego en la casilla anterior.',
+  PUNO_DE_PIEDRA: '+1 de daño, pero −1 de vida máxima.',
+  CORAZON_DOBLE: '+2 de vida máxima, pero −10% de bloqueo.',
+  HOJA_HAMBRIENTA: 'Al matar: te curas 1.',
+  ESPEJO_ROTO: 'Al recibir un golpe: 25% de devolver 1 de daño.',
+  LAMPARA: '+1 de visión.',
+  GANZUA: 'Los cofres te dan +1 ascua.',
+  ULTIMO_ALIENTO: 'Una vez por partida: al caer, quedas con 1 de vida.',
+  CODICIA: '+1 ascua por golpe final, pero recibes +1 de daño.',
+  ESCARCHA: 'Al atacar: 20% de congelar (pierde su siguiente acción).',
+  OJO_DE_BUHO: 'Ves los ataques anunciados aunque estén fuera de tu visión.',
+};
+
 export const ENEMIES = {
   CARRONERO: 'Carroñero', POLILLA: 'Polilla', GELATINA: 'Gelatina', SALTASAPO: 'Saltasapo',
   BALLESTERO: 'Ballestero', TOTEM: 'Tótem', CELADOR: 'Celador',

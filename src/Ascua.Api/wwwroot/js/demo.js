@@ -4,27 +4,59 @@
 // los ACK, la idempotencia por clientActionId, la reconexión con GetSnapshot y el fin de partida.
 
 export const DEMO_MATCH_ID = '0193a1c2-5e7f-7a10-8b2c-3d4e5f607182';
-const ME_ID = '0193a1b0-1111-7c00-9a00-00000000a001';
+/** Id del jugador propio en la demo y el tutorial: los eventos simulados lo usan como autor. */
+export const DEMO_PLAYER_ID = '0193a1b0-1111-7c00-9a00-00000000a001';
+const ME_ID = DEMO_PLAYER_ID;
 const BETO_ID = '0193a1b0-1111-7c00-9a00-00000000a002';
 const CARO_ID = '0193a1b0-1111-7c00-9a00-00000000a003';
 const OFFER_ID = '0193a1c3-0000-7d00-8000-0000000000f1';
 
-const ROUND_MS = 20000;
 const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
-
-const LAYOUT = [
-  // x → 0..8; y ↓ 0..8.  # muro, C cofre, S escalera, ^ pinchos armados, B brasero, A altar
-  '....#...S',
-  '.B......#',
-  '......^..',
-  '...#.C...',
-  '...#.....',
-  '.....##..',
-  '..#......',
-  '.......C.',
-  'A........',
-];
 const LAYOUT_KINDS = { '.': 'FLOOR', '#': 'WALL', C: 'CHEST', S: 'STAIRS', '^': 'SPIKES_ARMED', B: 'BRAZIER', A: 'ALTAR' };
+
+/** Escenario de la demo. El tutorial (tutorial.js) arma el suyo con la misma forma. */
+export const DEMO_SCENARIO = {
+  roundMs: 20000,
+  // x → 0..8; y ↓ 0..8.  # muro, C cofre, S escalera, ^ pinchos armados, B brasero, A altar
+  layout: [
+    '....#...S',
+    '.B......#',
+    '......^..',
+    '...#.C...',
+    '...#.....',
+    '.....##..',
+    '..#......',
+    '.......C.',
+    'A........',
+  ],
+  draftOptions: ['LAMPARA', 'BRASA_VIVA'],
+  me: {
+    playerId: ME_ID, displayName: 'ana', hero: 'CHISPA', state: 'ALIVE', hp: 4, maxHp: 4, shield: 0,
+    position: { x: 4, y: 6 }, facing: 'N', embers: 0, charges: 0, abilityCooldown: 0, stealthRoundsLeft: 0,
+    downRoundsLeft: null, blessings: [], pact: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.' },
+    decided: false, pendingOrder: null,
+  },
+  allies: [
+    { playerId: BETO_ID, displayName: 'beto', hero: 'YUNQUE', state: 'ALIVE', hp: 6, maxHp: 6, position: { x: 4, y: 7 }, facing: 'N', embers: 1, blessingCount: 1, connected: true, decided: false },
+    { playerId: CARO_ID, displayName: 'caro', hero: 'CUERVO', state: 'ALIVE', hp: 4, maxHp: 4, position: { x: 1, y: 8 }, facing: 'E', embers: 3, blessingCount: 1, connected: true, decided: false },
+  ],
+  /** Pactos de los aliados: solo se revelan en MatchFinished (la vista nunca los lleva). */
+  allyPacts: {
+    [BETO_ID]: { pactId: 'NEVER_DOWNED', description: 'Terminar sin haber caído.', fulfilled: true },
+    [CARO_ID]: { pactId: 'BETRAY_TWICE_UNSEEN', description: 'Traicionar dos veces sin ser visto.', fulfilled: false },
+  },
+  enemies: [
+    { enemyId: 12, kind: 'BALLESTERO', hp: 3, maxHp: 3, position: { x: 4, y: 0 }, facing: 'S', phase: null, telegraph: [] },
+    { enemyId: 9, kind: 'CARRONERO', hp: 3, maxHp: 3, position: { x: 7, y: 4 }, facing: 'W', phase: null, telegraph: [] },
+    { enemyId: 15, kind: 'GELATINA', hp: 5, maxHp: 5, position: { x: 1, y: 3 }, facing: 'E', phase: null, telegraph: [] },
+  ],
+  /** Si es true, la partida termina sola al quedarse sin enemigos (el tutorial decide cuándo terminar). */
+  autoFinish: true,
+  /** Si es true, los golpes nunca dejan al héroe en 0 (el tutorial no castiga equivocarse). */
+  forgiving: false,
+  /** Si es true, el draft no se ofrece al unirse: lo pide quien maneja el escenario con sendOffer(). */
+  holdDraft: false,
+};
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const key = (x, y) => `${x},${y}`;
@@ -32,32 +64,22 @@ const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 const inBounds = (x, y) => x >= 0 && y >= 0 && x < 9 && y < 9;
 
 class DemoServer {
-  constructor(transport) {
+  constructor(transport, scenario) {
     this.t = transport;
+    this.scenario = scenario;
     this.seq = 0;
     this.status = 'DRAFTING';
     this.round = 0;
     this.floor = 1;
     this.deadline = null;
     this.tiles = new Map();
-    LAYOUT.forEach((row, y) => [...row].forEach((ch, x) => this.tiles.set(key(x, y), LAYOUT_KINDS[ch])));
+    scenario.layout.forEach((row, y) => [...row].forEach((ch, x) => this.tiles.set(key(x, y), LAYOUT_KINDS[ch])));
     this.seen = new Set();
-    this.me = {
-      playerId: ME_ID, displayName: 'ana', hero: 'CHISPA', state: 'ALIVE', hp: 4, maxHp: 4, shield: 0,
-      position: { x: 4, y: 6 }, facing: 'N', embers: 0, charges: 0, abilityCooldown: 0, stealthRoundsLeft: 0,
-      downRoundsLeft: null, blessings: [], pact: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.' },
-      decided: false, pendingOrder: null,
-    };
-    this.allies = [
-      { playerId: BETO_ID, displayName: 'beto', hero: 'YUNQUE', state: 'ALIVE', hp: 6, maxHp: 6, position: { x: 4, y: 7 }, facing: 'N', embers: 1, blessingCount: 1, connected: true, decided: false },
-      { playerId: CARO_ID, displayName: 'caro', hero: 'CUERVO', state: 'ALIVE', hp: 4, maxHp: 4, position: { x: 1, y: 8 }, facing: 'E', embers: 3, blessingCount: 1, connected: true, decided: false },
-    ];
-    this.enemies = new Map([
-      [12, { enemyId: 12, kind: 'BALLESTERO', hp: 3, maxHp: 3, position: { x: 4, y: 0 }, facing: 'S', phase: null, telegraph: [] }],
-      [9, { enemyId: 9, kind: 'CARRONERO', hp: 3, maxHp: 3, position: { x: 7, y: 4 }, facing: 'W', phase: null, telegraph: [] }],
-      [15, { enemyId: 15, kind: 'GELATINA', hp: 5, maxHp: 5, position: { x: 1, y: 3 }, facing: 'E', phase: null, telegraph: [] }],
-    ]);
+    this.me = clone(scenario.me);
+    this.allies = clone(scenario.allies);
+    this.enemies = new Map(scenario.enemies.map((e) => [e.enemyId, clone(e)]));
     this.enemies.forEach((e) => this.updateTelegraph(e));
+    this.lastOrder = null;
     this.orders = new Map(); // clientActionId → ack
     this.roundOrder = null; // { clientActionId, order }
     this.botsDecided = new Set();
@@ -135,7 +157,7 @@ class DemoServer {
     if (!p || p.matchId !== DEMO_MATCH_ID) return err('MATCH_NOT_FOUND', 'La partida no existe.');
     switch (method) {
       case 'JoinMatch':
-        if (this.status === 'DRAFTING' && !this.offer) this.later(600, () => this.sendOffer());
+        if (this.status === 'DRAFTING' && !this.offer && !this.scenario.holdDraft) this.later(600, () => this.sendOffer());
         return { matchId: DEMO_MATCH_ID, playerId: ME_ID, seat: 1, snapshot: this.snapshot() };
       case 'GetSnapshot':
         return this.snapshot();
@@ -155,11 +177,12 @@ class DemoServer {
 
   sendOffer() {
     this.offer = {
-      matchId: DEMO_MATCH_ID, offerId: OFFER_ID, source: 'INITIAL_DRAFT', options: ['LAMPARA', 'BRASA_VIVA'],
+      matchId: DEMO_MATCH_ID, offerId: OFFER_ID, source: 'INITIAL_DRAFT', options: [...this.scenario.draftOptions],
       deadline: new Date(Date.now() + 20000).toISOString(),
     };
     this.t.push('DraftOffer', this.offer);
-    this.later(20000, () => { if (this.offer) this.pick(this.offer.options[Math.floor(Math.random() * 2)]); });
+    const offerId = this.offer.offerId;
+    this.later(20000, () => { if (this.offer?.offerId === offerId) this.pick(this.offer.options[Math.floor(Math.random() * 2)]); });
   }
 
   pick(blessingId) {
@@ -211,14 +234,15 @@ class DemoServer {
     this.me.decided = false;
     this.me.pendingOrder = null;
     this.allies.forEach((a) => { a.decided = false; });
-    this.deadline = new Date(Date.now() + ROUND_MS).toISOString();
+    const roundMs = this.scenario.roundMs;
+    this.deadline = new Date(Date.now() + roundMs).toISOString();
     const round = this.round;
-    this.t.push('RoundOpened', { matchId: DEMO_MATCH_ID, round, deadline: this.deadline, durationMs: ROUND_MS, expectedPlayers: this.expected() });
+    this.t.push('RoundOpened', { matchId: DEMO_MATCH_ID, round, deadline: this.deadline, durationMs: roundMs, expectedPlayers: this.expected() });
     for (const ally of this.allies) {
       if (ally.state !== 'ALIVE') continue;
       this.later(1500 + Math.random() * 4000, () => { if (this.round === round && !this.resolving) this.decided(ally.playerId); });
     }
-    this.later(ROUND_MS, () => { if (this.round === round && !this.resolving) this.resolve(); });
+    this.later(roundMs, () => { if (this.round === round && !this.resolving) this.resolve(); });
   }
 
   expected() {
@@ -249,6 +273,7 @@ class DemoServer {
 
     // Orden del jugador (GUARDAR por defecto si no envió nada).
     const order = this.roundOrder ?? { type: 'GUARD' };
+    this.lastOrder = { ...clone(order), byDefault: !this.roundOrder };
     if (!this.roundOrder && me.state === 'ALIVE') events.push({ type: 'DEFAULT_GUARD_APPLIED', actorId: ME_ID });
     let attacked = false;
     if (me.state === 'ALIVE') {
@@ -317,7 +342,7 @@ class DemoServer {
       if (me.state === 'ALIVE' && e.telegraph.some((p) => p.x === me.position.x && p.y === me.position.y)) {
         const dmg = order.type === 'GUARD' ? 0 : 1; // GUARDAR anula los golpes de 1.
         if (dmg > 0) {
-          me.hp = Math.max(0, me.hp - dmg);
+          me.hp = Math.max(this.scenario.forgiving ? 1 : 0, me.hp - dmg);
           events.push({ type: 'DAMAGED', actorId: `enemy:${e.enemyId}`, targetId: ME_ID, amount: dmg });
           if (me.hp === 0) {
             me.state = 'DOWN';
@@ -358,7 +383,7 @@ class DemoServer {
     };
     this.t.push('RoundResolved', msg);
 
-    if (this.enemies.size === 0 || me.state !== 'ALIVE' || this.round >= 60) {
+    if ((this.scenario.autoFinish && this.enemies.size === 0) || me.state !== 'ALIVE' || this.round >= 60) {
       this.later(800, () => this.finish(this.enemies.size === 0 ? 'WARDEN_DEFEATED' : 'EMBER_EXTINGUISHED'));
     } else {
       this.later(1200, () => this.openRound());
@@ -412,15 +437,33 @@ class DemoServer {
     e.telegraph = tele;
   }
 
+  myPactFulfilled() {
+    switch (this.me.pact.pactId) {
+      case 'OPEN_3_CHESTS': return this.chestsOpened >= 3;
+      case 'OPEN_1_CHEST': return this.chestsOpened >= 1;
+      case 'NEVER_DOWNED': return this.me.state === 'ALIVE';
+      default: return false;
+    }
+  }
+
+  /** Agrega un enemigo en una casilla libre (el tutorial lo usa para preparar cada lección). */
+  spawn(enemy) {
+    if (this.blocked(enemy.position.x, enemy.position.y)) return false;
+    const e = { facing: 'S', phase: null, telegraph: [], maxHp: enemy.hp, ...clone(enemy) };
+    this.enemies.set(e.enemyId, e);
+    this.updateTelegraph(e);
+    return true;
+  }
+
   finish(outcome) {
     if (this.status !== 'IN_PROGRESS' && this.status !== 'DRAFTING') return;
     this.status = 'FINISHED';
     this.dispose();
     this.seq += 1;
+    const me = this.me;
     const standings = [
-      { playerId: ME_ID, displayName: 'ana', hero: 'CHISPA', finalState: this.me.state, embers: this.me.embers, pact: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.', fulfilled: this.chestsOpened >= 3 } },
-      { playerId: BETO_ID, displayName: 'beto', hero: 'YUNQUE', finalState: this.allies[0].state, embers: this.allies[0].embers, pact: { pactId: 'NEVER_DOWNED', description: 'Terminar sin haber caído.', fulfilled: true } },
-      { playerId: CARO_ID, displayName: 'caro', hero: 'CUERVO', finalState: this.allies[1].state, embers: this.allies[1].embers, pact: { pactId: 'BETRAY_TWICE_UNSEEN', description: 'Traicionar dos veces sin ser visto.', fulfilled: false } },
+      { playerId: me.playerId, displayName: me.displayName, hero: me.hero, finalState: me.state, embers: me.embers, pact: { ...me.pact, fulfilled: this.myPactFulfilled() } },
+      ...this.allies.map((a) => ({ playerId: a.playerId, displayName: a.displayName, hero: a.hero, finalState: a.state, embers: a.embers, pact: this.scenario.allyPacts?.[a.playerId] ?? null })),
     ].sort((a, b) => b.embers - a.embers).map((s, i) => ({ ...s, placement: i + 1 }));
     this.t.push('MatchFinished', {
       matchId: DEMO_MATCH_ID, seq: this.seq, outcome, rounds: this.round,
@@ -434,12 +477,12 @@ class DemoServer {
 
 /** Implementa la misma interfaz que RealTransport (hub.js). */
 export class DemoTransport {
-  constructor() {
+  constructor(scenario = DEMO_SCENARIO) {
     this.matchId = DEMO_MATCH_ID;
     this.handlers = new Map();
     this.closeHandler = () => {};
     this.isConnected = false;
-    this.server = new DemoServer(this);
+    this.server = new DemoServer(this, scenario);
     this.loseNextAck = false;
     this.protocolName = 'demo';
   }

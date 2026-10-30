@@ -15,6 +15,7 @@
     <h1>Ascua <small>cliente de prueba</small></h1>
     <span id="demo-badge" class="badge warn" hidden>MODO DEMO (sin servidor)</span>
     <span class="spacer"></span>
+    <button id="btn-howto" type="button" class="secondary">Cómo jugar</button>
     <span id="user-label"></span>
     <button id="btn-logout" type="button" hidden>Cerrar sesión</button>
   </header>
@@ -24,6 +25,14 @@
   <main>
     <!-- ───────── Autenticación ───────── -->
     <section id="screen-auth" class="screen" hidden>
+      <div class="card welcome">
+        <h2>¿Primera vez en Ascua?</h2>
+        <p>Una mazmorra por turnos simultáneos para 2 a 4 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más ascuas.</p>
+        <div class="row">
+          <a class="button" href="?tutorial=1">Tutorial interactivo (5 min, sin cuenta)</a>
+          <button id="btn-howto-auth" type="button" class="secondary">Leer cómo se juega</button>
+        </div>
+      </div>
       <div class="cards">
         <form id="form-login" class="card" novalidate>
           <h2>Iniciar sesión</h2>
@@ -116,6 +125,18 @@
     <section id="screen-match" class="screen" hidden>
       <div class="match">
         <div class="board-col">
+          <div id="coach" class="card coach" hidden aria-live="polite">
+            <div class="coach-head">
+              <span class="badge warn">Tutorial</span>
+              <small id="coach-step"></small>
+              <span class="spacer"></span>
+              <button id="coach-exit" type="button" class="secondary">Salir del tutorial</button>
+            </div>
+            <div class="coach-progress"><div id="coach-bar"></div></div>
+            <h3 id="coach-title"></h3>
+            <div id="coach-body"></div>
+            <button id="coach-next" type="button" hidden></button>
+          </div>
           <div class="statusline">
             <span id="conn-state" class="badge">desconectado</span>
             <span>Piso <b id="m-floor">–</b></span>
@@ -208,10 +229,125 @@
           <thead><tr><th>#</th><th>Jugador</th><th>Héroe</th><th>Estado final</th><th>Ascuas</th><th>Pacto revelado</th><th>Cumplido</th></tr></thead>
           <tbody id="fin-standings"></tbody>
         </table>
+        <div id="fin-tutorial" class="fin-tutorial" hidden>
+          <h3>Terminaste el tutorial</h3>
+          <p>En una partida real juegan de 2 a 4 personas, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan los pactos secretos y gana quien tenga más ascuas.</p>
+          <div class="row">
+            <a class="button" href="/">Jugar en línea</a>
+            <a class="button secondary" href="?tutorial=1">Repetir el tutorial</a>
+          </div>
+        </div>
         <button id="btn-back-lobby" type="button">Volver al lobby</button>
       </div>
     </section>
   </main>
+
+  <!-- ───────── Cómo jugar (guía en páginas; js/howto.js) ───────── -->
+  <div id="howto" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="howto-title">
+    <div class="card dialog howto">
+      <div class="coach-head">
+        <h2 id="howto-title">Cómo jugar</h2>
+        <span class="spacer"></span>
+        <small id="howto-count"></small>
+        <button id="howto-close" type="button" class="secondary" aria-label="Cerrar">✕</button>
+      </div>
+
+      <section class="howto-page">
+        <h3>La idea</h3>
+        <p>El <b>Umbral</b>, una hoguera antigua, se apaga. De 2 a 4 portadores bajan a la cripta a derrotar al <b>Celador</b>, que se alimenta de ella.</p>
+        <ul>
+          <li><b>Cooperan para sobrevivir:</b> si nadie vence al Celador antes de la ronda 60, todos pierden.</li>
+          <li><b>Compiten por el fuego:</b> si el Celador cae, gana quien tenga más <b>ascuas</b>.</li>
+          <li>La cripta tiene <b>5 salas</b> de 9×9: cuatro con enemigos, cofres y trampas, y la del Celador.</li>
+        </ul>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Una ronda</h3>
+        <ol>
+          <li><b>Planifica (20 s):</b> cada jugador elige <b>una orden</b> en secreto. Los demás solo ven que ya decidiste.</li>
+          <li><b>Se resuelve todo a la vez</b> cuando todos decidieron o vence el reloj. Si no mandaste nada, tu héroe <b>guarda</b>.</li>
+          <li>Orden de resolución: guardias y escudos → movimientos → ataques de los héroes → golpes de los enemigos → los enemigos se mueven y <b>anuncian</b> su próximo golpe.</li>
+        </ol>
+        <p class="hint">Si dos héroes van a la misma casilla, ninguno se mueve (rebotan).</p>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Órdenes y controles</h3>
+        <table class="table">
+          <thead><tr><th>Orden</th><th>Teclado</th><th>Qué hace</th></tr></thead>
+          <tbody>
+            <tr><td>Mover</td><td>Flechas</td><td>1 casilla en N/S/E/O.</td></tr>
+            <tr><td>Atacar</td><td>Shift + flecha</td><td>Ataque básico según el alcance de tu héroe.</td></tr>
+            <tr><td>Habilidad</td><td>Q y luego flecha</td><td>La habilidad de tu héroe (cargas o enfriamiento).</td></tr>
+            <tr><td>Interactuar</td><td>E y luego flecha</td><td>Abrir un cofre, levantar a un aliado caído o usar un altar (casilla vecina).</td></tr>
+            <tr><td>Guardar</td><td>Espacio</td><td>Recibes la mitad de daño; anula los golpes de 1. Es la orden por defecto.</td></tr>
+          </tbody>
+        </table>
+        <p class="hint">También puedes usar los botones del panel «Orden». Esc cancela Q o E.</p>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Leer el tablero</h3>
+        <ul>
+          <li><b>Niebla:</b> ves hasta 3 casillas a tu alrededor; lo que viste antes queda en gris. Siempre ves a tus aliados, salvo que estén en sigilo.</li>
+          <li><span class="sw sw-tele"></span><b>Ataque anunciado:</b> los enemigos marcan dónde golpearán <b>la ronda siguiente</b>. Apártate o guarda.</li>
+          <li><span class="sw sw-chest"></span><b>Cofre:</b> ascuas y a veces una poción, escudo o la llave de plata de los altares.</li>
+          <li><span class="sw sw-stairs"></span><b>Escalera:</b> con la sala sin enemigos, pisarla lleva a todos a la sala siguiente.</li>
+          <li><span class="sw sw-spikes"></span><b>Pinchos</b> (se activan en rondas pares) y <span class="sw sw-fire"></span><b>fuego</b> hacen daño.</li>
+        </ul>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Los héroes</h3>
+        <dl class="heroes">
+          <dt>Yunque · tanque · 6 de vida</dt>
+          <dd>25% de bloquear golpes de frente. <b>Muralla</b>: protege a los aliados que estén detrás de él esa ronda.</dd>
+          <dt>Chispa · distancia · 4 de vida</dt>
+          <dd>Dispara a 3 casillas en línea y gana 1 carga por ronda sin atacar. <b>Descarga</b>: golpe en cruz con 1 + cargas de daño.</dd>
+          <dt>Cuervo · pícaro · 4 de vida</dt>
+          <dd>Doble daño por la espalda. <b>Paso sombrío</b>: avanza 2 casillas y queda invisible 2 rondas.</dd>
+          <dt>Raíz · soporte · 5 de vida</dt>
+          <dd>Las curaciones le rinden +1. <b>Brote</b>: cura 2 a un aliado cercano o a sí misma.</dd>
+        </dl>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Ascuas, pactos y traiciones</h3>
+        <table class="table">
+          <tbody>
+            <tr><td>Golpe final a un enemigo</td><td>+1</td></tr>
+            <tr><td>Abrir un cofre</td><td>+1</td></tr>
+            <tr><td>Levantar a un aliado caído</td><td>+2</td></tr>
+            <tr><td>Golpe final al Celador</td><td>+5</td></tr>
+            <tr><td>Cumplir tu pacto secreto</td><td>+4</td></tr>
+          </tbody>
+        </table>
+        <ul>
+          <li><b>Pacto secreto:</b> un objetivo que solo tú conoces; se revela al final.</li>
+          <li><b>Caer:</b> con 0 de vida quedas caído. Un aliado puede levantarte (E); si pasan 3 rondas, te extingues y pierdes la mitad de tus ascuas.</li>
+          <li><b>Fuego amigo:</b> golpear a un aliado le hace la mitad del daño y te da 1 ascua suya. Es posible, pero arriesga a todo el grupo.</li>
+        </ul>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Bendiciones y el Celador</h3>
+        <ul>
+          <li><b>Draft:</b> al empezar eliges 1 bendición entre 2, en privado. Los altares dan más, con la llave de plata.</li>
+          <li>Algunas bendiciones se combinan en <b>sinergias</b>: Brasa viva + Paso ígneo = Infierno.</li>
+          <li><b>El Celador</b> es inmune a los golpes de frente: hay que rodearlo. A la mitad de su vida invoca tótems y alterna golpes en área.</li>
+        </ul>
+        <p>La mejor forma de aprender es jugando:</p>
+        <a class="button" href="?tutorial=1">Empezar el tutorial interactivo</a>
+      </section>
+
+      <div class="row howto-nav">
+        <button id="howto-prev" type="button" class="secondary">← Anterior</button>
+        <span class="spacer"></span>
+        <button id="howto-next" type="button">Siguiente →</button>
+      </div>
+    </div>
+  </div>
 
   <!-- ───────── Depuración ───────── -->
   <details id="debug" class="debug">

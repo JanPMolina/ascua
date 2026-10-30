@@ -1,4 +1,5 @@
-// Punto de entrada. ?demo=1 → partida simulada sin servidor; ?json=1 → hub con JSON (solo local/dev).
+// Punto de entrada. ?demo=1 → partida simulada sin servidor; ?tutorial=1 → práctica guiada sin servidor;
+// ?json=1 → hub con JSON (solo local/dev).
 import * as api from './api.js';
 import { $, busy, formData, setText, showScreen, toast } from './ui.js';
 import { initLogPanel } from './log.js';
@@ -6,9 +7,12 @@ import { initLobby, showLobby, stopLobby } from './lobby.js';
 import { startMatch, stopMatch } from './match.js';
 import { RealTransport } from './hub.js';
 import { DemoTransport } from './demo.js';
+import { startTutorial } from './tutorial.js';
+import { initHowTo } from './howto.js';
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.get('demo') === '1';
+const TUTORIAL = params.get('tutorial') === '1';
 const USE_JSON = params.get('json') === '1';
 
 function enterMatch(matchId) {
@@ -72,6 +76,13 @@ function bindAuth() {
 
 function main() {
   initLogPanel();
+  initHowTo();
+  if (TUTORIAL) {
+    $('demo-badge').textContent = 'TUTORIAL (sin servidor)';
+    $('demo-badge').hidden = false;
+    startTutorial(startMatch);
+    return;
+  }
   if (DEMO) {
     $('demo-badge').hidden = false;
     startDemo();
