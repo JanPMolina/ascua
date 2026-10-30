@@ -61,7 +61,7 @@ Jan entrega y Juan Pablo consume:
 | `Ascua__Matchmaking__PollInterval` | `00:00:01` (cada cuánto el agrupador procesa la cola) | igual |
 | `Ascua__Matchmaking__Enabled` | `true` | `true` (el agrupador es seguro con varias réplicas; `false` lo apaga en una réplica) |
 | `Ascua__TrustForwardedHeaders` | `false` | `true` (detrás del ingress de Container Apps, para que el *rate limiting* vea la IP real) |
-| `Ascua__Cors__AllowedOrigins` | `http://localhost:8080` | dominio público |
+| `Ascua__Cors__AllowedOrigins` | `http://localhost:8080` (lista blanca de CORS de la API REST **y** de orígenes del WebSocket) | dominio público con `https://` (`Ascua__Cors__AllowedOrigins__0`); el ingress con `allowInsecure: false`, porque la app no redirige a HTTPS por su cuenta |
 | `Ascua__Realtime__RoundDuration` / `__DraftDuration` | `00:00:20` / `00:00:30` | igual (en pruebas de carga se baja la ronda a 3 s) |
 | `Ascua__Realtime__ReconnectGrace` / `__JoinTimeout` / `__InactivityTimeout` | `00:01:00` / `00:02:00` / `00:10:00` | igual |
 | `Ascua__Realtime__MaxConnectionsPerUser` / `__HubTokenLimit` / `__HubTokensPerSecond` | `3` / `20` / `5` | igual |

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.Encodings.Web;
 using System.Text.RegularExpressions;
 using Ascua.Api.Endpoints;
+using Ascua.Api.Security;
 using Ascua.Application.Admin;
 using Ascua.Application.Matches;
 using Ascua.Infrastructure.Auth;
@@ -72,7 +73,7 @@ public static class RealtimeHandshake
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var options = new WebSocketOptions();
-        foreach (var origin in configuration.GetSection("Ascua:Cors:AllowedOrigins").Get<string[]>() ?? [])
+        foreach (var origin in Cors.AllowedOrigins(configuration))
         {
             options.AllowedOrigins.Add(origin);
         }

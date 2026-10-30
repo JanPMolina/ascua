@@ -14,10 +14,10 @@ public sealed class FallAndEndTests
     [Fact]
     public void A_hero_at_zero_life_falls()
     {
-        var raven = Hero(A, HeroClass.Raven, 4, 5, seat: 0) with { Hp = 1 };
-        var ally = Hero(B, HeroClass.Anvil, 0, 8, seat: 1);
+        var cuervo = Hero(A, HeroClass.Cuervo, 4, 5, seat: 0) with { Hp = 1 };
+        var ally = Hero(B, HeroClass.Yunque, 0, 8, seat: 1);
 
-        var (next, events) = Resolve(State([raven, ally], [StrikingAt(4, 5)]), (A, Interact(Direction.East)));
+        var (next, events) = Resolve(State([cuervo, ally], [StrikingAt(4, 5)]), (A, Interact(Direction.East)));
 
         Assert.Equal(HeroStatus.Down, next.H(A).Status);
         Assert.Equal(0, next.H(A).Hp);
@@ -28,9 +28,9 @@ public sealed class FallAndEndTests
     [Fact]
     public void Last_breath_saves_the_hero_once()
     {
-        var raven = Hero(A, HeroClass.Raven, 4, 5, seat: 0) with { Hp = 1, Blessings = [Blessing.LastBreath] };
-        var ally = Hero(B, HeroClass.Anvil, 0, 8, seat: 1);
-        var state = State([raven, ally], [StrikingAt(4, 5)]);
+        var cuervo = Hero(A, HeroClass.Cuervo, 4, 5, seat: 0) with { Hp = 1, Blessings = [Blessing.LastBreath] };
+        var ally = Hero(B, HeroClass.Yunque, 0, 8, seat: 1);
+        var state = State([cuervo, ally], [StrikingAt(4, 5)]);
 
         var (saved, _) = Resolve(state, (A, Interact(Direction.East)));
         Assert.Equal(1, saved.H(A).Hp);
@@ -44,8 +44,8 @@ public sealed class FallAndEndTests
     [Fact]
     public void An_adjacent_ally_revives_with_two_life_and_earns_two_embers()
     {
-        var fallen = Hero(A, HeroClass.Spark, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1 };
-        var rescuer = Hero(B, HeroClass.Root, 4, 5, seat: 1);
+        var fallen = Hero(A, HeroClass.Chispa, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1 };
+        var rescuer = Hero(B, HeroClass.Raiz, 4, 5, seat: 1);
 
         var (next, events) = Resolve(State([fallen, rescuer]), (B, Interact(Direction.North)));
 
@@ -59,8 +59,8 @@ public sealed class FallAndEndTests
     [Fact]
     public void Three_rounds_down_without_help_extinguishes_and_halves_embers()
     {
-        var fallen = Hero(A, HeroClass.Spark, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, Embers = 5 };
-        var bystander = Hero(B, HeroClass.Root, 0, 8, seat: 1);
+        var fallen = Hero(A, HeroClass.Chispa, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, Embers = 5 };
+        var bystander = Hero(B, HeroClass.Raiz, 0, 8, seat: 1);
         var state = State([fallen, bystander]);
 
         for (var round = 1; round <= 2; round++)
@@ -80,9 +80,9 @@ public sealed class FallAndEndTests
     [Fact]
     public void Downed_heroes_cannot_submit_orders()
     {
-        var fallen = Hero(A, HeroClass.Spark, 4, 4) with { Hp = 0, Status = HeroStatus.Down };
-        var extinct = Hero(B, HeroClass.Root, 0, 8, seat: 1) with { Status = HeroStatus.Extinct };
-        var state = State([fallen, extinct, Hero(C, HeroClass.Anvil, 8, 8, seat: 2)]);
+        var fallen = Hero(A, HeroClass.Chispa, 4, 4) with { Hp = 0, Status = HeroStatus.Down };
+        var extinct = Hero(B, HeroClass.Raiz, 0, 8, seat: 1) with { Status = HeroStatus.Extinct };
+        var state = State([fallen, extinct, Hero(C, HeroClass.Yunque, 8, 8, seat: 2)]);
 
         Assert.Equal("PLAYER_DOWN", OrderValidator.Validate(state, A, 1, Order.DefaultGuard)?.Code);
         Assert.Equal("PLAYER_OUT", OrderValidator.Validate(state, B, 1, Order.DefaultGuard)?.Code);
@@ -91,10 +91,10 @@ public sealed class FallAndEndTests
     [Fact]
     public void Friendly_fire_deals_half_damage_and_steals_an_ember()
     {
-        var anvil = Hero(A, HeroClass.Anvil, 4, 4, seat: 0) with { Blessings = [Blessing.StoneFist] };
-        var raven = Hero(B, HeroClass.Raven, 5, 4, seat: 1, facing: Direction.East) with { Embers = 2 };
+        var yunque = Hero(A, HeroClass.Yunque, 4, 4, seat: 0) with { Blessings = [Blessing.StoneFist] };
+        var cuervo = Hero(B, HeroClass.Cuervo, 5, 4, seat: 1, facing: Direction.East) with { Embers = 2 };
 
-        var (next, _) = Resolve(State([anvil, raven]), (A, Attack(Direction.East)), (B, Interact(Direction.East)));
+        var (next, _) = Resolve(State([yunque, cuervo]), (A, Attack(Direction.East)), (B, Interact(Direction.East)));
 
         Assert.Equal(3, next.H(B).Hp);
         Assert.Equal(1, next.H(B).Embers);
@@ -152,9 +152,9 @@ public sealed class FallAndEndTests
     [Fact]
     public void Everyone_down_is_a_collective_defeat()
     {
-        var raven = Hero(A, HeroClass.Raven, 4, 5) with { Hp = 1 };
+        var cuervo = Hero(A, HeroClass.Cuervo, 4, 5) with { Hp = 1 };
 
-        var (next, _) = Resolve(State([raven], [StrikingAt(4, 5)]), (A, Interact(Direction.East)));
+        var (next, _) = Resolve(State([cuervo], [StrikingAt(4, 5)]), (A, Interact(Direction.East)));
 
         Assert.Equal(OutcomeKind.CollectiveDefeat, next.Outcome!.Kind);
         Assert.Equal(DefeatReason.AllFallen, next.Outcome.Reason);
@@ -164,7 +164,7 @@ public sealed class FallAndEndTests
     [Fact]
     public void Running_out_of_rounds_is_a_collective_defeat()
     {
-        var state = State([Hero(A, HeroClass.Anvil, 4, 4)], round: GameState.DefaultMaxRounds);
+        var state = State([Hero(A, HeroClass.Yunque, 4, 4)], round: GameState.DefaultMaxRounds);
 
         var (next, _) = Resolve(state, FixedRandom.Never);
 
@@ -178,7 +178,7 @@ public sealed class FallAndEndTests
     {
         var first = EmptyRoom(0).WithTerrain(new Position(4, 0), Terrain.Stairs);
         var second = EmptyRoom(1) with { InitialEnemies = [Enemy(7, EnemyKind.Totem, 4, 4)] };
-        var state = State([Hero(A, HeroClass.Anvil, 4, 1, seat: 0), Hero(B, HeroClass.Spark, 8, 8, seat: 1)]) with { Rooms = [first, second] };
+        var state = State([Hero(A, HeroClass.Yunque, 4, 1, seat: 0), Hero(B, HeroClass.Chispa, 8, 8, seat: 1)]) with { Rooms = [first, second] };
 
         var (next, events) = Resolve(state, (A, Move(Direction.North)));
 
@@ -192,8 +192,8 @@ public sealed class FallAndEndTests
     private static GameState BossFight(int aEmbers, int bEmbers)
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 1, Phase = 2 };
-        var anvil = Hero(A, HeroClass.Anvil, 4, 3, seat: 0) with { Embers = aEmbers, Pact = PactKind.OpenThreeChests };
-        var spark = Hero(B, HeroClass.Spark, 8, 8, seat: 1) with { Embers = bEmbers, Pact = PactKind.ReviveTwoAllies };
-        return State([anvil, spark], [warden]);
+        var yunque = Hero(A, HeroClass.Yunque, 4, 3, seat: 0) with { Embers = aEmbers, Pact = PactKind.OpenThreeChests };
+        var chispa = Hero(B, HeroClass.Chispa, 8, 8, seat: 1) with { Embers = bEmbers, Pact = PactKind.ReviveTwoAllies };
+        return State([yunque, chispa], [warden]);
     }
 }

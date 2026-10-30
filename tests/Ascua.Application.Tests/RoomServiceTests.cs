@@ -79,7 +79,7 @@ public sealed class RoomServiceTests
         Assert.Equal(first.Value, second.Value);
         var request = Assert.Single(_launcher.Requests);
         Assert.Equal(room.Id, request.RoomId);
-        Assert.Equal([new MatchSeat(host, HeroClass.Anvil), new MatchSeat(guest, HeroClass.Spark)], request.Seats);
+        Assert.Equal([new MatchSeat(host, HeroClass.Yunque), new MatchSeat(guest, HeroClass.Chispa)], request.Seats);
         Assert.Equal(first.Value, _store.ActiveMatches[host]);
         Assert.Equal(first.Value, _store.ActiveMatches[guest]);
         Assert.Null(await _store.FindRoomIdOfUserAsync(host, default));
@@ -126,8 +126,8 @@ public sealed class RoomServiceTests
         var guest = Guid.NewGuid();
         var room = (await _rooms.CreateAsync(host, "host", "lista", RoomVisibility.Public, 4, default)).Value!.Room;
         await _rooms.JoinAsync(guest, "guest", room.Id, default);
-        await _rooms.ChooseHeroAsync(host, room.Id, HeroClass.Anvil, default);
-        await _rooms.ChooseHeroAsync(guest, room.Id, HeroClass.Spark, default);
+        await _rooms.ChooseHeroAsync(host, room.Id, HeroClass.Yunque, default);
+        await _rooms.ChooseHeroAsync(guest, room.Id, HeroClass.Chispa, default);
         await _rooms.SetReadyAsync(host, room.Id, true, default);
         await _rooms.SetReadyAsync(guest, room.Id, true, default);
         return (room, host, guest);

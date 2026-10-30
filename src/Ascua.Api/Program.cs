@@ -16,6 +16,8 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+// Sin "Server: Kestrel": no se anuncia la tecnología del servidor.
+builder.WebHost.ConfigureKestrel(options => options.AddServerHeader = false);
 
 builder.Services.AddProblemDetails(options => options.CustomizeProblemDetails = Problems.Customize);
 // Un JSON mal formado responde 400 (Problem Details de validación) también en Development, en vez de lanzar.
@@ -25,6 +27,7 @@ builder.Services.AddOpenApi(options =>
     options.AddDocumentTransformer<BearerSecurityTransformer>();
     options.AddOperationTransformer<BearerSecurityTransformer>();
     options.AddOperationTransformer<MatchHistoryExamplesTransformer>();
+    options.AddSchemaTransformer<ProblemCodeSchemaTransformer>();
 });
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AscuaDbContext>("postgres", tags: ["ready"]);
@@ -41,6 +44,8 @@ builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddAscuaInfrastructure(builder.Configuration);
 builder.Services.AddAscuaAuthentication();
 builder.Services.AddAscuaRateLimiting(builder.Configuration);
+builder.Services.AddAscuaCors(builder.Configuration);
+builder.Services.AddHsts(options => options.MaxAge = TimeSpan.FromDays(365));
 builder.Services.AddAscuaRealtime(builder.Environment);
 
 // Detrás del ingress de Container Apps la IP real llega en X-Forwarded-For; sin esto el rate
@@ -69,10 +74,21 @@ if (app.Configuration.GetValue<bool>("Ascua:TrustForwardedHeaders"))
     app.UseForwardedHeaders();
 }
 
+// Primero la IP y el esquema reales (para HSTS y rate limiting); luego encabezados en todas las respuestas.
+app.UseSecurityHeaders();
+// HSTS solo fuera de Development (y nunca en localhost). No hay UseHttpsRedirection: en Container Apps el
+// ingress termina TLS y ya redirige HTTP→HTTPS (allowInsecure: false); localmente compose sirve solo HTTP.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseHsts();
+}
+
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 app.UseDefaultFiles();
 app.UseStaticFiles();
+// Antes de autenticar y del rate limiting: un preflight OPTIONS se responde aquí sin gastar cupo ni pedir token.
+app.UseCors(Cors.PolicyName);
 
 // Antes de autenticar: una versión de protocolo no soportada no debe gastar el ticket.
 app.UseWebSockets(RealtimeHandshake.WebSocketOptions(app.Configuration));
@@ -83,13 +99,15 @@ app.UseRealtimeConnectionLimit();
 app.UseRateLimiter();
 
 app.MapOpenApi();
-app.MapScalarApiReference("/docs");
+// Sin fuentes de fonts.scalar.com: la CSP de /docs no permite orígenes externos.
+app.MapScalarApiReference(SecurityHeaders.DocsPath, options => options.DefaultFonts = false);
 
 app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
 app.MapHealthChecks("/health/ready", new HealthCheckOptions { Predicate = check => check.Tags.Contains("ready") });
 
 app.MapGet("/api/v1/version", () => new { name = "ascua", version = typeof(Program).Assembly.GetName().Version?.ToString() })
-    .WithName("GetVersion");
+    .WithName("GetVersion")
+    .WithSummary("Nombre y versión del servidor.");
 
 app.MapAuthEndpoints();
 app.MapUserEndpoints();

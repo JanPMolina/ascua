@@ -34,10 +34,10 @@ internal static class HeroActions
                 case OrderType.Attack:
                     BasicAttack(ctx, hero, direction);
                     break;
-                case OrderType.Skill when hero.Class == HeroClass.Spark:
+                case OrderType.Skill when hero.Class == HeroClass.Chispa:
                     Discharge(ctx, hero, direction);
                     break;
-                case OrderType.Skill when hero.Class == HeroClass.Root:
+                case OrderType.Skill when hero.Class == HeroClass.Raiz:
                     Sprout(ctx, hero, direction);
                     break;
                 case OrderType.Interact:
@@ -174,7 +174,7 @@ internal static class HeroActions
         Combat.GainEmbers(ctx, hero.Player, 1 + (hero.Has(Blessing.Lockpick) ? 1 : 0), EmberReason.ChestOpened);
         if (chest.Loot == ChestLoot.HealingPotion)
         {
-            Combat.Heal(ctx, hero.Player, PotionHeal + (hero.Class == HeroClass.Root ? 1 : 0));
+            Combat.Heal(ctx, hero.Player, PotionHeal + (hero.Class == HeroClass.Raiz ? 1 : 0));
         }
     }
 
@@ -226,5 +226,5 @@ internal static class HeroActions
 
     /// <summary>Pasiva de Cuervo: daño ×2 si golpea al objetivo por la espalda.</summary>
     private static bool IsBackstab(Hero attacker, Position target, Direction targetFacing) =>
-        attacker.Class == HeroClass.Raven && target.DirectionTo(attacker.Position) == targetFacing.Opposite();
+        attacker.Class == HeroClass.Cuervo && target.DirectionTo(attacker.Position) == targetFacing.Opposite();
 }

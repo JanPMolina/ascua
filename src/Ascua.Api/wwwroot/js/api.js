@@ -23,15 +23,6 @@ export const ROUTES = {
   tickets: '/api/v1/realtime/tickets',
 };
 
-/**
- * Nombre del héroe en el REST de salas/cola ↔ nombre del contrato AsyncAPI (el que usa el cliente).
- * Hoy el REST usa los nombres del enum del dominio; si se unifican con el contrato, basta vaciar este mapa.
- */
-const HERO_TO_REST = { YUNQUE: 'ANVIL', CHISPA: 'SPARK', CUERVO: 'RAVEN', RAIZ: 'ROOT' };
-const HERO_FROM_REST = Object.fromEntries(Object.entries(HERO_TO_REST).map(([k, v]) => [v, k]));
-const heroToRest = (hero) => (hero ? HERO_TO_REST[hero] ?? hero : hero);
-const heroFromRest = (hero) => (hero ? HERO_FROM_REST[hero] ?? hero : null);
-
 /** Error HTTP con el Problem Details (RFC 9457) de la API. */
 export class ApiError extends Error {
   constructor(status, problem) {
@@ -183,7 +174,7 @@ export function normalizeRoom(raw) {
     members: members.map((m, i) => ({
       userId: m.userId ?? m.id,
       username: m.username ?? '',
-      hero: heroFromRest(m.hero),
+      hero: m.hero ?? null,
       ready: Boolean(m.ready),
       seat: i + 1,
       isHost: Boolean(m.isHost),
@@ -200,7 +191,7 @@ export const currentRoom = async () => normalizeRoom(await send('GET', ROUTES.ro
 export const joinRoom = async (roomId) => normalizeRoom(await send('POST', ROUTES.roomJoin(roomId)));
 export const joinRoomByCode = async (code) => normalizeRoom(await send('POST', ROUTES.roomJoinByCode, { code }));
 export const getRoom = async (roomId) => normalizeRoom(await send('GET', ROUTES.room(roomId)));
-export const setHero = async (roomId, hero) => normalizeRoom(await send('PUT', ROUTES.roomHero(roomId), { hero: heroToRest(hero) }));
+export const setHero = async (roomId, hero) => normalizeRoom(await send('PUT', ROUTES.roomHero(roomId), { hero }));
 export const setReady = async (roomId, ready) => normalizeRoom(await send('PUT', ROUTES.roomReady(roomId), { ready }));
 export const leaveRoom = (roomId) => send('POST', ROUTES.roomLeave(roomId));
 
@@ -211,7 +202,7 @@ export async function startRoom(roomId) {
 }
 
 /** Estado de la cola: { status: IDLE|QUEUED|MATCHING|MATCHED|EXPIRED, position, playersInQueue, matchId }. */
-export const enqueue = (preferredHero) => send('POST', ROUTES.queue, { preferredHero: heroToRest(preferredHero) });
+export const enqueue = (preferredHero) => send('POST', ROUTES.queue, { preferredHero });
 export const queueStatus = () => send('GET', ROUTES.queue);
 export const dequeue = () => send('DELETE', ROUTES.queue);
 

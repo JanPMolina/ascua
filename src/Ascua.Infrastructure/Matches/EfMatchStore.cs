@@ -59,7 +59,7 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
                 MatchId = snapshot.MatchId,
                 UserId = p.UserId,
                 Seat = p.Seat,
-                Hero = p.Hero.ToString(),
+                Hero = HeroNames.ToColumn(p.Hero),
                 DisplayName = p.DisplayName,
                 CreatedAt = snapshot.CreatedAt,
             }));
@@ -214,7 +214,7 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
             Status = MatchStatusExtensions.FromCode(match.Status),
             Version = match.Version,
             State = MatchJson.DeserializeState(match.State),
-            Participants = [.. players.Select(p => new MatchParticipant(p.UserId, p.Seat, Enum.Parse<HeroClass>(p.Hero), p.DisplayName))],
+            Participants = [.. players.Select(p => new MatchParticipant(p.UserId, p.Seat, HeroNames.Parse(p.Hero), p.DisplayName))],
             Deadline = match.Deadline,
             RoundDuration = TimeSpan.FromMilliseconds(match.RoundDurationMs),
             CreatedAt = match.CreatedAt,

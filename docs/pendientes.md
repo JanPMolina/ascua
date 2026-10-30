@@ -21,9 +21,9 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 ## Jan: código, pruebas y documentación
 
 ### Seguridad (20%)
-- [ ] **CORS HTTP:** hoy solo se restringen los orígenes del WebSocket (`TicketAuthentication`). Falta `AddCors`/`UseCors` con `Ascua:Cors:AllowedOrigins` para la API REST.
-- [ ] **Encabezados de seguridad HTTP desde el servidor:**
-  - `Content-Security-Policy` (hoy solo existe como `<meta>` en `index.html`);
+- [x] **CORS HTTP:** `AddCors`/`UseCors` con la misma lista `Ascua:Cors:AllowedOrigins` que el WebSocket, sin credenciales ([seguridad-transporte.md](seguridad-transporte.md)).
+- [x] **Encabezados de seguridad HTTP desde el servidor** (`Security/SecurityHeaders.cs`, probados en `SecurityHeadersTests`):
+  - `Content-Security-Policy` (antes solo como `<meta>` en `index.html`);
   - `X-Content-Type-Options: nosniff`;
   - `Referrer-Policy`;
   - `frame-ancestors 'none'`;
@@ -41,10 +41,10 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 - [x] **Prueba de limpieza:** una partida inactiva expira (`EXPIRED`) y libera la marca de partida activa.
 
 ### Contratos (10%)
-- [ ] **Nombres de héroes unificados:** REST usa `ANVIL`/`SPARK`/`RAVEN`/`ROOT` y el tiempo real usa `YUNQUE`/`CHISPA`/`CUERVO`/`RAIZ`; el cliente web traduce entre ambos.
+- [x] **Nombres de héroes unificados:** REST usa `ANVIL`/`SPARK`/`RAVEN`/`ROOT` y el tiempo real usa `YUNQUE`/`CHISPA`/`CUERVO`/`RAIZ`; el cliente web traduce entre ambos.
   - Hay que elegir un solo juego de nombres.
   - Debe actualizarse a la vez en OpenAPI, AsyncAPI, el bot, la prueba de carga y el cliente.
-- [ ] **Sincronía OpenAPI ↔ código:** agregar una prueba o un paso de CI que compare el `openapi.json` generado con una copia versionada, para que la rúbrica («sincronizados con el código») quede demostrada.
+- [x] **Sincronía OpenAPI ↔ código:** agregar una prueba o un paso de CI que compare el `openapi.json` generado con una copia versionada, para que la rúbrica («sincronizados con el código») quede demostrada.
 
 ### Documentación (5%)
 - [ ] **README:**
@@ -96,6 +96,7 @@ El detalle está en [infra/README.md](../infra/README.md); la interfaz con la ap
   - `Ascua__Realtime__EnableDevEndpoints=false`;
   - `Ascua__TrustForwardedHeaders=true`;
   - `Ascua__Cors__AllowedOrigins` y `Ascua__Realtime__PublicBaseUrl` con el dominio público;
+  - ingress con `allowInsecure: false` (la app no redirige a HTTPS por su cuenta; ver [seguridad-transporte.md](seguridad-transporte.md));
   - Redis **sin modo clúster**.
 
 ### Observabilidad y costo (5% + parte del 10%)

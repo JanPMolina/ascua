@@ -26,13 +26,18 @@ internal sealed class BearerSecurityTransformer : IOpenApiDocumentTransformer, I
     public Task TransformAsync(OpenApiOperation operation, OpenApiOperationTransformerContext context, CancellationToken cancellationToken)
     {
         var metadata = context.Description.ActionDescriptor.EndpointMetadata;
+        operation.Security ??= [];
         if (metadata.OfType<IAuthorizeData>().Any() && !metadata.OfType<IAllowAnonymous>().Any())
         {
-            operation.Security ??= [];
             operation.Security.Add(new OpenApiSecurityRequirement
             {
                 [new OpenApiSecuritySchemeReference(SchemeName, context.Document)] = [],
             });
+        }
+        else
+        {
+            // Público: `security: [{}]` declara explícitamente que no pide credenciales.
+            operation.Security.Add(new OpenApiSecurityRequirement());
         }
 
         return Task.CompletedTask;

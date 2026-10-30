@@ -76,7 +76,7 @@ public static class Resolver
                 ctx.Guarding.Add(player);
                 ctx.Emit(new HeroGuarded(player) { Audience = RoundContext.AudienceOf(hero) });
             }
-            else if (order is { Type: OrderType.Skill, Direction: { } direction } && hero.Class == HeroClass.Anvil)
+            else if (order is { Type: OrderType.Skill, Direction: { } direction } && hero.Class == HeroClass.Yunque)
             {
                 ctx.Ramparts[player] = direction;
                 ctx.Update(hero with { Facing = direction, SkillCooldown = hero.Stats.SkillCooldown });

@@ -19,7 +19,6 @@ public sealed partial class WebClientTests(AscuaApiFactory factory)
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
         Assert.Contains("<script type=\"module\" src=\"js/main.js\"></script>", html, StringComparison.Ordinal);
-        Assert.Contains("Content-Security-Policy", html, StringComparison.Ordinal);
     }
 
     [Theory]

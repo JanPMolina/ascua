@@ -345,13 +345,8 @@ public static class RealtimeMapper
         _ => "INTERACT",
     };
 
-    public static string Hero(HeroClass hero) => hero switch
-    {
-        HeroClass.Anvil => "YUNQUE",
-        HeroClass.Spark => "CHISPA",
-        HeroClass.Raven => "CUERVO",
-        _ => "RAIZ",
-    };
+    /// <summary>Mismo nombre que en el REST (YUNQUE, CHISPA, CUERVO, RAIZ): el del enum en mayúsculas.</summary>
+    public static string Hero(HeroClass hero) => hero.ToString().ToUpperInvariant();
 
     public static string HeroState(HeroStatus status) => status switch
     {

@@ -96,3 +96,7 @@ dotnet ef migrations add <Nombre> -p src/Ascua.Infrastructure -s src/Ascua.Infra
 ```
 
 La conexión se construye con `NpgsqlDataSource` en `PostgresDataSource.Create`; ahí está documentado el punto de extensión para autenticación Entra con `DefaultAzureCredential` (token como contraseña periódica), que conectará el despliegue en Azure.
+
+## Transporte
+
+CORS, encabezados de seguridad y HTTPS/HSTS están en [seguridad-transporte.md](../seguridad-transporte.md).

@@ -239,10 +239,10 @@ internal static class Combat
 
     private static bool IsBehindRampart(RoundContext ctx, Hero target)
     {
-        foreach (var (anvilId, direction) in ctx.Ramparts)
+        foreach (var (yunqueId, direction) in ctx.Ramparts)
         {
-            var anvil = ctx.Hero(anvilId);
-            if (anvilId != target.Player && anvil.IsActive && anvil.Position.IsInLine(target.Position, direction.Opposite()))
+            var yunque = ctx.Hero(yunqueId);
+            if (yunqueId != target.Player && yunque.IsActive && yunque.Position.IsInLine(target.Position, direction.Opposite()))
             {
                 return true;
             }
