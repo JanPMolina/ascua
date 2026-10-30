@@ -16,8 +16,8 @@ Endpoints REST con `Authorization: Bearer <JWT>`. Los errores son Problem Detail
   `POST /realtime/tickets`. Así un 403 no confirma que el id exista.
 - `?as=full` sin rol `admin` → `403 forbidden`, **antes** de buscar la partida (tampoco revela existencia).
   Un admin sin `as=full` en una partida ajena recibe 404: no tiene vista de jugador en ella.
-- Cada acceso `as=full` pasa por el puerto `IReplayAccessAudit` (hoy: log estructurado de nivel Warning;
-  la sesión de administración lo reemplaza por la tabla de auditoría).
+- Cada acceso `as=full` pasa por el puerto `IReplayAccessAudit` y queda en `audit_log` como
+  `match.full_replay_viewed`, con `fromRound`/`toRound` (ver [administracion.md](administracion.md)).
 - **Pactos:** el tuyo siempre (`myPact`). Los ajenos solo si la partida terminó con resultado del juego
   (`FINISHED`/`ABANDONED`), como en `MatchFinished`; en `EXPIRED`/`FAULTED` no se revelan. La reproducción
   nunca los muestra en las rondas: es lo que viste en vivo.

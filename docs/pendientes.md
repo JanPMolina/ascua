@@ -30,7 +30,7 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
   - HSTS fuera de Development.
 
   Debe incluir una prueba de integración que los verifique.
-- [ ] **Modelo de amenazas:** `docs/modelo-de-amenazas.md` con STRIDE por componente (REST, hub, Redis, Postgres, Key Vault). Para cada amenaza, la mitigación implementada y la prueba que la cubre. La rúbrica lo pide de forma explícita.
+- [x] **Modelo de amenazas** ([modelo-de-amenazas.md](modelo-de-amenazas.md)): `docs/modelo-de-amenazas.md` con STRIDE por componente (REST, hub, Redis, Postgres, Key Vault). Para cada amenaza, la mitigación implementada y la prueba que la cubre. La rúbrica lo pide de forma explícita.
 
 ### Sesiones y concurrencia (20%) y pruebas (10%)
 - [ ] **Prueba de resiliencia por reinicio:** detener la instancia que lleva una partida a mitad de ronda y levantar otra (o una segunda `AscuaApiFactory`). Debe comprobar que la partida continúa desde Postgres/Redis sin perder jugadas confirmadas. El enunciado dice «sobrevive a reinicios» y hoy no hay prueba que lo demuestre.
@@ -51,14 +51,14 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
   - carpeta `loadtests/` en la estructura;
   - enlaces a `docs/api/`, `docs/rendimiento.md`, las ADR, el modelo de amenazas y esta lista;
   - cómo correr la prueba de carga.
-- [ ] **Runbooks** en `docs/runbooks/`:
+- [x] **Runbooks** en `docs/runbooks/`:
   - partida `FAULTED`;
   - suspender un usuario y terminar una partida desde administración;
   - Redis o Postgres caídos;
   - rotación de la clave JWT.
 
   El runbook de rollback lo escribe Juan Pablo.
-- [ ] **Limpieza:** quitar el `TODO(Jan)` obsoleto de `src/Ascua.Bot/Program.cs`; los escenarios de NBomber ya viven en `loadtests/`.
+- [x] **Limpieza:** quitar el `TODO(Jan)` obsoleto de `src/Ascua.Bot/Program.cs`; los escenarios de NBomber ya viven en `loadtests/`.
 
 ### Mantenimiento del repositorio
 - [ ] **PRs de Dependabot:**

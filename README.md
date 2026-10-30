@@ -52,6 +52,16 @@ ASCUA_UPDATE_OPENAPI=1 dotnet test Ascua.slnx --filter OpenApiContractTests
 npx --yes @redocly/cli@2.72.1 lint contracts/openapi.json
 ```
 
+## Prueba de carga
+
+Solo hace falta Docker. Levanta la API limitada a 0,5 vCPU / 1 GiB y juega N partidas simultáneas de 4 bots:
+
+```bash
+loadtests/run.sh --stages 4,8,12,16,24,32 --stage-seconds 60 --label rampa
+```
+
+Detalles y opciones (contra Azure, PowerShell) en [loadtests/README.md](loadtests/README.md); resultados, punto de quiebre y optimizaciones medidas en [docs/rendimiento.md](docs/rendimiento.md).
+
 ## Estructura
 
 ```
@@ -64,7 +74,8 @@ src/
 tests/                   Unitarias, arquitectura, integración (+ concurrencia, seguridad, resiliencia)
 contracts/               AsyncAPI 3.0 (tiempo real) y OpenAPI 3.1 (REST)
 infra/                   Bicep (Azure)
-docs/                    ADRs, modelo de amenazas, runbooks, costos
+docs/                    ADRs, API, rendimiento, runbooks, modelo de amenazas, pendientes
+loadtests/               Prueba de carga con NBomber y reportes
 planteamiento/           Reglas del juego, arquitectura y plan de trabajo
 inspiracion/             Investigación sobre Guidus (juego que inspira Ascua)
 Proyecto3.pdf            Enunciado
@@ -75,6 +86,9 @@ Proyecto3.pdf            Enunciado
 - [Reglas del juego](planteamiento/01-juego.md)
 - [Arquitectura](planteamiento/02-arquitectura.md)
 - [Plan de trabajo y roles](planteamiento/03-plan-de-trabajo.md)
+- [Modelo de amenazas](docs/modelo-de-amenazas.md)
 - [Pendientes hacia v1.0.0](docs/pendientes.md)
 - [Rendimiento y prueba de carga](docs/rendimiento.md)
 - [Decisiones de arquitectura (ADR)](docs/adr/README.md)
+- API por área: [autenticación](docs/api/autenticacion.md), [salas](docs/api/salas.md), [tiempo real](docs/api/tiempo-real.md), [historial](docs/api/historial.md), [administración](docs/api/administracion.md)
+- [Runbooks de operación](docs/runbooks/README.md)
