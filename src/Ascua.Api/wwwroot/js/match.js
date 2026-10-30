@@ -5,6 +5,7 @@ import { BoardRenderer } from './board.js';
 import { logMessage, setLastSeq } from './log.js';
 import { NO_RECONNECT } from './hub.js';
 import { uuidv7 } from './uuid.js';
+import { emit } from './bus.js';
 import {
   ABILITIES, BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
   MATCH_STATUS, ORDER_TYPES, OUTCOMES, label,
@@ -91,6 +92,7 @@ class MatchController {
       });
     }
     this.transport.onClose((reason) => this.handleClose(reason));
+    emit('match:start', { mode: demo ? 'demo' : this.transport.protocolName === 'tutorial' ? 'tutorial' : 'online' });
     this.render();
     this.connect();
   }
@@ -104,6 +106,7 @@ class MatchController {
     this.transport.stop();
     this.transport.dispose?.();
     $('draft').hidden = true;
+    emit('match:stop');
   }
 
   exit() {
@@ -138,6 +141,7 @@ class MatchController {
     const badge = $('conn-state');
     badge.textContent = `${text} (${this.transport.protocolName})`;
     badge.className = `badge ${kind}`;
+    emit('conn:state', { text, kind });
   }
 
   async connect() {
@@ -282,6 +286,8 @@ class MatchController {
     if (this.me) { this.me.decided = false; this.me.pendingOrder = null; }
     this.allies.forEach((a) => { a.decided = false; });
     if (this.order && this.order.payload.round !== m.round) this.order = null;
+    this.lowTimeRound = null;
+    emit('round:opened', { round: m.round, durationMs: m.durationMs });
   }
 
   onPlayerDecided(m) {
@@ -291,6 +297,7 @@ class MatchController {
     if (this.me && m.playerId === this.playerId) this.me.decided = true;
     const ally = this.allies.find((a) => a.playerId === m.playerId);
     if (ally) ally.decided = true;
+    emit('player:decided', { playerId: m.playerId, isMe: m.playerId === this.playerId, decidedCount: m.decidedCount, expectedPlayers: m.expectedPlayers });
   }
 
   onRoundResolved(m) {
@@ -301,6 +308,7 @@ class MatchController {
       return;
     }
     const d = m.delta;
+    const before = this.entities();
     this.status = d.status;
     if (d.floorChanged) {
       this.floor = d.floorChanged;
@@ -319,6 +327,14 @@ class MatchController {
     this.seq = m.seq;
     this.deadlineLocal = null;
     setLastSeq(this.seq);
+    if (d.floorChanged) emit('floor:changed', { floor: d.floorChanged });
+    emit('round:resolved', { round: m.round, events: this.events, before, after: this.entities(), myId: this.playerId });
+  }
+
+  /** Copia de lo que se ve del tablero, para que las animaciones interpolen entre el antes y el después. */
+  entities() {
+    const copy = (v) => (v ? JSON.parse(JSON.stringify(v)) : null);
+    return { me: copy(this.me), allies: copy(this.allies) ?? [], enemies: [...this.enemies.values()].map(copy) };
   }
 
   onSnapshot(m) {
@@ -335,6 +351,7 @@ class MatchController {
     }, el('b', {}, label(BLESSINGS, id)), BLESSING_EFFECTS[id] ? el('small', {}, BLESSING_EFFECTS[id]) : null)));
     setText('draft-source', m.source === 'ALTAR' ? 'Altar' : 'Draft inicial');
     $('draft').hidden = false;
+    emit('draft:offer', { options: m.options, source: m.source });
   }
 
   async pickBlessing(blessingId) {
@@ -348,7 +365,10 @@ class MatchController {
         $('draft-options').querySelectorAll('button').forEach((b) => { b.disabled = false; });
         return;
       }
-      if (!res.error) toast(`Elegiste ${label(BLESSINGS, res.blessingId)}`);
+      if (!res.error) {
+        toast(`Elegiste ${label(BLESSINGS, res.blessingId)}`);
+        emit('draft:picked', { blessingId: res.blessingId });
+      }
       this.draft = null;
       $('draft').hidden = true;
     } catch {
@@ -371,6 +391,7 @@ class MatchController {
     this.deadlineLocal = null;
     $('draft').hidden = true;
     showFinished(m, this.playerId, () => this.exit());
+    emit('match:finished', { outcome: m.outcome, iWon: m.winners.includes(this.playerId), standings: m.standings, myId: this.playerId });
   }
 
   onServerDraining(m) {
@@ -432,6 +453,7 @@ class MatchController {
       error: null,
       attempts: 0,
     };
+    emit('order:sent', { order });
     this.render();
     this.sendOrder();
   }
@@ -458,11 +480,13 @@ class MatchController {
         } else {
           o.status = 'error';
           o.error = res.error;
+          emit('order:rejected', { order: o.payload.order, code: res.error.code });
           if (res.error.code === 'STALE_ROUND' && res.error.details?.currentRound) this.round = res.error.details.currentRound;
         }
       } else {
         o.status = 'acked';
         o.ack = res;
+        emit('order:acked', { order: o.payload.order });
         if (this.me) { this.me.decided = true; this.me.pendingOrder = o.payload.order; }
       }
     } catch (err) {
@@ -594,6 +618,10 @@ class MatchController {
     } else {
       const left = Math.max(0, this.deadlineLocal - Date.now());
       setText('m-timer', `${(left / 1000).toFixed(1)} s`);
+      if (left > 0 && left < 5000 && this.lowTimeRound !== this.round) {
+        this.lowTimeRound = this.round;
+        emit('round:low-time', { round: this.round, leftMs: left });
+      }
       bar.style.width = `${Math.min(100, (left / this.durationMs) * 100)}%`;
       bar.className = left < 5000 ? 'low' : '';
     }
