@@ -32,20 +32,31 @@ export function setText(id, value) {
 const screens = ['auth', 'lobby', 'room', 'queue', 'match', 'finished'];
 
 export function showScreen(name) {
+  const changed = $(`screen-${name}`).hidden;
   for (const s of screens) $(`screen-${s}`).hidden = s !== name;
+  document.body.dataset.screen = name;
+  if (changed) window.scrollTo({ top: 0 });
   emit('ui:screen', { name });
 }
 
 let toastTimer = 0;
+let toastLeave = 0;
 
-/** Aviso breve arriba de la pantalla. */
+/** Aviso breve arriba de la pantalla. kind: 'info' | 'ok' | 'bad'. */
 export function toast(message, kind = 'info', ms = 4000) {
   const box = $('toast');
   box.textContent = message;
-  box.className = kind === 'bad' ? 'toast bad' : 'toast';
+  box.className = kind === 'bad' || kind === 'ok' ? `toast ${kind}` : 'toast';
+  // Reinicia la animación de entrada aunque ya hubiera un aviso visible.
+  box.hidden = true;
+  void box.offsetWidth;
   box.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { box.hidden = true; }, ms);
+  clearTimeout(toastLeave);
+  toastTimer = setTimeout(() => {
+    box.classList.add('leaving');
+    toastLeave = setTimeout(() => { box.hidden = true; }, 250);
+  }, ms);
 }
 
 export function formData(form) {
@@ -56,9 +67,11 @@ export function formData(form) {
 export async function busy(form, fn) {
   const buttons = form.querySelectorAll('button');
   buttons.forEach((b) => { b.disabled = true; });
+  form.setAttribute('aria-busy', 'true');
   try {
     return await fn();
   } finally {
     buttons.forEach((b) => { b.disabled = false; });
+    form.removeAttribute('aria-busy');
   }
 }

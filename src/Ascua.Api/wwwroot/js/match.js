@@ -6,14 +6,37 @@ import { logMessage, setLastSeq } from './log.js';
 import { NO_RECONNECT } from './hub.js';
 import { uuidv7 } from './uuid.js';
 import { emit } from './bus.js';
+import { BLESSING_ICONS, heroAvatar, heroInfo } from './heroes.js';
+import { settingsOpen } from './settings-panel.js';
 import {
-  ABILITIES, BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
+  BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
   MATCH_STATUS, ORDER_TYPES, OUTCOMES, label,
 } from './labels.js';
 
 const KEY_DIRS = { ArrowUp: 'N', ArrowDown: 'S', ArrowLeft: 'W', ArrowRight: 'E' };
 const RETRYABLE = new Set(['RATE_LIMITED', 'INTERNAL_ERROR']);
 const FATAL_JOIN = new Set(['NOT_PARTICIPANT', 'MATCH_NOT_FOUND', 'MATCH_NOT_ACTIVE', 'ALREADY_IN_ANOTHER_MATCH']);
+
+/** Ícono y tono de cada evento en el registro de la ronda ('' = neutro). */
+const EVENT_STYLE = {
+  MOVED: ['👣', ''], BOUNCED: ['↩', ''], ATTACKED: ['⚔', ''], DAMAGED: ['💥', ''], BLOCKED: ['⛨', 'info'],
+  HEALED: ['✚', 'good'], DOWNED: ['☠', 'bad'], REVIVED: ['✋', 'good'], EXTINGUISHED: ['🕯', 'bad'],
+  ENEMY_KILLED: ['💀', 'gold'], ENEMY_SPAWNED: ['👁', 'bad'], CHEST_OPENED: ['📦', 'gold'], EMBERS_GAINED: ['✦', 'gold'],
+  EMBERS_STOLEN: ['✦', 'bad'], BLESSING_GAINED: ['✧', 'gold'], TRAP_TRIGGERED: ['⚠', 'bad'], FIRE_STARTED: ['🔥', 'bad'],
+  FROZEN: ['❄', 'info'], BOSS_PHASE_CHANGED: ['👑', 'bad'], FLOOR_ENTERED: ['⇣', 'info'], DEFAULT_GUARD_APPLIED: ['⛨', ''],
+};
+
+const ARMED_TEXT = {
+  ABILITY: 'Habilidad armada: elige una dirección (flecha o d-pad). Esc cancela.',
+  INTERACT: 'Interactuar armado: elige la casilla vecina (flecha o d-pad). Esc cancela.',
+};
+
+/** Reinicia una animación CSS de clase (quitar, forzar reflow y volver a poner). */
+function replay(node, cls) {
+  node.classList.remove(cls);
+  void node.offsetWidth;
+  node.classList.add(cls);
+}
 
 let active = null; // partida en curso (una a la vez)
 
@@ -72,6 +95,8 @@ class MatchController {
     this.decidedCount = 0;
     this.expectedPlayers = 0;
     this.events = [];
+    // Lo último que se pintó, para animar solo lo que cambia.
+    this.shown = { hp: null, embers: null, blessings: null, pact: null, events: null, hero: null, decided: new Set() };
   }
 
   // ───────────── ciclo de vida ─────────────
@@ -129,7 +154,7 @@ class MatchController {
     document.querySelectorAll('.dir[data-dir]').forEach((btn) => listen(btn, 'click', () => {
       this.sendDirected(this.armedMode ?? this.selectedMode, btn.dataset.dir);
     }));
-    listen($('btn-guard'), 'click', () => this.submitOrder({ type: 'GUARD' }));
+    listen($('btn-guard'), 'click', () => this.guard());
     listen($('btn-leave-match'), 'click', () => this.leave());
     listen($('btn-demo-drop'), 'click', () => toast(this.transport.simulateDrop()));
     listen($('btn-demo-finish'), 'click', () => this.transport.simulateFinish());
@@ -347,17 +372,26 @@ class MatchController {
     box.replaceChildren(...m.options.map((id) => el('button', {
       type: 'button',
       class: 'blessing',
+      dataset: { blessing: id },
       onclick: () => this.pickBlessing(id),
-    }, el('b', {}, label(BLESSINGS, id)), BLESSING_EFFECTS[id] ? el('small', {}, BLESSING_EFFECTS[id]) : null)));
-    setText('draft-source', m.source === 'ALTAR' ? 'Altar' : 'Draft inicial');
+    },
+    el('span', { class: 'bl-ico', 'aria-hidden': 'true' }, BLESSING_ICONS[id] ?? '✧'),
+    el('b', {}, label(BLESSINGS, id)),
+    BLESSING_EFFECTS[id] ? el('small', {}, BLESSING_EFFECTS[id]) : null,
+    el('span', { class: 'bl-cta', 'aria-hidden': 'true' }, 'Elegir'))));
+    setText('draft-source', m.source === 'ALTAR' ? '⛩ Altar' : '✦ Draft inicial');
     $('draft').hidden = false;
+    box.querySelector('button')?.focus();
     emit('draft:offer', { options: m.options, source: m.source });
   }
 
   async pickBlessing(blessingId) {
     if (!this.draft) return;
     const { offerId } = this.draft;
-    $('draft-options').querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    $('draft-options').querySelectorAll('button').forEach((b) => {
+      b.disabled = true;
+      b.classList.toggle('chosen', b.dataset.blessing === blessingId);
+    });
     try {
       const res = await this.invoke('DraftPick', { matchId: this.matchId, offerId, blessingId });
       if (res.error && res.error.code !== 'DRAFT_CLOSED') {
@@ -366,7 +400,7 @@ class MatchController {
         return;
       }
       if (!res.error) {
-        toast(`Elegiste ${label(BLESSINGS, res.blessingId)}`);
+        toast(`Elegiste ${label(BLESSINGS, res.blessingId)}`, 'ok');
         emit('draft:picked', { blessingId: res.blessingId });
       }
       this.draft = null;
@@ -407,7 +441,7 @@ class MatchController {
   // ───────────── órdenes ─────────────
 
   handleKey(e) {
-    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('howto').hidden) return;
+    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('howto').hidden || settingsOpen()) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -424,7 +458,7 @@ class MatchController {
       case 'q': this.armedMode = this.armedMode === 'ABILITY' ? null : 'ABILITY'; break;
       case 'e': this.armedMode = this.armedMode === 'INTERACT' ? null : 'INTERACT'; break;
       case 'escape': this.armedMode = null; break;
-      case ' ': e.preventDefault(); this.submitOrder({ type: 'GUARD' }); return;
+      case ' ': e.preventDefault(); this.guard(); return;
       default: return;
     }
     this.render();
@@ -432,7 +466,14 @@ class MatchController {
 
   sendDirected(type, direction) {
     this.armedMode = null;
+    const btn = document.querySelector(`.dir[data-dir="${direction}"]`);
+    if (btn) replay(btn, 'pressed');
     this.submitOrder({ type, direction });
+  }
+
+  guard() {
+    replay($('btn-guard'), 'pressed');
+    this.submitOrder({ type: 'GUARD' });
   }
 
   submitOrder(order) {
@@ -526,49 +567,63 @@ class MatchController {
     const me = this.me;
     setText('m-floor', this.floor ?? '–');
     setText('m-round', this.round || '–');
-    setText('m-status', label(MATCH_STATUS, this.status ?? '–'));
+    setText('m-status', this.status ? label(MATCH_STATUS, this.status) : '');
 
     // Héroe propio.
-    if (me) {
-      setText('me-title', `${me.displayName} — ${label(HEROES, me.hero)} · habilidad: ${label(ABILITIES, me.hero)}`);
-      const pct = Math.max(0, Math.min(100, (me.hp / me.maxHp) * 100));
-      const hpbar = $('me-hpbar');
-      hpbar.style.width = `${pct}%`;
-      hpbar.className = pct <= 34 ? 'bar-hp low' : 'bar-hp';
-      setText('me-hp', `Vida ${me.hp}/${me.maxHp}${me.shield ? ` + escudo ${me.shield}` : ''}`);
-      setText('me-shield', me.shield);
-      setText('me-embers', me.embers);
-      setText('me-charges', me.charges);
-      setText('me-cooldown', me.abilityCooldown);
-      setText('me-stealth', me.stealthRoundsLeft);
-      const downNote = me.state === 'DOWN' && me.downRoundsLeft !== null ? ` (${me.downRoundsLeft} rondas)` : '';
-      setText('me-state', `${label(HERO_STATES, me.state)}${downNote}`);
-      $('me-blessings').replaceChildren(...(me.blessings.length
-        ? me.blessings.map((b) => el('li', {}, label(BLESSINGS, b)))
-        : [el('li', {}, 'ninguna')]));
-      setText('me-pact', me.pact ? me.pact.description : 'sin pacto');
-    }
+    if (me) this.renderMe(me);
 
     // Jugadores y quién decidió.
     const players = me ? [{ ...me, connected: this.transport.connected, isMe: true }, ...this.allies] : this.allies;
-    $('players').replaceChildren(...players.map((p) => el('li', {},
-      el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' }),
-      el('span', { class: 'who' }, `${p.displayName}${p.isMe ? ' (tú)' : ''} · ${label(HEROES, p.hero).split(' ')[0]}`),
-      el('span', {}, `♥${p.hp}/${p.maxHp} · ✦${p.embers}`),
-      el('span', { class: p.decided ? 'badge ok' : 'badge' },
-        p.state !== 'ALIVE' ? label(HERO_STATES, p.state) : p.decided ? 'decidió' : 'pensando'))));
+    const decidedNow = new Set();
+    $('players').replaceChildren(...players.map((p) => {
+      const info = heroInfo(p.hero);
+      const alive = p.state === 'ALIVE';
+      const pct = p.maxHp ? Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100)) : 0;
+      if (p.decided) decidedNow.add(p.playerId);
+      let state;
+      if (!alive) state = el('span', { class: 'badge bad p-state' }, label(HERO_STATES, p.state));
+      else if (p.decided) {
+        const fresh = !this.shown.decided.has(p.playerId);
+        state = el('span', { class: `badge ok p-state${fresh ? ' decided' : ''}` }, '✔ decidió');
+      } else {
+        state = el('span', { class: 'badge p-state thinking' }, 'pensando',
+          el('span', { class: 'dots', 'aria-hidden': 'true' }, el('i', {}, '.'), el('i', {}, '.'), el('i', {}, '.')));
+      }
+      const hp = el('span', { class: pct <= 34 ? 'mini-hp low' : 'mini-hp', 'aria-hidden': 'true' }, el('i'));
+      hp.firstChild.style.width = `${pct}%`;
+      return el('li', { class: [p.isMe ? 'me' : '', alive ? '' : 'down'].filter(Boolean).join(' '), dataset: { hero: p.hero } },
+        el('span', { class: 'p-avatar' }, heroAvatar(p.hero, 'sm'),
+          el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' })),
+        el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`)),
+        state,
+        el('span', { class: 'p-stats' }, hp, el('span', {}, `♥ ${p.hp}/${p.maxHp}`), el('span', { class: 'em' }, `✦ ${p.embers}`)));
+    }));
+    this.shown.decided = decidedNow;
     setText('m-decided', this.status === 'IN_PROGRESS' && this.expectedPlayers
       ? `${this.decidedCount}/${this.expectedPlayers} decidieron` : '');
+    $('m-decided').className = this.expectedPlayers && this.decidedCount >= this.expectedPlayers ? 'badge ok' : 'badge';
 
-    // Modo de orden.
+    // Modo de orden (resaltado distinto cuando Q o E esperan una dirección).
     const mode = this.armedMode ?? this.selectedMode;
-    document.querySelectorAll('.mode').forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+    document.querySelectorAll('.mode').forEach((b) => {
+      const on = b.dataset.mode === mode;
+      b.classList.toggle('active', on && !this.armedMode);
+      b.classList.toggle('armed', on && Boolean(this.armedMode));
+      b.setAttribute('aria-checked', String(on));
+    });
+    const armed = $('order-armed');
+    armed.hidden = !this.armedMode;
+    armed.textContent = this.armedMode ? ARMED_TEXT[this.armedMode] ?? '' : '';
+    document.querySelector('.dpad').classList.toggle('armed', Boolean(this.armedMode));
     this.renderOrderStatus();
 
-    // Eventos de la última ronda.
-    $('events').replaceChildren(...(this.events.length
-      ? this.events.map((ev) => el('li', {}, this.describeEvent(ev)))
-      : [el('li', {}, '—')]));
+    // Eventos de la última ronda (se rehacen solo cuando llega una ronda nueva, para no repetir la animación).
+    if (this.shown.events !== this.events) {
+      this.shown.events = this.events;
+      $('events').replaceChildren(...(this.events.length
+        ? this.events.map((ev) => this.eventItem(ev))
+        : [el('li', { class: 'empty' }, 'Todavía no pasó nada en esta ronda.')]));
+    }
 
     this.board.draw({
       tiles: this.tiles,
@@ -582,42 +637,136 @@ class MatchController {
     this.renderTimer();
   }
 
+  renderMe(me) {
+    const info = heroInfo(me.hero);
+    const card = document.querySelector('.card-hero');
+    if (this.shown.hero !== me.hero) {
+      this.shown.hero = me.hero;
+      card.dataset.hero = me.hero;
+      $('me-portrait').replaceChildren(heroAvatar(me.hero, 'lg'));
+    }
+    setText('me-title', me.displayName);
+    setText('me-role', `${info.name} · ${info.role}`);
+
+    // Vida: corazones + barra; si bajó, sacudida y corazones perdidos.
+    const prev = this.shown.hp;
+    const lost = prev !== null && me.hp < prev;
+    const gained = prev !== null && me.hp > prev;
+    this.shown.hp = me.hp;
+    const hearts = [];
+    for (let i = 0; i < me.maxHp; i++) {
+      const full = i < me.hp;
+      let cls = full ? 'heart' : 'heart empty';
+      if (lost && i >= me.hp && i < prev) cls += ' lost';
+      if (gained && i < me.hp && i >= prev) cls += ' gained';
+      hearts.push(el('span', { class: cls }));
+    }
+    for (let i = 0; i < (me.shield ?? 0); i++) hearts.push(el('span', { class: 'heart shield' }));
+    $('me-hearts').replaceChildren(...hearts);
+    if (lost) replay(card, 'hit');
+    const pct = Math.max(0, Math.min(100, (me.hp / me.maxHp) * 100));
+    const hpbar = $('me-hpbar');
+    hpbar.style.width = `${pct}%`;
+    hpbar.className = pct <= 34 ? 'bar-hp low' : pct <= 60 ? 'bar-hp mid' : 'bar-hp';
+    setText('me-hp', `Vida ${me.hp}/${me.maxHp}${me.shield ? ` + escudo ${me.shield}` : ''}`);
+    setText('me-shield', me.shield);
+
+    // Ascuas: el número salta y flota el +N / −N.
+    const tile = $('tile-embers');
+    if (this.shown.embers !== null && me.embers !== this.shown.embers) {
+      const delta = me.embers - this.shown.embers;
+      replay(tile, delta > 0 ? 'bump' : 'drop');
+      const float = el('span', { class: delta > 0 ? 'float-delta' : 'float-delta neg', 'aria-hidden': 'true' }, `${delta > 0 ? '+' : '−'}${Math.abs(delta)}`);
+      tile.append(float);
+      setTimeout(() => float.remove(), 1300);
+    }
+    this.shown.embers = me.embers;
+    setText('me-embers', me.embers);
+
+    // Cargas (pips), enfriamiento de la habilidad y sigilo.
+    setText('me-charges', me.charges);
+    $('me-charge-pips').replaceChildren(...Array.from({ length: Math.min(6, Math.max(me.charges, me.hero === 'CHISPA' ? 3 : 0)) },
+      (_, i) => el('i', { class: i < me.charges ? 'on' : '' })));
+    $('tile-charges').classList.toggle('dim', me.charges === 0 && me.hero !== 'CHISPA');
+    const ready = !me.abilityCooldown;
+    setText('me-cooldown', ready ? 'Lista' : me.abilityCooldown);
+    setText('me-ability', info.ability || 'Habilidad');
+    $('tile-ability').className = `tile tile-ability ${ready ? 'ready' : 'cooling'}`;
+    $('tile-ability').title = ready ? `${info.ability}: lista para usar` : `${info.ability}: faltan ${me.abilityCooldown} rondas`;
+    setText('me-stealth', me.stealthRoundsLeft);
+    document.querySelector('.tile-stealth').classList.toggle('dim', !me.stealthRoundsLeft);
+
+    const downNote = me.state === 'DOWN' && me.downRoundsLeft !== null ? ` (${me.downRoundsLeft} rondas)` : '';
+    setText('me-state', `${label(HERO_STATES, me.state)}${downNote}`);
+    $('me-state').className = me.state === 'ALIVE' ? 'badge ok' : me.state === 'DOWN' ? 'badge bad' : 'badge';
+
+    // Bendiciones (chips con su efecto al pasar el cursor o con el foco) y pacto secreto.
+    const blessingKey = me.blessings.join(',');
+    if (this.shown.blessings !== blessingKey) {
+      this.shown.blessings = blessingKey;
+      $('me-blessings').replaceChildren(...(me.blessings.length
+        ? me.blessings.map((b) => el('li', { tabindex: 0, 'data-tip': BLESSING_EFFECTS[b] ?? '', 'aria-label': `${label(BLESSINGS, b)}: ${BLESSING_EFFECTS[b] ?? ''}` },
+          el('span', { 'aria-hidden': 'true' }, BLESSING_ICONS[b] ?? '✧'), label(BLESSINGS, b)))
+        : [el('li', { class: 'none' }, 'ninguna todavía')]));
+    }
+    const pact = me.pact ? me.pact.description : 'sin pacto';
+    if (this.shown.pact !== pact) {
+      this.shown.pact = pact;
+      $('me-pact').replaceChildren(el('p', {}, pact));
+    }
+  }
+
+  eventItem(ev) {
+    const [icon, tone] = EVENT_STYLE[ev.type] ?? ['•', ''];
+    let cls = tone;
+    if (ev.type === 'DAMAGED') cls = ev.targetId === this.playerId ? 'bad' : ev.actorId === this.playerId ? 'good' : '';
+    const classes = [cls ? `ev-${cls}` : '', ev.actorId === this.playerId ? 'ev-mine' : ''].filter(Boolean).join(' ');
+    return el('li', { class: classes }, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, icon), el('span', {}, this.describeEvent(ev)));
+  }
+
   renderOrderStatus() {
     const box = $('order-status');
+    const show = (kind, main, tech) => {
+      box.className = kind ? `order-status ${kind}` : 'order-status';
+      box.replaceChildren(el('span', { class: 'os-main' }, main), ...(tech ? [el('small', { class: 'os-tech' }, tech)] : []));
+    };
     const o = this.order;
     if (!o) {
       const pending = this.me?.pendingOrder;
-      box.className = pending ? 'order-status ok' : 'order-status';
-      box.textContent = pending ? `Orden registrada: ${describeOrder(pending)}` : `Ronda ${this.round || '–'}: sin orden enviada.`;
+      if (pending) show('ok', `✔ Orden registrada: ${describeOrder(pending)}`);
+      else if (this.status === 'IN_PROGRESS' && this.deadlineLocal !== null) show('', `Ronda ${this.round}: elige tu orden.`);
+      else show('', `Ronda ${this.round || '–'}: sin orden enviada.`);
       return;
     }
     const id = o.payload.clientActionId;
-    const head = `Ronda ${o.payload.round}: ${describeOrder(o.payload.order)} · clientActionId …${id.slice(-12)}`;
+    const what = `Ronda ${o.payload.round}: ${describeOrder(o.payload.order)}`;
+    const tech = `clientActionId …${id.slice(-12)} · intentos: ${o.attempts}`;
     if (o.status === 'acked') {
-      box.className = 'order-status ok';
       const dup = o.ack.result === 'DUPLICATE_ACTION' ? ' (reenvío idempotente: el servidor ya la tenía)' : '';
-      box.textContent = `${head} → ACK ${o.ack.result}${dup} a las ${String(o.ack.receivedAt).slice(11, 19)} (intentos: ${o.attempts})`;
+      show('ok', `✔ ${what}`, `ACK ${o.ack.result}${dup} a las ${String(o.ack.receivedAt).slice(11, 19)} · ${tech}`);
     } else if (o.status === 'error') {
-      box.className = 'order-status bad';
-      box.textContent = `${head} → rechazada: ${o.error.code} — ${label(ERROR_CODES, o.error.code)}. ${o.error.message ?? ''}`;
+      show('bad', `✖ ${what} → rechazada: ${label(ERROR_CODES, o.error.code)}`, `${o.error.code}. ${o.error.message ?? ''} · ${tech}`);
     } else if (o.status === 'waiting') {
-      box.className = 'order-status pending';
-      box.textContent = `${head} → sin ACK; se reenviará con el mismo id al reconectar (intentos: ${o.attempts})`;
+      show('pending', `${what} → sin confirmar; se reenviará al reconectar`, tech);
     } else {
-      box.className = 'order-status pending';
-      box.textContent = `${head} → enviando…`;
+      show('pending', `${what} → enviando…`, tech);
     }
   }
 
   renderTimer() {
     if (this.disposed) return;
     const bar = $('m-timerbar');
+    const clock = $('m-clock');
     if (this.deadlineLocal === null) {
       setText('m-timer', '–');
       bar.style.width = '0%';
+      clock.style.setProperty('--p', '0');
+      clock.className = 'clock idle';
     } else {
       const left = Math.max(0, this.deadlineLocal - Date.now());
-      setText('m-timer', `${(left / 1000).toFixed(1)} s`);
+      setText('m-timer', left >= 10000 ? `${Math.ceil(left / 1000)}` : (left / 1000).toFixed(1));
+      clock.style.setProperty('--p', String(Math.min(1, left / this.durationMs)));
+      clock.className = left < 5000 && left > 0 ? 'clock low' : 'clock';
       if (left > 0 && left < 5000 && this.lowTimeRound !== this.round) {
         this.lowTimeRound = this.round;
         emit('round:low-time', { round: this.round, leftMs: left });
@@ -628,6 +777,7 @@ class MatchController {
     if (this.draft) {
       const left = Math.max(0, Date.parse(this.draft.deadline) - Date.now());
       setText('draft-timer', `${Math.ceil(left / 1000)} s`);
+      $('draft-timer').classList.toggle('low', left < 5000);
     }
   }
 
@@ -660,18 +810,59 @@ function describeOrder(order) {
 
 function showFinished(m, myPlayerId, onBack) {
   showScreen('finished');
-  setText('fin-title', label(OUTCOMES, m.outcome));
   const iWon = m.winners.includes(myPlayerId);
-  setText('fin-summary', `${m.rounds} rondas · ${iWon ? '¡Ganaste!' : m.winners.length ? 'No ganaste esta vez.' : 'Sin ganador.'}`
-    + ` · terminó a las ${String(m.finishedAt).slice(11, 19)} UTC`);
-  $('fin-standings').replaceChildren(...[...m.standings].sort((a, b) => a.placement - b.placement).map((s) => el('tr', {},
-    el('td', {}, `${s.placement}${m.winners.includes(s.playerId) ? ' 🏆' : ''}`),
-    el('td', {}, `${s.displayName}${s.playerId === myPlayerId ? ' (tú)' : ''}`),
-    el('td', {}, label(HEROES, s.hero)),
-    el('td', {}, label(HERO_STATES, s.finalState)),
-    el('td', {}, String(s.embers)),
-    el('td', {}, s.pact ? s.pact.description : '—'),
-    el('td', {}, s.pact ? (s.pact.fulfilled ? 'sí' : 'no') : '—'))));
+  const lostAll = m.outcome === 'EMBER_EXTINGUISHED';
+  $('fin-banner').className = `fin-banner${iWon ? ' victory' : lostAll ? ' defeat' : ''}`;
+  setText('fin-emblem', iWon ? '♛' : lostAll ? '🕯' : '✦');
+  setText('fin-title', iWon ? '¡Victoria!' : label(OUTCOMES, m.outcome));
+  const verdict = iWon ? label(OUTCOMES, m.outcome) : m.winners.length ? 'Otro portador se quedó con el fuego.' : 'Sin ganador.';
+  setText('fin-summary', `${verdict} · ${m.rounds} rondas · terminó a las ${String(m.finishedAt).slice(11, 19)} UTC`);
+
+  const sorted = [...m.standings].sort((a, b) => a.placement - b.placement);
+  const isWinner = (s) => m.winners.includes(s.playerId);
+  const you = (s) => (s.playerId === myPlayerId ? ' (tú)' : '');
+
+  $('fin-podium').replaceChildren(...sorted.slice(0, 3).map((s, i) => el('li', { class: `p${i + 1}`, dataset: { hero: s.hero } },
+    isWinner(s) ? el('span', { class: 'crown', 'aria-label': 'Ganador' }, '♛') : null,
+    heroAvatar(s.hero, i === 0 ? 'xl' : 'lg'),
+    el('b', {}, `${s.displayName}${you(s)}`),
+    el('span', { class: 'em' }, `✦ ${s.embers}`),
+    el('span', { class: 'step', 'aria-hidden': 'true' }, String(s.placement)))));
+
+  $('fin-standings').replaceChildren(...sorted.map((s, i) => {
+    const li = el('li', { class: [s.playerId === myPlayerId ? 'me' : '', isWinner(s) ? 'winner' : ''].filter(Boolean).join(' '), dataset: { hero: s.hero } },
+      el('span', { class: 'place' }, `${s.placement}${isWinner(s) ? '♛' : ''}`),
+      heroAvatar(s.hero, 'sm'),
+      el('span', { class: 's-who' }, el('b', {}, `${s.displayName}${you(s)}`),
+        el('small', {}, `${label(HEROES, s.hero)} · ${label(HERO_STATES, s.finalState)}`)),
+      el('span', { class: 'em' }, String(s.embers), el('small', {}, 'ascuas')));
+    li.style.animationDelay = `${0.9 + i * 0.08}s`;
+    return li;
+  }));
+
+  // Pactos revelados: cartas boca abajo que se voltean una a una (clic o Enter para voltear de nuevo).
+  const withPact = sorted.filter((s) => s.pact);
+  $('fin-pacts').replaceChildren(...withPact.map((s, i) => {
+    const done = Boolean(s.pact.fulfilled);
+    const card = el('div', { class: 'flip', tabindex: 0, role: 'button', 'aria-pressed': 'false', 'aria-label': `Pacto de ${s.displayName}: ${s.pact.description}. ${done ? 'Cumplido' : 'No cumplido'}` },
+      el('div', { class: 'flip-inner' },
+        el('div', { class: 'flip-face flip-front', 'aria-hidden': 'true' },
+          el('span', { class: 'seal' }, '✶'), el('b', {}, `Pacto de ${s.displayName}`), el('small', {}, 'secreto')),
+        el('div', { class: `flip-face flip-back ${done ? 'done' : 'failed'}`, 'aria-hidden': 'true' },
+          el('span', { class: 'who' }, `${s.displayName}${you(s)}`),
+          el('p', {}, s.pact.description),
+          el('span', { class: 'verdict' }, done ? '✔ Cumplido (+4 ascuas)' : '✖ No cumplido'))));
+    const flip = () => {
+      card.classList.toggle('revealed');
+      card.setAttribute('aria-pressed', String(card.classList.contains('revealed')));
+    };
+    card.addEventListener('click', flip);
+    card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+    setTimeout(() => { if (!card.classList.contains('revealed')) flip(); }, 1400 + i * 450);
+    return card;
+  }));
+  if (!withPact.length) $('fin-pacts').replaceChildren(el('p', { class: 'hint' }, 'Nadie tenía un pacto que revelar.'));
+
   const back = $('btn-back-lobby');
   back.onclick = () => onBack();
 }

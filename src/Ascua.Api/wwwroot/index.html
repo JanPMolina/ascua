@@ -3,89 +3,129 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#120d0a">
+  <meta name="color-scheme" content="dark">
   <!-- Sin scripts ni estilos inline: la CSP y la Referrer-Policy las envía el servidor (Security/SecurityHeaders.cs). -->
-  <title>Ascua — cliente de prueba</title>
+  <title>Ascua — mazmorra por turnos simultáneos</title>
+  <link rel="icon" href="img/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="css/app.css">
   <script src="vendor/signalr-10.0.11/signalr.min.js" integrity="sha384-N+pL/4qXZHZcvsa6hVMd5/7cdF3lC59ZMNHeQyRo5q9jmC7yw0hcJILPjUDSU7ZS" defer></script>
   <script src="vendor/signalr-10.0.11/signalr-protocol-msgpack.min.js" integrity="sha384-n6iFjTkQ2ZSd8IQ2S54Pdvo3eSmk/ulGO1Uc2ZNzAS7A6mGgJGQ9ZG0u75b2MWrp" defer></script>
   <script type="module" src="js/main.js"></script>
 </head>
 <body>
+  <a class="skip-link" href="#main">Saltar al contenido</a>
   <header class="topbar">
-    <h1>Ascua <small>cliente de prueba</small></h1>
+    <a class="brand" href="/" title="Ascua — inicio"><img class="brand-logo" src="img/logo.svg" alt="Ascua" width="133" height="40"></a>
     <span id="demo-badge" class="badge warn" hidden>MODO DEMO (sin servidor)</span>
     <span class="spacer"></span>
-    <button id="btn-howto" type="button" class="secondary">Cómo jugar</button>
-    <span id="user-label"></span>
-    <button id="btn-logout" type="button" hidden>Cerrar sesión</button>
+    <button id="btn-howto" type="button" class="ghost" aria-label="Cómo jugar"><span class="ico" aria-hidden="true">📜</span><span class="label">Cómo jugar</span></button>
+    <button id="btn-settings" type="button" class="ghost" aria-label="Ajustes" aria-haspopup="dialog" aria-controls="settings"><span class="ico" aria-hidden="true">⚙</span><span class="label">Ajustes</span></button>
+    <span id="user-label" class="user-chip"></span>
+    <button id="btn-logout" type="button" class="ghost" hidden>Salir</button>
   </header>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
-  <main>
+  <main id="main">
     <!-- ───────── Autenticación ───────── -->
     <section id="screen-auth" class="screen" hidden>
-      <div class="card welcome">
-        <h2>¿Primera vez en Ascua?</h2>
-        <p>Una mazmorra por turnos simultáneos para 2 a 4 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más ascuas.</p>
-        <div class="row">
-          <a class="button" href="?tutorial=1">Tutorial interactivo (5 min, sin cuenta)</a>
-          <button id="btn-howto-auth" type="button" class="secondary">Leer cómo se juega</button>
+      <div class="hero-banner">
+        <div class="hero-copy">
+          <img class="hero-logo" src="img/logo.svg" alt="Ascua" width="320" height="96">
+          <p class="tagline">Desciende a la cripta. Aviva el Umbral. Quédate con el fuego.</p>
+          <p class="lead">Una mazmorra por turnos simultáneos para 2 a 4 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más ascuas.</p>
+          <ul class="features">
+            <li><span class="feat-ico" aria-hidden="true">⏳</span><span><b>Rondas de 20 s</b> todos ordenan a la vez, en secreto.</span></li>
+            <li><span class="feat-ico" aria-hidden="true">🤝</span><span><b>Cooperación tensa</b> sin el grupo no hay victoria… ni reparto.</span></li>
+            <li><span class="feat-ico" aria-hidden="true">📜</span><span><b>Pactos secretos</b> que se revelan al final.</span></li>
+          </ul>
+        </div>
+        <div class="welcome card card-glow">
+          <h2>¿Primera vez en Ascua?</h2>
+          <p>Aprende moviéndote, guardando, atacando y abriendo cofres en una partida guiada.</p>
+          <div class="row">
+            <a class="button primary big" href="?tutorial=1">Tutorial interactivo <small>5 min, sin cuenta</small></a>
+          </div>
+          <div class="row">
+            <button id="btn-howto-auth" type="button" class="secondary">Leer cómo se juega</button>
+            <a class="button secondary" href="?demo=1">Ver una partida demo</a>
+          </div>
         </div>
       </div>
-      <div class="cards">
+
+      <ul class="hero-strip" aria-label="Los cuatro héroes">
+        <li class="hero-mini" data-hero="YUNQUE"><img src="img/heroes/yunque.svg" alt="" width="64" height="64"><b>Yunque</b><small>Tanque</small></li>
+        <li class="hero-mini" data-hero="CHISPA"><img src="img/heroes/chispa.svg" alt="" width="64" height="64"><b>Chispa</b><small>Distancia</small></li>
+        <li class="hero-mini" data-hero="CUERVO"><img src="img/heroes/cuervo.svg" alt="" width="64" height="64"><b>Cuervo</b><small>Pícaro</small></li>
+        <li class="hero-mini" data-hero="RAIZ"><img src="img/heroes/raiz.svg" alt="" width="64" height="64"><b>Raíz</b><small>Soporte</small></li>
+      </ul>
+
+      <div class="cards auth-forms">
         <form id="form-login" class="card" novalidate>
           <h2>Iniciar sesión</h2>
           <label>Usuario <input name="username" autocomplete="username" required minlength="1" maxlength="32"></label>
           <label>Contraseña <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
-          <button type="submit">Entrar</button>
+          <button type="submit" class="primary">Entrar</button>
         </form>
         <form id="form-register" class="card" novalidate>
           <h2>Crear cuenta</h2>
           <label>Usuario <input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+"></label>
           <label>Correo <input name="email" type="email" autocomplete="email" required maxlength="254"></label>
-          <label>Contraseña (10+) <input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128"></label>
+          <label>Contraseña (10+ caracteres) <input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128"></label>
           <button type="submit">Registrarme</button>
         </form>
       </div>
-      <p class="hint">Los tokens se guardan solo en memoria: al recargar la página hay que volver a entrar.
-        <a href="?demo=1">Probar el modo demo</a> · <a href="/docs">API (/docs)</a></p>
+      <p class="hint center">Los tokens se guardan solo en memoria: al recargar la página hay que volver a entrar.
+        <a href="/docs">API (/docs)</a></p>
     </section>
 
     <!-- ───────── Lobby ───────── -->
     <section id="screen-lobby" class="screen" hidden>
-      <div class="cards">
-        <div class="card">
-          <h2>Salas públicas</h2>
-          <div class="row">
-            <button id="btn-rooms-refresh" type="button">Actualizar</button>
-          </div>
-          <table class="table">
-            <thead><tr><th>Sala</th><th>Anfitrión</th><th>Jugadores</th><th></th></tr></thead>
-            <tbody id="rooms-body"></tbody>
-          </table>
-          <p id="rooms-empty" class="hint" hidden>No hay salas públicas abiertas.</p>
+      <div class="lobby-grid">
+        <div class="card card-glow quick">
+          <h2><span class="ico" aria-hidden="true">⚡</span> Cola rápida</h2>
+          <p class="hint">Elige héroe y te emparejamos con otros portadores.</p>
+          <form id="form-queue">
+            <fieldset id="queue-heroes" class="hero-pick compact">
+              <legend class="sr-only">Héroe para la cola</legend>
+            </fieldset>
+            <button type="submit" class="primary big block">Buscar partida</button>
+          </form>
         </div>
+
+        <div class="card rooms">
+          <div class="card-head">
+            <h2><span class="ico" aria-hidden="true">🏰</span> Salas públicas</h2>
+            <span class="spacer"></span>
+            <button id="btn-rooms-refresh" type="button" class="ghost" aria-label="Actualizar salas"><span aria-hidden="true">⟳</span> Actualizar</button>
+          </div>
+          <div id="rooms-body" class="room-list" aria-live="polite"></div>
+          <div id="rooms-empty" class="empty-state" hidden>
+            <img src="img/empty-rooms.svg" alt="" width="160" height="120">
+            <p id="rooms-empty-text">No hay salas públicas abiertas. ¡Enciende la primera!</p>
+          </div>
+        </div>
+
         <div class="card">
-          <h2>Crear o unirse</h2>
-          <form id="form-create-room" class="row">
+          <h2><span class="ico" aria-hidden="true">🔥</span> Crear sala</h2>
+          <form id="form-create-room" class="stack">
             <input name="name" placeholder="Nombre de la sala" required minlength="3" maxlength="32" autocomplete="off" aria-label="Nombre de la sala">
-            <label class="inline"><input type="checkbox" name="private"> Privada</label>
-            <button type="submit">Crear sala</button>
+            <div class="row">
+              <label class="switch"><input type="checkbox" name="private"><span class="switch-ui" aria-hidden="true"></span> Privada (solo con código)</label>
+              <span class="spacer"></span>
+              <button type="submit" class="primary">Crear sala</button>
+            </div>
           </form>
+          <h2 class="mt"><span class="ico" aria-hidden="true">🗝</span> Unirse con código</h2>
           <form id="form-join-code" class="row">
-            <input name="code" placeholder="Código de invitación" required maxlength="16" pattern="[A-Za-z0-9]+" autocomplete="off" aria-label="Código de invitación">
+            <input name="code" class="code-input" placeholder="CÓDIGO" required maxlength="16" pattern="[A-Za-z0-9]+" autocomplete="off" aria-label="Código de invitación">
             <button type="submit">Unirse</button>
-          </form>
-          <h2>Cola rápida</h2>
-          <form id="form-queue" class="row">
-            <select name="hero" aria-label="Héroe para la cola"></select>
-            <button type="submit">Buscar partida</button>
           </form>
           <details class="card-sub">
             <summary>Avanzado: entrar a una partida por id</summary>
             <form id="form-match-id" class="row">
-              <input name="matchId" placeholder="matchId (uuid)" required maxlength="36" autocomplete="off">
+              <input name="matchId" placeholder="matchId (uuid)" required maxlength="36" autocomplete="off" aria-label="Id de la partida">
               <button type="submit">Conectar</button>
             </form>
           </details>
@@ -95,17 +135,23 @@
 
     <!-- ───────── Sala ───────── -->
     <section id="screen-room" class="screen" hidden>
-      <div class="card">
-        <h2>Sala <span id="room-name"></span> <small id="room-visibility"></small></h2>
-        <p id="room-code-line" class="hint">Código de invitación: <code id="room-code"></code></p>
-        <table class="table">
-          <thead><tr><th>Asiento</th><th>Jugador</th><th>Héroe</th><th>Listo</th></tr></thead>
-          <tbody id="room-members"></tbody>
-        </table>
-        <div class="row">
-          <label class="inline">Mi héroe <select id="room-hero" aria-label="Mi héroe"></select></label>
-          <button id="btn-ready" type="button">Marcar listo</button>
-          <button id="btn-start" type="button">Iniciar partida</button>
+      <div class="card room">
+        <div class="card-head">
+          <h2>Sala <span id="room-name" class="accent"></span></h2>
+          <span id="room-visibility" class="badge"></span>
+          <span class="spacer"></span>
+          <p id="room-code-line" class="code-line">Código <code id="room-code"></code>
+            <button id="btn-copy-code" type="button" class="ghost small">Copiar</button></p>
+        </div>
+        <div id="room-members" class="seats" aria-live="polite"></div>
+        <h3 class="section-title">Elige tu héroe</h3>
+        <fieldset id="room-hero" class="hero-pick">
+          <legend class="sr-only">Mi héroe</legend>
+        </fieldset>
+        <div class="room-actions">
+          <button id="btn-ready" type="button" class="primary big">Marcar listo</button>
+          <button id="btn-start" type="button" class="big">Iniciar partida</button>
+          <span class="spacer"></span>
           <button id="btn-leave-room" type="button" class="secondary">Salir de la sala</button>
         </div>
         <p class="hint">La sala se actualiza sola cada 2 s; cuando el anfitrión inicia, todos entran a la partida.</p>
@@ -114,10 +160,14 @@
 
     <!-- ───────── Cola ───────── -->
     <section id="screen-queue" class="screen" hidden>
-      <div class="card">
-        <h2>Buscando partida…</h2>
-        <p id="queue-status" class="hint"></p>
-        <button id="btn-queue-cancel" type="button" class="secondary">Cancelar</button>
+      <div class="card queue-card">
+        <div class="searching" aria-hidden="true">
+          <span class="ring r1"></span><span class="ring r2"></span><span class="ring r3"></span>
+          <img src="img/favicon.svg" alt="" width="64" height="64">
+        </div>
+        <h2>Buscando partida<span class="dots" aria-hidden="true"><i>.</i><i>.</i><i>.</i></span></h2>
+        <p id="queue-status" class="hint" aria-live="polite"></p>
+        <button id="btn-queue-cancel" type="button" class="secondary">Cancelar búsqueda</button>
       </div>
     </section>
 
@@ -130,79 +180,121 @@
               <span class="badge warn">Tutorial</span>
               <small id="coach-step"></small>
               <span class="spacer"></span>
-              <button id="coach-exit" type="button" class="secondary">Salir del tutorial</button>
+              <button id="coach-exit" type="button" class="ghost small">Salir del tutorial</button>
             </div>
             <div class="coach-progress"><div id="coach-bar"></div></div>
             <h3 id="coach-title"></h3>
             <div id="coach-body"></div>
-            <button id="coach-next" type="button" hidden></button>
+            <button id="coach-next" type="button" class="primary" hidden></button>
           </div>
-          <div class="statusline">
-            <span id="conn-state" class="badge">desconectado</span>
-            <span>Piso <b id="m-floor">–</b></span>
-            <span>Ronda <b id="m-round">–</b></span>
-            <span id="m-status" class="badge"></span>
-            <span class="spacer"></span>
-            <span class="timer">⏱ <b id="m-timer">–</b></span>
+          <div class="hud-bar">
+            <div class="hud-pills">
+              <span class="pill"><small>Piso</small><b id="m-floor">–</b></span>
+              <span class="pill"><small>Ronda</small><b id="m-round">–</b></span>
+              <span id="m-status" class="badge"></span>
+              <span id="conn-state" class="badge conn">desconectado</span>
+            </div>
+            <div id="m-clock" class="clock" role="timer" aria-label="Tiempo de la ronda">
+              <span class="clock-ring" aria-hidden="true"></span>
+              <b id="m-timer">–</b>
+            </div>
           </div>
           <div class="timerbar"><div id="m-timerbar"></div></div>
-          <canvas id="board" width="540" height="540" aria-label="Tablero 9×9"></canvas>
+          <div class="board-frame">
+            <canvas id="board" width="540" height="540" aria-label="Tablero 9×9"></canvas>
+          </div>
           <p class="legend">
-            <span class="sw sw-wall"></span>muro <span class="sw sw-chest"></span>cofre <span class="sw sw-stairs"></span>escalera
-            <span class="sw sw-spikes"></span>pinchos <span class="sw sw-fire"></span>fuego <span class="sw sw-tele"></span>ataque anunciado
-            <span class="sw sw-fog"></span>recordado (fuera de visión)
+            <span><span class="sw sw-wall"></span>muro</span> <span><span class="sw sw-chest"></span>cofre</span> <span><span class="sw sw-stairs"></span>escalera</span>
+            <span><span class="sw sw-spikes"></span>pinchos</span> <span><span class="sw sw-fire"></span>fuego</span> <span><span class="sw sw-tele"></span>ataque anunciado</span>
+            <span><span class="sw sw-fog"></span>recordado</span>
           </p>
         </div>
 
         <div class="side-col">
-          <div class="card">
-            <h3 id="me-title">Mi héroe</h3>
+          <div class="card card-hero">
+            <div class="hero-head">
+              <span id="me-portrait" class="portrait-slot"></span>
+              <div class="hero-id">
+                <h3 id="me-title">Mi héroe</h3>
+                <small id="me-role"></small>
+              </div>
+              <span id="me-state" class="badge">–</span>
+            </div>
+            <div id="me-hearts" class="hearts" aria-hidden="true"></div>
             <div class="bar"><div id="me-hpbar" class="bar-hp"></div><span id="me-hp"></span></div>
-            <div class="stats">
-              <span>Escudo <b id="me-shield">0</b></span>
-              <span>Ascuas <b id="me-embers">0</b></span>
-              <span>Cargas <b id="me-charges">0</b></span>
-              <span>Enfr. habilidad <b id="me-cooldown">0</b></span>
-              <span>Sigilo <b id="me-stealth">0</b></span>
-              <span>Estado <b id="me-state">–</b></span>
+            <div class="stat-tiles">
+              <div id="tile-embers" class="tile tile-embers" title="Ascuas: deciden quién gana">
+                <span class="tile-ico" aria-hidden="true">✦</span><b id="me-embers">0</b><small>Ascuas</small>
+              </div>
+              <div class="tile tile-shield" title="Escudo: absorbe daño antes que la vida">
+                <span class="tile-ico" aria-hidden="true">⛨</span><b id="me-shield">0</b><small>Escudo</small>
+              </div>
+              <div id="tile-charges" class="tile tile-charges" title="Cargas de la habilidad">
+                <span id="me-charge-pips" class="pips" aria-hidden="true"></span><b id="me-charges">0</b><small>Cargas</small>
+              </div>
+              <div id="tile-ability" class="tile tile-ability" title="Enfriamiento de la habilidad">
+                <span class="tile-ico" aria-hidden="true">✺</span><b id="me-cooldown">0</b><small id="me-ability">Habilidad</small>
+              </div>
+              <div class="tile tile-stealth" title="Rondas de sigilo que quedan">
+                <span class="tile-ico" aria-hidden="true">☾</span><b id="me-stealth">0</b><small>Sigilo</small>
+              </div>
             </div>
             <h4>Bendiciones</h4>
             <ul id="me-blessings" class="chips"></ul>
             <h4>Pacto secreto</h4>
-            <p id="me-pact" class="pact">–</p>
+            <div id="me-pact" class="pact-card"><p>–</p></div>
           </div>
 
-          <div class="card">
-            <h3>Jugadores <small id="m-decided"></small></h3>
+          <div class="card card-orders">
+            <div class="card-head">
+              <h3>Orden</h3>
+              <span class="spacer"></span>
+              <small class="hint">Esc cancela</small>
+            </div>
+            <div class="modes" role="radiogroup" aria-label="Tipo de orden">
+              <button type="button" class="mode" data-mode="MOVE" role="radio"><span class="mode-ico" aria-hidden="true">➜</span>Mover <kbd>↑↓←→</kbd></button>
+              <button type="button" class="mode" data-mode="ATTACK" role="radio"><span class="mode-ico" aria-hidden="true">⚔</span>Atacar <kbd>⇧</kbd></button>
+              <button type="button" class="mode" data-mode="ABILITY" role="radio"><span class="mode-ico" aria-hidden="true">✺</span>Habilidad <kbd>Q</kbd></button>
+              <button type="button" class="mode" data-mode="INTERACT" role="radio"><span class="mode-ico" aria-hidden="true">✋</span>Interactuar <kbd>E</kbd></button>
+            </div>
+            <p id="order-armed" class="armed-hint" hidden></p>
+            <div class="dpad">
+              <button type="button" class="dir" data-dir="N" aria-label="Norte"><span aria-hidden="true">▲</span><small>N</small></button>
+              <button type="button" class="dir" data-dir="W" aria-label="Oeste"><span aria-hidden="true">◀</span><small>O</small></button>
+              <button type="button" id="btn-guard" class="dir guard"><span aria-hidden="true">⛨</span><small>Guardar <kbd>␣</kbd></small></button>
+              <button type="button" class="dir" data-dir="E" aria-label="Este"><span aria-hidden="true">▶</span><small>E</small></button>
+              <button type="button" class="dir" data-dir="S" aria-label="Sur"><span aria-hidden="true">▼</span><small>S</small></button>
+            </div>
+            <div id="order-status" class="order-status" aria-live="polite">Sin orden en esta ronda.</div>
+            <details class="shortcuts">
+              <summary>Atajos de teclado</summary>
+              <ul class="kbd-list">
+                <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> mover</li>
+                <li><kbd>⇧</kbd> + flecha atacar</li>
+                <li><kbd>Q</kbd> y flecha habilidad</li>
+                <li><kbd>E</kbd> y flecha interactuar</li>
+                <li><kbd>Espacio</kbd> guardar</li>
+                <li><kbd>Esc</kbd> cancelar Q/E</li>
+              </ul>
+            </details>
+          </div>
+
+          <div class="card card-players">
+            <div class="card-head">
+              <h3>Jugadores</h3>
+              <span class="spacer"></span>
+              <small id="m-decided" class="badge" aria-live="polite"></small>
+            </div>
             <ul id="players" class="players"></ul>
           </div>
 
-          <div class="card">
-            <h3>Orden</h3>
-            <div class="modes" role="radiogroup" aria-label="Tipo de orden">
-              <button type="button" class="mode" data-mode="MOVE">Mover</button>
-              <button type="button" class="mode" data-mode="ATTACK">Atacar ⇧</button>
-              <button type="button" class="mode" data-mode="ABILITY">Habilidad Q</button>
-              <button type="button" class="mode" data-mode="INTERACT">Interactuar E</button>
-            </div>
-            <div class="dpad">
-              <button type="button" class="dir" data-dir="N">↑ N</button>
-              <button type="button" class="dir" data-dir="W">← O</button>
-              <button type="button" id="btn-guard" class="dir">Guardar ␣</button>
-              <button type="button" class="dir" data-dir="E">E →</button>
-              <button type="button" class="dir" data-dir="S">↓ S</button>
-            </div>
-            <p class="hint">Teclado: flechas = mover · Shift+flecha = atacar · Q y flecha = habilidad · E y flecha = interactuar · Espacio = guardar · Esc = cancelar.</p>
-            <p id="order-status" class="order-status">Sin orden en esta ronda.</p>
-          </div>
-
-          <div class="card">
+          <div class="card card-events">
             <h3>Eventos de la ronda</h3>
-            <ul id="events" class="events"></ul>
+            <ul id="events" class="events" role="log" aria-live="polite"></ul>
           </div>
 
-          <div class="row">
-            <button id="btn-leave-match" type="button" class="secondary">Abandonar partida</button>
+          <div class="row match-actions">
+            <button id="btn-leave-match" type="button" class="danger">Abandonar partida</button>
             <button id="btn-demo-drop" type="button" class="secondary" hidden>Simular caída de conexión</button>
             <button id="btn-demo-finish" type="button" class="secondary" hidden>Simular fin de partida</button>
           </div>
@@ -210,47 +302,78 @@
       </div>
 
       <!-- Draft de bendiciones -->
-      <div id="draft" class="overlay" hidden>
-        <div class="card dialog">
-          <h2>Elige una bendición</h2>
-          <p class="hint" id="draft-source"></p>
-          <div id="draft-options" class="row"></div>
-          <p class="hint">Plazo: <b id="draft-timer"></b> (si vence, el servidor elige al azar).</p>
+      <div id="draft" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="draft-title">
+        <div class="dialog draft">
+          <span id="draft-source" class="badge warn"></span>
+          <h2 id="draft-title">Elige una bendición</h2>
+          <p class="hint">Es privada: nadie más sabrá cuál tomaste.</p>
+          <div id="draft-options" class="blessing-cards"></div>
+          <p class="hint">Plazo: <b id="draft-timer" class="draft-timer"></b> (si vence, el servidor elige al azar).</p>
         </div>
       </div>
     </section>
 
     <!-- ───────── Fin ───────── -->
     <section id="screen-finished" class="screen" hidden>
-      <div class="card">
-        <h2 id="fin-title">Fin de la partida</h2>
-        <p id="fin-summary"></p>
-        <table class="table">
-          <thead><tr><th>#</th><th>Jugador</th><th>Héroe</th><th>Estado final</th><th>Ascuas</th><th>Pacto revelado</th><th>Cumplido</th></tr></thead>
-          <tbody id="fin-standings"></tbody>
-        </table>
+      <div class="card fin">
+        <div id="fin-banner" class="fin-banner">
+          <span id="fin-emblem" class="fin-emblem" aria-hidden="true">✦</span>
+          <h2 id="fin-title">Fin de la partida</h2>
+          <p id="fin-summary"></p>
+        </div>
+        <ol id="fin-podium" class="podium" aria-label="Podio"></ol>
+        <h3 class="section-title">Clasificación</h3>
+        <ol id="fin-standings" class="standings"></ol>
+        <h3 class="section-title">Pactos revelados</h3>
+        <p class="hint">Las cartas se voltean solas; haz clic (o Enter) en una para darla vuelta otra vez.</p>
+        <div id="fin-pacts" class="pacts"></div>
         <div id="fin-tutorial" class="fin-tutorial" hidden>
           <h3>Terminaste el tutorial</h3>
           <p>En una partida real juegan de 2 a 4 personas, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan los pactos secretos y gana quien tenga más ascuas.</p>
           <div class="row">
-            <a class="button" href="/">Jugar en línea</a>
+            <a class="button primary" href="/">Jugar en línea</a>
             <a class="button secondary" href="?tutorial=1">Repetir el tutorial</a>
           </div>
         </div>
-        <button id="btn-back-lobby" type="button">Volver al lobby</button>
+        <div class="row center">
+          <button id="btn-back-lobby" type="button" class="primary big">Volver al lobby</button>
+        </div>
       </div>
     </section>
   </main>
 
+  <!-- ───────── Ajustes (js/settings-panel.js) ───────── -->
+  <div id="settings" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="card dialog settings">
+      <div class="card-head">
+        <h2 id="settings-title">Ajustes</h2>
+        <span class="spacer"></span>
+        <button id="settings-close" type="button" class="ghost" aria-label="Cerrar ajustes">✕</button>
+      </div>
+      <label class="switch row-setting"><input type="checkbox" id="set-muted"><span class="switch-ui" aria-hidden="true"></span> Silenciar todo</label>
+      <label class="range">
+        <span class="range-head"><span>Efectos de sonido</span><output id="set-sfx-out" for="set-sfx"></output></span>
+        <input type="range" id="set-sfx" min="0" max="100" step="5">
+      </label>
+      <label class="range">
+        <span class="range-head"><span>Música</span><output id="set-music-out" for="set-music"></output></span>
+        <input type="range" id="set-music" min="0" max="100" step="5">
+      </label>
+      <label class="switch row-setting"><input type="checkbox" id="set-motion"><span class="switch-ui" aria-hidden="true"></span> Reducir movimiento</label>
+      <p class="hint">Se guardan en este navegador. «Reducir movimiento» quita animaciones y sacudidas.</p>
+    </div>
+  </div>
+
   <!-- ───────── Cómo jugar (guía en páginas; js/howto.js) ───────── -->
   <div id="howto" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="howto-title">
     <div class="card dialog howto">
-      <div class="coach-head">
+      <div class="card-head">
         <h2 id="howto-title">Cómo jugar</h2>
         <span class="spacer"></span>
-        <small id="howto-count"></small>
-        <button id="howto-close" type="button" class="secondary" aria-label="Cerrar">✕</button>
+        <small id="howto-count" class="badge"></small>
+        <button id="howto-close" type="button" class="ghost" aria-label="Cerrar">✕</button>
       </div>
+      <div class="howto-progress" aria-hidden="true"><div id="howto-bar"></div></div>
 
       <section class="howto-page">
         <h3>La idea</h3>
@@ -277,11 +400,11 @@
         <table class="table">
           <thead><tr><th>Orden</th><th>Teclado</th><th>Qué hace</th></tr></thead>
           <tbody>
-            <tr><td>Mover</td><td>Flechas</td><td>1 casilla en N/S/E/O.</td></tr>
-            <tr><td>Atacar</td><td>Shift + flecha</td><td>Ataque básico según el alcance de tu héroe.</td></tr>
-            <tr><td>Habilidad</td><td>Q y luego flecha</td><td>La habilidad de tu héroe (cargas o enfriamiento).</td></tr>
-            <tr><td>Interactuar</td><td>E y luego flecha</td><td>Abrir un cofre, levantar a un aliado caído o usar un altar (casilla vecina).</td></tr>
-            <tr><td>Guardar</td><td>Espacio</td><td>Recibes la mitad de daño; anula los golpes de 1. Es la orden por defecto.</td></tr>
+            <tr><td>Mover</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></td><td>1 casilla en N/S/E/O.</td></tr>
+            <tr><td>Atacar</td><td><kbd>⇧</kbd> + flecha</td><td>Ataque básico según el alcance de tu héroe.</td></tr>
+            <tr><td>Habilidad</td><td><kbd>Q</kbd> y flecha</td><td>La habilidad de tu héroe (cargas o enfriamiento).</td></tr>
+            <tr><td>Interactuar</td><td><kbd>E</kbd> y flecha</td><td>Abrir un cofre, levantar a un aliado caído o usar un altar (casilla vecina).</td></tr>
+            <tr><td>Guardar</td><td><kbd>Espacio</kbd></td><td>Recibes la mitad de daño; anula los golpes de 1. Es la orden por defecto.</td></tr>
           </tbody>
         </table>
         <p class="hint">También puedes usar los botones del panel «Orden». Esc cancela Q o E.</p>
@@ -300,27 +423,31 @@
 
       <section class="howto-page" hidden>
         <h3>Los héroes</h3>
-        <dl class="heroes">
-          <dt>Yunque · tanque · 6 de vida</dt>
-          <dd>25% de bloquear golpes de frente. <b>Muralla</b>: protege a los aliados que estén detrás de él esa ronda.</dd>
-          <dt>Chispa · distancia · 4 de vida</dt>
-          <dd>Dispara a 3 casillas en línea y gana 1 carga por ronda sin atacar. <b>Descarga</b>: golpe en cruz con 1 + cargas de daño.</dd>
-          <dt>Cuervo · pícaro · 4 de vida</dt>
-          <dd>Doble daño por la espalda. <b>Paso sombrío</b>: avanza 2 casillas y queda invisible 2 rondas.</dd>
-          <dt>Raíz · soporte · 5 de vida</dt>
-          <dd>Las curaciones le rinden +1. <b>Brote</b>: cura 2 a un aliado cercano o a sí misma.</dd>
-        </dl>
+        <div class="heroes">
+          <div class="hero-row"><img src="img/heroes/yunque.svg" alt="" width="48" height="48"><dl>
+            <dt>Yunque · tanque · 6 de vida</dt>
+            <dd>25% de bloquear golpes de frente. <b>Muralla</b>: protege a los aliados que estén detrás de él esa ronda.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/chispa.svg" alt="" width="48" height="48"><dl>
+            <dt>Chispa · distancia · 4 de vida</dt>
+            <dd>Dispara a 3 casillas en línea y gana 1 carga por ronda sin atacar. <b>Descarga</b>: golpe en cruz con 1 + cargas de daño.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/cuervo.svg" alt="" width="48" height="48"><dl>
+            <dt>Cuervo · pícaro · 4 de vida</dt>
+            <dd>Doble daño por la espalda. <b>Paso sombrío</b>: avanza 2 casillas y queda invisible 2 rondas.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/raiz.svg" alt="" width="48" height="48"><dl>
+            <dt>Raíz · soporte · 5 de vida</dt>
+            <dd>Las curaciones le rinden +1. <b>Brote</b>: cura 2 a un aliado cercano o a sí misma.</dd></dl></div>
+        </div>
       </section>
 
       <section class="howto-page" hidden>
         <h3>Ascuas, pactos y traiciones</h3>
         <table class="table">
           <tbody>
-            <tr><td>Golpe final a un enemigo</td><td>+1</td></tr>
-            <tr><td>Abrir un cofre</td><td>+1</td></tr>
-            <tr><td>Levantar a un aliado caído</td><td>+2</td></tr>
-            <tr><td>Golpe final al Celador</td><td>+5</td></tr>
-            <tr><td>Cumplir tu pacto secreto</td><td>+4</td></tr>
+            <tr><td>Golpe final a un enemigo</td><td class="num">+1</td></tr>
+            <tr><td>Abrir un cofre</td><td class="num">+1</td></tr>
+            <tr><td>Levantar a un aliado caído</td><td class="num">+2</td></tr>
+            <tr><td>Golpe final al Celador</td><td class="num">+5</td></tr>
+            <tr><td>Cumplir tu pacto secreto</td><td class="num">+4</td></tr>
           </tbody>
         </table>
         <ul>
@@ -338,13 +465,13 @@
           <li><b>El Celador</b> es inmune a los golpes de frente: hay que rodearlo. A la mitad de su vida invoca tótems y alterna golpes en área.</li>
         </ul>
         <p>La mejor forma de aprender es jugando:</p>
-        <a class="button" href="?tutorial=1">Empezar el tutorial interactivo</a>
+        <a class="button primary" href="?tutorial=1">Empezar el tutorial interactivo</a>
       </section>
 
       <div class="row howto-nav">
         <button id="howto-prev" type="button" class="secondary">← Anterior</button>
         <span class="spacer"></span>
-        <button id="howto-next" type="button">Siguiente →</button>
+        <button id="howto-next" type="button" class="primary">Siguiente →</button>
       </div>
     </div>
   </div>
@@ -354,8 +481,8 @@
     <summary>Depuración — log de mensajes (<span id="log-count">0</span>)</summary>
     <div class="row">
       <label class="inline"><input type="checkbox" id="log-payloads"> mostrar payload</label>
-      <button id="btn-log-clear" type="button" class="secondary">Limpiar</button>
-      <button id="btn-log-copy" type="button" class="secondary">Copiar como JSON</button>
+      <button id="btn-log-clear" type="button" class="secondary small">Limpiar</button>
+      <button id="btn-log-copy" type="button" class="secondary small">Copiar como JSON</button>
       <span id="log-seq" class="hint"></span>
     </div>
     <table class="table log">

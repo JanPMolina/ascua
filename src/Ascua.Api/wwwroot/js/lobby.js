@@ -1,7 +1,8 @@
 // Lobby: salas públicas, crear/unirse por código, héroe, listo, iniciar y cola rápida.
 import * as api from './api.js';
 import { $, busy, el, formData, setText, showScreen, toast } from './ui.js';
-import { HEROES, label } from './labels.js';
+import { HEROES } from './labels.js';
+import { heroAvatar, heroInfo } from './heroes.js';
 
 const POLL_MS = 2000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,11 +11,22 @@ let enterMatch = () => {};
 let pollTimer = 0;
 let currentRoom = null;
 let bound = false;
+let shownSeats = new Map(); // userId → listo, para animar solo los asientos que cambian
 
-function heroOptions(select, selected) {
-  const placeholder = selected ? [] : [el('option', { value: '', selected: true, disabled: true }, '— elige —')];
-  select.replaceChildren(...placeholder, ...Object.entries(HEROES).map(([id, text]) =>
-    el('option', { value: id, selected: id === selected }, text)));
+/** Tarjetas de héroe con radios reales (teclado y lector de pantalla las tratan como un grupo de opciones). */
+function heroPicker(fieldset, name, selected) {
+  const cards = Object.keys(HEROES).map((id) => {
+    const info = heroInfo(id);
+    return el('label', { class: 'hero-card', dataset: { hero: id } },
+      el('input', { type: 'radio', name, value: id, checked: id === selected }),
+      heroAvatar(id, 'md'),
+      el('span', { class: 'hc-name' }, info.name),
+      el('span', { class: 'hc-role' }, info.role),
+      el('span', { class: 'hc-stats' }, el('span', { class: 'hp' }, `♥ ${info.hp} de vida`), '·', el('span', {}, info.passive)),
+      el('span', { class: 'hc-ability' }, el('b', {}, info.ability), `: ${info.abilityText}`),
+      el('span', { class: 'hc-taken' }));
+  });
+  fieldset.append(...cards);
 }
 
 function stopPolling() {
@@ -46,17 +58,27 @@ async function refreshRooms() {
   const body = $('rooms-body');
   try {
     const rooms = await api.listRooms();
-    body.replaceChildren(...rooms.map((room) => el('tr', {},
-      el('td', {}, room.name),
-      el('td', {}, room.hostName),
-      el('td', {}, `${room.playerCount}/${room.capacity}`),
-      el('td', {}, el('button', { type: 'button', onclick: () => joinPublic(room.id) }, 'Unirse')))));
+    body.replaceChildren(...rooms.map((room, i) => {
+      const full = room.playerCount >= room.capacity;
+      const card = el('div', { class: 'room-card' },
+        el('span', { class: full ? 'room-flame full' : 'room-flame', 'aria-hidden': 'true' }, '🔥'),
+        el('div', {},
+          el('b', {}, room.name),
+          el('small', {}, `Anfitrión: ${room.hostName || '—'} · ${room.playerCount}/${room.capacity}`,
+            el('span', { class: 'seat-pips', 'aria-hidden': 'true' },
+              ...Array.from({ length: room.capacity }, (_, n) => el('i', { class: n < room.playerCount ? 'on' : '' }))))),
+        el('button', { type: 'button', class: full ? 'secondary' : 'primary', disabled: full, onclick: () => joinPublic(room.id) },
+          full ? 'Llena' : 'Unirse'));
+      card.style.animationDelay = `${i * 60}ms`;
+      return card;
+    }));
+    setText('rooms-empty-text', 'No hay salas públicas abiertas. ¡Enciende la primera!');
     $('rooms-empty').hidden = rooms.length > 0;
   } catch (err) {
     body.replaceChildren();
     $('rooms-empty').hidden = false;
     const missing = err instanceof api.ApiError && err.status === 404;
-    setText('rooms-empty', missing
+    setText('rooms-empty-text', missing
       ? `El servidor todavía no expone ${api.ROUTES.rooms}.`
       : `No se pudieron listar las salas: ${explain(err)}`);
   }
@@ -86,6 +108,7 @@ function me(room) {
 }
 
 function showRoom(room) {
+  if (currentRoom?.id !== room.id) shownSeats = new Map();
   currentRoom = room;
   showScreen('room');
   renderRoom(room);
@@ -117,17 +140,45 @@ function renderRoom(room) {
   setText('room-name', room.name);
   setText('room-code', room.code ?? '');
   $('room-code-line').hidden = !room.code;
-  setText('room-visibility', room.visibility === 'PRIVATE' ? 'privada' : 'pública');
-  $('room-members').replaceChildren(...room.members.map((m) => el('tr', {},
-    el('td', {}, String(m.seat)),
-    el('td', {}, `${m.username}${m.isHost ? ' (anfitrión)' : ''}`),
-    el('td', {}, m.hero ? label(HEROES, m.hero) : '—'),
-    el('td', {}, m.ready ? '✔' : '…'))));
+  const priv = room.visibility === 'PRIVATE';
+  setText('room-visibility', priv ? '🔒 privada' : 'pública');
+  $('room-visibility').className = priv ? 'badge warn' : 'badge';
   const mine = me(room);
-  const select = $('room-hero');
-  if (document.activeElement !== select) heroOptions(select, mine?.hero ?? null);
-  $('btn-ready').textContent = mine?.ready ? 'Ya no estoy listo' : 'Marcar listo';
+  const seats = Array.from({ length: Math.max(room.capacity, room.members.length) }, (_, i) => room.members[i] ?? null);
+  $('room-members').replaceChildren(...seats.map((m, i) => {
+    if (!m) {
+      return el('div', { class: 'seat empty' },
+        el('span', { class: 'seat-n' }, `#${i + 1}`),
+        heroAvatar(null, 'lg'),
+        el('b', {}, 'Asiento libre'),
+        el('small', {}, 'Esperando portador…'));
+    }
+    const info = m.hero ? heroInfo(m.hero) : null;
+    const before = shownSeats.get(m.userId);
+    const classes = ['seat', m === mine ? 'mine' : '', m.ready ? 'ready' : '',
+      before === undefined ? 'enter' : '', m.ready && before === false ? 'just-ready' : ''].filter(Boolean).join(' ');
+    return el('div', { class: classes, dataset: m.hero ? { hero: m.hero } : {} },
+      el('span', { class: 'seat-n' }, `#${m.seat}`),
+      m.isHost ? el('span', { class: 'host', title: 'Anfitrión' }, '♛') : null,
+      heroAvatar(m.hero, 'lg'),
+      el('b', {}, `${m.username}${m === mine ? ' (tú)' : ''}`),
+      el('small', {}, info ? `${info.name} · ${info.role}` : 'Sin héroe'),
+      el('span', { class: 'ready-state' }, m.ready ? '✔ Listo' : '… preparando'));
+  }));
+  shownSeats = new Map(room.members.map((m) => [m.userId, m.ready]));
+  // Las tarjetas de héroe no se recrean (conservan el foco del teclado): solo se marca la elegida y quién más la tiene.
+  for (const input of $('room-hero').querySelectorAll('input')) {
+    input.checked = input.value === mine?.hero;
+    const others = room.members.filter((m) => m !== mine && m.hero === input.value).map((m) => m.username);
+    input.closest('.hero-card').querySelector('.hc-taken').textContent = others.length ? `También: ${others.join(', ')}` : '';
+  }
+  const ready = Boolean(mine?.ready);
+  $('btn-ready').textContent = ready ? '✔ Listo (cancelar)' : 'Marcar listo';
+  $('btn-ready').classList.toggle('is-ready', ready);
+  $('btn-ready').setAttribute('aria-pressed', String(ready));
   $('btn-start').hidden = Boolean(mine) && !mine.isHost && room.members.some((m) => m.isHost);
+  const allReady = room.members.length > 0 && room.members.every((m) => m.ready);
+  $('btn-start').classList.toggle('primary', allReady);
 }
 
 function enter(matchId) {
@@ -157,7 +208,8 @@ function startQueuePolling() {
       const position = status?.position ? ` · posición ${status.position}` : '';
       const waiting = status?.playersInQueue ? ` · ${status.playersInQueue} en cola` : '';
       const phase = status?.status === 'MATCHING' ? 'Grupo formado; creando la partida…' : 'Esperando jugadores…';
-      setText('queue-status', `${phase} ${Math.round((Date.now() - started) / 1000)} s${position}${waiting}`);
+      const secs = Math.round((Date.now() - started) / 1000);
+      setText('queue-status', `${phase} ${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}${position}${waiting}`);
     } catch (err) {
       setText('queue-status', `Error consultando la cola: ${explain(err)}`);
     }
@@ -172,7 +224,17 @@ export function initLobby({ onEnterMatch }) {
   enterMatch = onEnterMatch;
   if (bound) return;
   bound = true;
-  heroOptions($('form-queue').elements.hero, 'YUNQUE');
+  heroPicker($('queue-heroes'), 'hero', 'YUNQUE');
+  heroPicker($('room-hero'), 'room-hero', null);
+
+  $('btn-copy-code').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('room-code').textContent);
+      toast('Código copiado.', 'ok', 2000);
+    } catch {
+      toast('No se pudo copiar; selecciona el código a mano.', 'bad');
+    }
+  });
 
   $('btn-rooms-refresh').addEventListener('click', refreshRooms);
 
@@ -229,6 +291,7 @@ export function initLobby({ onEnterMatch }) {
     try {
       renderRoom(currentRoom = await api.setHero(currentRoom.id, e.target.value) ?? currentRoom);
     } catch (err) {
+      renderRoom(currentRoom);
       toast(`No se pudo elegir héroe: ${explain(err)}`, 'bad');
     }
   });

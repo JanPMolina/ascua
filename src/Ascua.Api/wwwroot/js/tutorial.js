@@ -162,7 +162,7 @@ const STEPS = [
         'Abrirlo también cumple tu pacto secreto de esta práctica.',
       ];
     },
-    focus: ['.mode[data-mode="INTERACT"]', '#me-embers'],
+    focus: ['.mode[data-mode="INTERACT"]', '#tile-embers'],
     done: (c, type, msg) => type === 'RoundResolved' && c.mine(msg, 'CHEST_OPENED'),
   },
   {
@@ -177,7 +177,7 @@ const STEPS = [
           : 'No tienes cargas: Chispa gana 1 por cada ronda en que no ataca. Guarda una ronda (Espacio) y vuelve a intentarlo.',
       ];
     },
-    focus: ['.mode[data-mode="ABILITY"]', '#me-charges'],
+    focus: ['.mode[data-mode="ABILITY"]', '#tile-charges'],
     done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'ABILITY',
   },
   {
