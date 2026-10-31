@@ -1,0 +1,8 @@
+# Quién revisa qué (GitHub lo pide automáticamente en cada PR). Ver Juan_Pablo_instrucciones.md §2.
+*                                   @JanPMolina
+/infra/                             @juanpgr205
+/.github/workflows/infra.yml        @juanpgr205
+/.github/workflows/deploy.yml       @juanpgr205
+/.github/workflows/rollback.yml     @juanpgr205
+/docs/costos.md                     @juanpgr205
+/docs/runbooks/rollback.md          @juanpgr205

@@ -87,6 +87,7 @@ Proyecto3.pdf            Enunciado
 - [Reglas del juego](planteamiento/01-juego.md)
 - [Arquitectura](planteamiento/02-arquitectura.md)
 - [Plan de trabajo y roles](planteamiento/03-plan-de-trabajo.md)
+- [Instrucciones de despliegue en Azure (Juan Pablo)](Juan_Pablo_instrucciones.md)
 - [Modelo de amenazas](docs/modelo-de-amenazas.md)
 - [Pendientes hacia v1.0.0](docs/pendientes.md)
 - [Rendimiento y prueba de carga](docs/rendimiento.md)

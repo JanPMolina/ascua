@@ -9,6 +9,7 @@ import { RealTransport } from './hub.js';
 import { DemoTransport } from './demo.js';
 import { startTutorial } from './tutorial.js';
 import { initHowTo } from './howto.js';
+import { initAudio } from './audio.js';
 import { initSettingsPanel } from './settings-panel.js';
 
 const params = new URLSearchParams(location.search);
@@ -76,6 +77,7 @@ function bindAuth() {
 }
 
 function main() {
+  initAudio();
   initLogPanel();
   initSettingsPanel();
   initHowTo();

@@ -115,8 +115,8 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 | STRIDE | Amenaza | Mitigación | Prueba o evidencia |
 |---|---|---|---|
 | I | Un secreto en el repositorio | gitleaks en cada push y PR; en local, la clave JWT es efímera y no hay contraseñas por defecto | Job `secrets-scan` del CI |
-| I | Robar la clave de firma JWT | En Azure vive en Key Vault y se lee con identidad administrada; rotación en [runbooks/rotar-clave-jwt.md](runbooks/rotar-clave-jwt.md) | **Pendiente (Juan Pablo):** `KeyVaultSigningKeyProvider` |
-| S/I | Robar la cadena de conexión de Postgres o Redis | En Azure se usa autenticación Entra con identidad administrada, sin contraseñas en la configuración | **Pendiente (Juan Pablo)** |
+| I | Robar la clave de firma JWT | En Azure vive en Key Vault y se lee con identidad administrada; rotación en [runbooks/rotar-clave-jwt.md](runbooks/rotar-clave-jwt.md) | `Key_vault_provider_signs_with_the_newest_version_and_still_validates_older_enabled_ones`, `A_disabled_old_version_stops_validating_its_tokens`; en Azure falta crear el secreto (Juan Pablo) |
+| S/I | Robar la cadena de conexión de Postgres o Redis | En Azure se usa autenticación Entra con identidad administrada (`UseEntraAuth`), sin contraseñas en la configuración; la app no arranca si la cadena trae una | `Postgres_with_entra_auth_refuses_a_connection_string_with_a_password`, `Redis_with_entra_auth_refuses_a_connection_string_with_a_password`; roles en Azure (Juan Pablo) |
 | T | Perder o duplicar jugadas confirmadas por un reinicio o una carrera | *Event sourcing* liviano en Postgres con `UNIQUE(match_id, seq)`; Redis se puede reconstruir desde Postgres (ADR-0003) | `Two_players_play_a_full_match_with_contiguous_seq_and_immutable_result`, `A_match_continues_with_contiguous_seq_after_restarting_the_instance_mid_round` |
 | D | Que se caiga Redis o Postgres | `/health/ready` saca a la réplica del balanceo sin reiniciarla; [runbook](runbooks/dependencias-caidas.md) | `A_dependency_outage_turns_readiness_red_without_killing_the_process_and_the_match_resumes` (Redis y Postgres) |
 
@@ -147,7 +147,7 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 ## Pendiente
 
 Lo de código ya está cubierto. Queda solo lo de Azure (Juan Pablo):
-- [ ] `KeyVaultSigningKeyProvider`.
-- [ ] Autenticación Entra en Postgres y Redis.
+- [ ] Secreto `jwt-signing-key` en Key Vault y roles de la identidad (el código ya está).
+- [ ] Roles de Entra en Postgres y Redis (el código ya está).
 - [ ] Federación OIDC y *environments* con aprobación.
 - [ ] TLS en el ingress.

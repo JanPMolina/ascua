@@ -45,9 +45,12 @@ Jan entrega y Juan Pablo consume:
 
 | Clave | Local (compose) | Azure (lo define Juan Pablo) |
 |---|---|---|
-| `ConnectionStrings__Postgres` | cadena con contraseña de desarrollo | host y base sin contraseña (token Entra con identidad administrada) |
-| `ConnectionStrings__Redis` | `redis:6379` | host:6380 con SSL y token Entra. **Sin modo clúster** (los scripts Lua del lobby tocan varias claves, ADR-0007) |
-| `Ascua__KeyVaultUri` | vacío (usa una clave de desarrollo generada al arrancar) | URI del Key Vault. Falta implementar `ISigningKeyProvider` para Key Vault (ver `src/Ascua.Infrastructure/Auth/SigningKeys.cs`); hasta entonces la app no arranca si se define |
+| `ConnectionStrings__Postgres` | cadena con contraseña de desarrollo | `Host=<srv>.postgres.database.azure.com;Database=ascua;Username=<identidad>;SSL Mode=Require` (sin contraseña, con `UseEntraAuth`) |
+| `ConnectionStrings__Redis` | `redis:6379` | `<nombre>.redis.cache.windows.net:6380,ssl=True,abortConnect=False` (sin password, con `UseEntraAuth`). **Sin modo clúster** (los scripts Lua del lobby tocan varias claves, ADR-0007) |
+| `Ascua__KeyVaultUri` | vacío (usa una clave de desarrollo generada al arrancar) | URI del Key Vault. La app lee la clave ES256 del secreto `Ascua__Jwt__KeyVaultSecretName` (por defecto `jwt-signing-key`) con la identidad administrada y lo relee cada `Ascua__Jwt__KeyRefreshInterval` (`00:05:00`) |
+| `Ascua__Azure__ManagedIdentityClientId` | vacío | *client id* de la identidad administrada asignada por el usuario (Key Vault, Postgres y Redis) |
+| `Ascua__Database__UseEntraAuth` | `false` | `true`: la contraseña de Postgres es un token de Entra; la cadena lleva `Username=<identidad>` y **no** `Password` |
+| `Ascua__Redis__UseEntraAuth` | `false` | `true`: Redis con token de Entra; la cadena **no** lleva `password` |
 | `Ascua__Database__MigrateOnStartup` | `true` (aplica migraciones al arrancar) | `false` por defecto; `true` es seguro con varias réplicas (EF Core toma un *lock* al migrar) o se migra desde el pipeline |
 | `Ascua__Jwt__AllowEphemeralKey` | no hace falta (Development siempre usa clave efímera) | `false`; `true` solo en un ambiente de prueba de una réplica mientras no esté Key Vault |
 | `Ascua__Jwt__Issuer` / `Ascua__Jwt__Audience` | `ascua` / `ascua-api` | igual (o el dominio público) |
@@ -125,5 +128,5 @@ Si una clave cambia, se actualiza esta tabla en el mismo PR.
 | Que el crédito de Azure se agote | Dev apagado o a 0 réplicas fuera de horario, límite de ingesta en Log Analytics |
 | Que Jan no pueda probar en Azure | Todo debe funcionar igual con `docker compose`. Juan Pablo comparte logs y trazas de Azure cuando haga falta |
 | Lock y réplicas en casos raros | `UNIQUE(match_id, seq)` en Postgres como garantía final; pruebas con 2 instancias en Testcontainers |
-| Autenticación Entra con Postgres y Redis | Juan Pablo reserva medio día; Jan deja la conexión preparada con `DefaultAzureCredential` |
+| Autenticación Entra con Postgres y Redis | Ya implementada en el código (`UseEntraAuth`); Juan Pablo solo crea los roles y permisos ([Juan_Pablo_instrucciones.md](../Juan_Pablo_instrucciones.md)) |
 | Que las reglas del juego crezcan | Congelar las reglas el 30-oct |

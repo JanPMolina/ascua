@@ -1,3 +1,4 @@
+using Ascua.Infrastructure.Cloud;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
@@ -11,28 +12,50 @@ public static class RedisConnection
 
     public const string DedicatedSocketThreadsKey = "Ascua:Redis:DedicatedSocketThreads";
 
+    /// <summary>Azure: autenticarse con Entra (identidad administrada) en lugar de la clave de acceso.</summary>
+    public const string UseEntraAuthKey = "Ascua:Redis:UseEntraAuth";
+
     /// <summary>
     /// Registra un <see cref="IConnectionMultiplexer"/> compartido y su check de salud (etiqueta "ready").
     /// La cadena se lee al resolver para que las pruebas puedan sobrescribirla.
-    /// TODO(Juan Pablo): en Azure, autenticación Entra con identidad administrada en lugar de contraseña.
     /// </summary>
     public static IServiceCollection AddAscuaRedis(this IServiceCollection services)
     {
         services.AddSingleton<IConnectionMultiplexer>(sp =>
-        {
-            var connectionString = sp.GetRequiredService<IConfiguration>().GetConnectionString(ConnectionStringName);
-            if (string.IsNullOrWhiteSpace(connectionString))
-            {
-                throw new InvalidOperationException($"Falta ConnectionStrings:{ConnectionStringName}.");
-            }
-
-            var options = ConfigurationOptions.Parse(connectionString);
-            ApplySocketManager(options, sp.GetRequiredService<IConfiguration>());
-            return ConnectionMultiplexer.Connect(options);
-        });
+            ConnectionMultiplexer.Connect(BuildOptionsAsync(sp.GetRequiredService<IConfiguration>()).GetAwaiter().GetResult()));
 
         services.AddHealthChecks().AddCheck<RedisHealthCheck>("redis", tags: ["ready"]);
         return services;
+    }
+
+    /// <summary>
+    /// Opciones de conexión desde <c>ConnectionStrings:Redis</c>, comunes a la app y al backplane de SignalR.
+    /// Con <c>Ascua:Redis:UseEntraAuth=true</c> (Azure) la cadena no lleva <c>password</c>: la librería de
+    /// Microsoft pide y renueva sola el token de Entra de la identidad administrada.
+    /// </summary>
+    public static async Task<ConfigurationOptions> BuildOptionsAsync(IConfiguration configuration)
+    {
+        var connectionString = configuration.GetConnectionString(ConnectionStringName);
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException($"Falta ConnectionStrings:{ConnectionStringName}.");
+        }
+
+        var options = ConfigurationOptions.Parse(connectionString);
+        ApplySocketManager(options, configuration);
+        if (configuration.GetValue<bool>(UseEntraAuthKey))
+        {
+            if (!string.IsNullOrEmpty(options.Password))
+            {
+                throw new InvalidOperationException(
+                    "Con Ascua:Redis:UseEntraAuth=true la cadena de Redis no debe llevar password: se usa la identidad administrada.");
+            }
+
+            options.Ssl = true;
+            await options.ConfigureForAzureWithTokenCredentialAsync(AzureCredentials.Get(configuration));
+        }
+
+        return options;
     }
 
     /// <summary>

@@ -6,11 +6,10 @@ namespace Ascua.Infrastructure.Auth;
 /// <summary>
 /// Origen de la clave ECDSA P-256 con la que se firman (ES256) y validan los JWT de acceso.
 /// <para>
-/// Punto de extensión para Azure: implementar un <c>KeyVaultSigningKeyProvider</c> que lea la clave de
-/// Key Vault con identidad administrada (<c>DefaultAzureCredential</c>) y registrarlo en
-/// <see cref="DependencyInjection.AddAscuaInfrastructure"/> cuando <c>Ascua:KeyVaultUri</c> tenga valor.
-/// Para rotar claves sin cortar sesiones, <see cref="ValidationKeys"/> debe incluir la clave anterior
-/// durante al menos la vida de un token de acceso (10 min).
+/// En Azure (<c>Ascua:KeyVaultUri</c> con valor) la implementación es <see cref="KeyVaultSigningKeyProvider"/>;
+/// en local y en pruebas, <see cref="EphemeralSigningKeyProvider"/>. Para rotar claves sin cortar sesiones,
+/// <see cref="ValidationKeys"/> incluye la clave anterior mientras siga habilitada (al menos 10 min, la vida
+/// de un token de acceso).
 /// </para>
 /// </summary>
 public interface ISigningKeyProvider

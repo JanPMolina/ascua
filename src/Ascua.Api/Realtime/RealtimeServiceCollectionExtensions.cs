@@ -40,12 +40,16 @@ public static class RealtimeServiceCollectionExtensions
             .AddMessagePackProtocol()
             .AddStackExchangeRedis();
 
-        // Backplane: misma cadena que el resto de Redis, leída al resolver.
+        // Backplane: misma cadena (y en Azure, la misma autenticación Entra) que el resto de Redis, leída al
+        // conectar. Usa su propia conexión porque el prefijo de canales aplica a toda la conexión.
         services.AddOptions<RedisOptions>().Configure<IConfiguration>((options, configuration) =>
         {
-            options.Configuration = ConfigurationOptions.Parse(configuration.GetConnectionString(RedisConnection.ConnectionStringName) ?? "localhost");
-            options.Configuration.ChannelPrefix = RedisChannel.Literal("ascua:signalr");
-            RedisConnection.ApplySocketManager(options.Configuration, configuration);
+            options.ConnectionFactory = async writer =>
+            {
+                var redis = await RedisConnection.BuildOptionsAsync(configuration);
+                redis.ChannelPrefix = RedisChannel.Literal("ascua:signalr");
+                return await ConnectionMultiplexer.ConnectAsync(redis, writer);
+            };
         });
 
         services.AddSingleton<RealtimeHubFilter>();

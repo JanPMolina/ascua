@@ -18,6 +18,10 @@
     <PackageVersion Include="EFCore.NamingConventions" Version="10.0.1" />
     <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
     <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.19.2" />
+    <!-- Azure (identidad administrada): Key Vault para la clave JWT y Entra en Postgres y Redis. -->
+    <PackageVersion Include="Azure.Identity" Version="1.21.0" />
+    <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.12.0" />
+    <PackageVersion Include="Microsoft.Azure.StackExchangeRedis" Version="3.3.1" />
     <!-- Rama 2.x: la exige el backplane Microsoft.AspNetCore.SignalR.StackExchangeRedis 10.x. -->
     <PackageVersion Include="StackExchange.Redis" Version="2.13.17" />
     <!-- Bot -->

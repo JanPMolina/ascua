@@ -633,6 +633,7 @@ class MatchController {
       pendingOrder: this.order?.status === 'acked' || this.order?.status === 'sending' || this.order?.status === 'waiting'
         ? this.order.payload.order : me?.pendingOrder ?? null,
       armedMode: this.armedMode,
+      mode,
     });
     this.renderTimer();
   }

@@ -18,4 +18,10 @@ public sealed class JwtOptions
     /// mientras no esté conectado Key Vault). En producción debe quedar en <c>false</c>.
     /// </summary>
     public bool AllowEphemeralKey { get; set; }
+
+    /// <summary>Nombre del secreto de Key Vault con la clave privada ES256 en PEM (si hay <c>Ascua:KeyVaultUri</c>).</summary>
+    public string KeyVaultSecretName { get; set; } = "jwt-signing-key";
+
+    /// <summary>Cada cuánto se relee Key Vault para detectar una rotación de la clave.</summary>
+    public TimeSpan KeyRefreshInterval { get; set; } = TimeSpan.FromMinutes(5);
 }
