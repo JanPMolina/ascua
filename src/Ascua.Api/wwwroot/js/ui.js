@@ -1,5 +1,6 @@
 // Utilidades de DOM. Regla del cliente: los datos del servidor solo entran al DOM como texto
 // (textContent / createTextNode); nunca se usa innerHTML.
+import { emit } from './bus.js';
 
 export const $ = (id) => {
   const node = document.getElementById(id);
@@ -32,6 +33,7 @@ const screens = ['auth', 'lobby', 'room', 'queue', 'match', 'finished'];
 
 export function showScreen(name) {
   for (const s of screens) $(`screen-${s}`).hidden = s !== name;
+  emit('ui:screen', { name });
 }
 
 let toastTimer = 0;
