@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 120" role="img" aria-label="Brasero apagado">
+  <defs>
+    <radialGradient id="g" cx="50%" cy="80%" r="55%">
+      <stop offset="0" stop-color="#ff7a2e" stop-opacity=".25"/>
+      <stop offset="1" stop-color="#ff7a2e" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <ellipse cx="80" cy="96" rx="70" ry="22" fill="url(#g)"/>
+  <path d="M44 62h72l-8 22H52z" fill="#3a2f28" stroke="#6b5646" stroke-width="2"/>
+  <path d="M60 84l-10 24M100 84l10 24M80 84v24" stroke="#6b5646" stroke-width="4" stroke-linecap="round"/>
+  <path d="M56 62c4-6 10-6 14-2 3-6 12-7 16-1 4-5 12-4 16 3" fill="none" stroke="#4d3f35" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="70" cy="58" r="3" fill="#ff8a3d"/>
+  <circle cx="90" cy="56" r="2" fill="#ffb15c"/>
+  <path d="M74 44c-4-6 4-10 0-18M86 40c-3-5 3-8 0-14" fill="none" stroke="#8a7c70" stroke-width="2" stroke-linecap="round" stroke-opacity=".6"/>
+</svg>

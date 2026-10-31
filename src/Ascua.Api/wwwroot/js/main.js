@@ -10,6 +10,7 @@ import { DemoTransport } from './demo.js';
 import { startTutorial } from './tutorial.js';
 import { initHowTo } from './howto.js';
 import { initAudio } from './audio.js';
+import { initSettingsPanel } from './settings-panel.js';
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.get('demo') === '1';
@@ -52,7 +53,7 @@ function bindAuth() {
         await api.register(username.trim(), email.trim(), password);
         await api.login(username.trim(), password);
         form.reset();
-        toast('Cuenta creada.');
+        toast('Cuenta creada. ¡Bienvenido al Umbral!', 'ok');
       } catch (err) {
         toast(`No se pudo registrar: ${err.message}`, 'bad', 7000);
       }
@@ -78,6 +79,7 @@ function bindAuth() {
 function main() {
   initAudio();
   initLogPanel();
+  initSettingsPanel();
   initHowTo();
   if (TUTORIAL) {
     $('demo-badge').textContent = 'TUTORIAL (sin servidor)';

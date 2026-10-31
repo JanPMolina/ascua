@@ -11,11 +11,15 @@ function show(index) {
   page = Math.max(0, Math.min(all.length - 1, index));
   all.forEach((p, i) => { p.hidden = i !== page; });
   setText('howto-count', `${page + 1} / ${all.length}`);
+  $('howto-bar').style.width = `${((page + 1) / all.length) * 100}%`;
   $('howto-prev').disabled = page === 0;
   $('howto-next').hidden = page === all.length - 1;
 }
 
+let opener = null;
+
 export function openHowTo() {
+  opener = document.activeElement;
   show(0);
   $('howto').hidden = false;
   $('howto-next').focus();
@@ -23,6 +27,7 @@ export function openHowTo() {
 
 function closeHowTo() {
   $('howto').hidden = true;
+  opener?.focus?.();
 }
 
 export function initHowTo() {
@@ -30,7 +35,11 @@ export function initHowTo() {
   $('btn-howto-auth').addEventListener('click', openHowTo);
   $('howto-close').addEventListener('click', closeHowTo);
   $('howto-prev').addEventListener('click', () => show(page - 1));
-  $('howto-next').addEventListener('click', () => show(page + 1));
+  $('howto-next').addEventListener('click', () => {
+    show(page + 1);
+    // En la última página «Siguiente» se oculta: el foco pasa a «Anterior» para no perderse.
+    if ($('howto-next').hidden) $('howto-prev').focus();
+  });
   // Clic fuera del cuadro: cerrar.
   $('howto').addEventListener('click', (e) => { if (e.target === e.currentTarget) closeHowTo(); });
   document.addEventListener('keydown', (e) => {

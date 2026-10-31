@@ -28,7 +28,13 @@ public sealed partial class WebClientTests(AscuaApiFactory factory)
     [InlineData("/js/match.js", "text/javascript")]
     [InlineData("/js/tutorial.js", "text/javascript")]
     [InlineData("/js/howto.js", "text/javascript")]
+    [InlineData("/js/heroes.js", "text/javascript")]
+    [InlineData("/js/settings-panel.js", "text/javascript")]
     [InlineData("/css/app.css", "text/css")]
+    // Arte propio servido desde el mismo origen (la CSP no permite imágenes externas).
+    [InlineData("/img/logo.svg", "image/svg+xml")]
+    [InlineData("/img/favicon.svg", "image/svg+xml")]
+    [InlineData("/img/heroes/chispa.svg", "image/svg+xml")]
     public async Task Client_assets_are_served(string path, string mediaType)
     {
         using var client = factory.CreateClient();
