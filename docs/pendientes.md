@@ -63,6 +63,8 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 
 ## Juan Pablo: Azure
 
+Paso a paso en [Juan_Pablo_instrucciones.md](../Juan_Pablo_instrucciones.md).
+
 El detalle está en [infra/README.md](../infra/README.md); la interfaz con la app, en [03-plan-de-trabajo.md](../planteamiento/03-plan-de-trabajo.md#interfaz-entre-los-dos-para-no-bloquearse).
 
 ### IaC y CI/CD (10%)
@@ -83,8 +85,8 @@ El detalle está en [infra/README.md](../infra/README.md); la interfaz con la ap
 - [ ] **Evidencia** de un ambiente reconstruido desde cero con el pipeline.
 
 ### Seguridad e identidad (parte del 20%)
-- [ ] **`KeyVaultSigningKeyProvider`** con `DefaultAzureCredential` (`TODO(Juan Pablo)` en `src/Ascua.Infrastructure/DependencyInjection.cs`). Hasta entonces la app no arranca si se define `Ascua__KeyVaultUri`.
-- [ ] **Autenticación Entra** con identidad administrada en Postgres y Redis (`TODO(Juan Pablo)` en `src/Ascua.Infrastructure/Redis/RedisConnection.cs`): ninguna cadena con contraseña en la configuración.
+- [ ] **Key Vault:** crear el secreto `jwt-signing-key` y dar `Key Vault Secrets User` a la identidad. El `KeyVaultSigningKeyProvider` ya está implementado y probado (Jan); solo falta configurarlo en Azure.
+- [ ] **Autenticación Entra** con identidad administrada en Postgres y Redis: crear los roles y permisos y poner `UseEntraAuth=true`. El código ya está (Jan); ninguna cadena lleva contraseña.
 - [ ] **Configuración de Azure:**
   - `Ascua__Realtime__EnableDevEndpoints=false`;
   - `Ascua__TrustForwardedHeaders=true`;
