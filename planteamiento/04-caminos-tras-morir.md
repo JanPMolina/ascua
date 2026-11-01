@@ -1,6 +1,6 @@
 # Caminos tras la extinción: Amistad y Venganza
 
-> **Estado:** aprobado el 31-oct-2026; en implementación. Amplía [01-juego.md](01-juego.md) §5 («Caer, levantar y abandonar»).
+> **Estado:** aprobado el 31-oct-2026; implementado en el servidor (contrato AsyncAPI 1.3.0). Ver «Aclaraciones de implementación» al final. Amplía [01-juego.md](01-juego.md) §5 («Caer, levantar y abandonar»).
 
 ## Problema
 
@@ -116,3 +116,46 @@ Ejemplo con 10 ascuas guardadas:
 | **Cliente** | Diálogo de elección con los dos caminos, dibujo de la Brasa (llama azul) y del Renegado (aura roja), HUD con ecos y ascuas guardadas, sonidos |
 | **Docs** | 01-juego.md, guía «Cómo jugar», tutorial (un paso opcional) y modelo de amenazas |
 | **Pruebas** | Fórmula de renacer, balance (monstruos y Celador), extinción repetida, no filtración de la elección ni de los ecos, y una partida completa con un Renegado |
+
+## Aclaraciones de implementación
+
+Decisiones tomadas al implementar el motor (`src/Ascua.Domain`, sobre todo `Rules/Paths.cs`) donde el texto era ambiguo. Se eligió siempre lo más simple. Si alguna cambia, hay que cambiar también sus pruebas (`tests/Ascua.Domain.Tests/PathTests.cs` y `PropertyTests.cs`).
+
+**Elección**
+- La oferta nace al resolverse la ronda en la que se extingue (evento privado `PathOffered`) y vale para la ronda siguiente. El plazo de 15 s cuenta desde que abre esa ronda y nunca pasa de su cierre. Mientras un jugador conectado tiene la elección abierta, la ronda no se cierra antes de tiempo (igual que con las órdenes).
+- Vale la primera elección: no se puede cambiar dentro de la misma oferta. La elección se guarda en el héroe (privada) y se revela al **inicio** de la resolución de esa ronda (`PathChosen`, para todos). Si al resolver la oferta sigue sin respuesta, el propio `Resolver` toma Amistad.
+- Si la partida termina en la misma resolución en que alguien se extingue, la oferta no llega a usarse.
+- El plazo no necesita una columna nueva: es `plazo de la ronda − duración de la ronda + 15 s`, todo ya guardado en Postgres. Si Redis pierde el plazo, a más tardar el cierre de la ronda resuelve la oferta con Amistad.
+
+**Brasa errante**
+- Aparece en la casilla donde se extinguió y da órdenes desde la ronda siguiente a la revelación (en la ronda en que se revela no actúa). Tiene 0 de vida y no la afecta nada (ni monstruos, ni trampas, ni fuego).
+- La orden por defecto (no envió nada, o la orden no vale) es `GUARDAR`, es decir, **Faro**.
+- **Deriva:** 2 casillas, o menos si llega al borde de la sala. Puede terminar en la casilla de cualquiera.
+- **Avivar:** el primer héroe activo en línea a 1 o 2 casillas. Si ese héroe ya tiene 2 puntos de escudo dados por brasas, no recibe más (igual gasta el enfriamiento). El escudo de brasas se consume **antes** que el resto; cada punto que absorbe da 1 eco a la Brasa que lo dio, si sigue siendo Brasa.
+- **Reavivar:** la casilla adyacente en esa dirección. No da ascuas ni cuenta para el pacto «levantar a 2 aliados».
+- **Estorbo:** el primer enemigo en línea a 1 o 2 casillas. Ese enemigo conserva su anuncio y esa ronda tampoco se mueve ni anuncia; lo ejecuta en la ronda siguiente. Sin enemigo, o contra el Celador en fase 2, no hace nada y no gasta el enfriamiento. El eco se da si, en el momento del Estorbo, alguna casilla anunciada tiene un héroe activo.
+- **Enfriamientos** con la regla general del motor («usada en la ronda N, disponible en N+C»): Avivar 1 (se puede usar cada ronda) y Estorbo 2.
+- **Faro:** ilumina el radio 2 alrededor de la Brasa desde el inicio de la ronda hasta la siguiente resolución. La vista que recibe el grupo al terminar la ronda incluye esas casillas; los Renegados no las ven. El eco es por cada golpe final de un héroe a un **enemigo** dentro de la zona en esa ronda.
+- **Calidez:** al final de la ronda cura 1 a cada héroe activo **herido** a distancia ≤1 de la Brasa (incluida su misma casilla). El turno de cada aliado es de 3 rondas (cura en N, N+3, N+6…) y lo comparten todas las Brasas.
+- **Renacer:** «en la escalera» se interpretó como **la entrada** de la sala nueva (las casillas de llegada del grupo, por asiento), no la escalera de salida, que queda junto a los enemigos. Renace con escudo 0, enfriamientos y cargas en 0, y conserva bendiciones, pacto y Último aliento. También renace al entrar a la sala del Celador. Si se revela Amistad en la misma ronda en que el grupo baja, renace en ese mismo momento.
+- **Fin de partida:** sus ascuas cuentan con la fórmula de renacer. Las Brasas no cuentan como «héroes» para el fin: si todos los héroes quedan caídos o extintos, la partida termina aunque haya Brasas. Un extinto que todavía no eligió termina con ⌈guardadas / 2⌉ y no puede ganar.
+
+**Renegado**
+- Recibe ⌈guardadas / 2⌉ ascuas al **revelarse** el camino (no al aparecer); así puntúa aunque no llegue a aparecer.
+- Aparece al entrar a la sala siguiente, en la casilla libre más lejana de los héroes (a ≥4 si se puede; si no, la más lejana; en empate, fila y columna menores; nunca en la escalera). Si se reveló en la sala del Celador, aparece al terminar la ronda R + 2 (R = ronda de la revelación) en la casilla libre más cercana al Celador.
+- Al bajar de piso, los Renegados presentes también pasan y **aparecen otra vez** en la sala nueva con su vida actual. Cada aparición cuenta para todo el balance: un monstruo menos, +1 de escudo a cada héroe activo y, en la sala del Celador, 3 rondas sin habilidad y −6 de vida máxima del Celador.
+- **Un monstruo menos:** se quitan los primeros de la lista de la sala, dejando al menos 1.
+- **Celador:** cada aparición en su sala le quita 6 de vida máxima (nunca menos de 12) y lo mismo de vida actual (mínimo 1). Con algún Renegado en la partida (esperando o presente), la fase 2 invoca un solo tótem.
+- **Daño:** máximo 1 por golpe contra héroes, aplicado antes de GUARDAR y de Codicia del objetivo; la Descarga de un Renegado hace 1; sin bonus por espalda ni de Puño de piedra. El enfriamiento ×2 se aplica al usar la habilidad (Yunque 6, Cuervo 8, Raíz 6); Chispa tiene como máximo 2 cargas.
+- **Escudo de aviso:** el primer golpe de cada Renegado a cada héroe se anula (`HitPrevented` con `WarningShield`); la cuenta se reinicia cada vez que vuelve a extinguirse.
+- **Ascuas:** +1 robada por cada golpe que conecta (si el héroe tiene ascuas) y +2 si lo deja caído.
+- Los Renegados no se dañan entre sí. Su Muralla protege y su Brote cura solo a otros Renegados (si no hay, Brote lo cura a él).
+- Los monstruos no lo atacan ni lo eligen como objetivo, y el entorno tampoco lo daña (trampas, fuego, quemaduras, congelación). Él no daña a los monstruos (el golpe se detiene sin efecto). No puede `INTERACTUAR` (cofres, altares ni levantar) y la escalera solo la activan héroes activos.
+- Un héroe que golpea a un Renegado le hace el daño completo (no es fuego amigo ni roba). Al llegar a 0 el Renegado se extingue directamente (Último aliento no aplica), quien lo derrotó gana +2 y se abre una oferta nueva.
+- Un Renegado en pie es elegible para ganar cuando cae el Celador (con sus ascuas más el pacto). En «El Umbral reclama» ganan los Renegados en pie con más `ascuas + pacto`; si empatan, ganan todos los empatados. En el historial cuenta como `VICTORY` (o `DRAW` si empatan) para ellos y `DEFEAT` para los demás.
+
+**Información oculta**
+- Los portadores del otro bando (Renegado frente al grupo, y al revés) solo se ven con posición dentro de la visión. Un Renegado ve a una Brasa solo dentro de su visión. La vida actual de cada portador sigue siendo pública, como antes.
+- Lo que hace una Brasa usa la audiencia nueva `Group`: el grupo lo ve siempre y un Renegado solo si ve la casilla. `RenegadeSpawned` es para todos, pero se le quita la posición a quien no lo ve.
+- La extinción ya no quita ascuas: el evento `HeroExtinguished` lleva `EmbersLost = 0` y las ascuas pasan a `SavedEmbers` (privado).
+- Una Brasa, un extinto o un Renegado también pueden abandonar (`LeaveMatch` o gracia vencida): se retiran y pierden todo.

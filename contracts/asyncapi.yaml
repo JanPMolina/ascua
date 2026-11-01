@@ -2,7 +2,7 @@ asyncapi: 3.0.0
 id: urn:ascua:realtime:match
 info:
   title: Ascua — protocolo en tiempo real
-  version: 1.2.0
+  version: 1.3.0
   description: |
     Contrato del hub SignalR **`/realtime/match`** del servidor autoritativo de *Ascua*
     (mazmorra semi-cooperativa por turnos simultáneos, 2-4 jugadores).
@@ -44,6 +44,7 @@ info:
     JoinMatch ─► ACK con Snapshot
     [Drafting]   DraftOffer ─► DraftPick ─► ACK
     [InProgress] RoundOpened ─► SubmitOrder ─► ACK ─► PlayerDecided (a todos) ─► RoundResolved (a cada uno su vista)
+    [Extinto]    RoundResolved (EXTINGUISHED) ─► PathOffer (privado) ─► ChoosePath ─► ACK ─► RoundResolved (PATH_CHOSEN a todos)
     ... ─► MatchFinished ─► cierre MATCH_FINISHED
     ```
 
@@ -105,6 +106,7 @@ info:
     | `ALREADY_IN_ANOTHER_MATCH` | No | El usuario tiene otra partida activa |
     | `DRAFT_CLOSED` | No | La oferta de draft ya se resolvió o venció |
     | `INVALID_PICK` | No | La bendición elegida no está entre las opciones de esa oferta |
+    | `PATH_CLOSED` | No | La oferta de camino no está abierta: no estás extinto, ya elegiste otro camino en esa oferta, el `offerId` es de otra oferta o ya se resolvió/venció (desde 1.3.0) |
     | `RATE_LIMITED` | Sí | Se agotó el *token bucket* de la conexión (capacidad 20, recarga 5/s). `retryAfterMs` indica la espera |
     | `MESSAGE_TOO_LARGE` | No | Mensaje mayor a 4 KB (además cierra la conexión con 1009) |
     | `INTERNAL_ERROR` | Sí | Error del servidor; no se aplicó nada. Se puede reintentar con el **mismo** `clientActionId` |
@@ -139,7 +141,39 @@ info:
     - Cada mensaje declara `x-since` (versión en que apareció). Los cambios se registran en
       `docs/adr/` y en el changelog de la versión.
 
+    ## 6. Caminos tras la extinción (desde 1.3.0)
+
+    Reglas en `planteamiento/04-caminos-tras-morir.md`. Al **extinguirse** (3 rondas caído, una grieta o
+    un Renegado derrotado) el jugador elige camino; cada extinción abre una oferta nueva.
+
+    | Paso | Mensaje | Quién lo ve |
+    |---|---|---|
+    | Se extingue | `RoundResolved` con `EXTINGUISHED` (y `me.state: EXTINCT`) | Todos |
+    | Oferta (15 s desde que abre la ronda) | `PathOffer` (también se reenvía tras `JoinMatch`/`GetSnapshot`) | Solo él |
+    | Elige | `ChoosePath { matchId, offerId, path: FRIENDSHIP \| VENGEANCE }` → `ChoosePathAck` | Solo él (`me.path.choice`) |
+    | Vence el plazo | El servidor elige `FRIENDSHIP` (`me.path.choice` llega en un `Snapshot`) | Solo él |
+    | Se resuelve la ronda | `PATH_CHOSEN` con `detail` = camino, y el nuevo `state` | Todos |
+
+    - La ronda **espera** la elección de un jugador conectado (como espera las órdenes), hasta el plazo de 15 s.
+    - **Brasa errante** (`state: EMBER_SPIRIT`): da órdenes con los mismos tipos (`MOVE` = Deriva, `ABILITY` =
+      Avivar, `INTERACT` = Reavivar, `ATTACK` = Estorbo, `GUARD` = Faro). Es visible para el grupo y su
+      posición llega en `allies` aunque esté lejos. Renace al bajar de piso (`EMBER_REBORN`).
+    - **Renegado** (`state: RENEGADE`): mientras espera no tiene posición (`me.path.awaitingSpawn`); al aparecer
+      (`RENEGADE_SPAWNED`) da órdenes como cualquiera. El grupo lo ve en `allies` (es un portador) pero **solo
+      con posición dentro de la visión**, igual que él ve a los héroes. Gana con `THRESHOLD_CLAIMED`.
+    - Privado de cada jugador: `PathOffer`, `me.path` (oferta, elección sin revelar, ecos, ascuas guardadas) y
+      los eventos `PATH_OFFERED`, `PATH_SELECTED` y `ECHO_GAINED`.
+
     ### Changelog
+
+    - **1.3.0** (aditivo): caminos tras la extinción. Mensajes nuevos `ChoosePath` (+ ACK) y `PathOffer`;
+      `ErrorCode` suma `PATH_CLOSED`; `HeroState` suma `EMBER_SPIRIT` y `RENEGADE`; `MatchFinished.outcome`
+      suma `THRESHOLD_CLAIMED`; `SelfHero` suma `path` (opcional, `null` si nunca se extinguió) y
+      `abilityCooldown` llega hasta 8 (el Renegado tiene enfriamiento ×2); `VisibleEvent` suma el campo
+      opcional `detail` y los tipos `PATH_OFFERED`, `PATH_SELECTED`, `PATH_CHOSEN`, `EMBER_REBORN`,
+      `RENEGADE_SPAWNED`, `RENEGADE_DEFEATED`, `ECHO_GAINED`, `SHIELD_KINDLED`, `ATTACK_HINDERED`,
+      `BEACON_LIT` y `WARMTH_HEALED`; `BLOCKED` puede traer `detail: WARNING_SHIELD`. `EXTINGUISHED` ya no
+      quita ascuas (`amount` es 0): pasan a ser ascuas guardadas.
 
     - **1.2.0** (aditivo): `ErrorCode` suma `KICKED_BY_ADMIN` (solo en `Error`); `MatchStatus` y
       `MatchFinished.outcome` suman `TERMINATED` (partida detenida por un administrador, auditada).
@@ -236,6 +270,10 @@ channels:
         $ref: '#/components/messages/DraftPick'
       DraftPickAck:
         $ref: '#/components/messages/DraftPickAck'
+      ChoosePath:
+        $ref: '#/components/messages/ChoosePath'
+      ChoosePathAck:
+        $ref: '#/components/messages/ChoosePathAck'
       InvocationError:
         $ref: '#/components/messages/InvocationError'
       RoundOpened:
@@ -248,6 +286,8 @@ channels:
         $ref: '#/components/messages/Snapshot'
       DraftOffer:
         $ref: '#/components/messages/DraftOffer'
+      PathOffer:
+        $ref: '#/components/messages/PathOffer'
       PlayerConnectionChanged:
         $ref: '#/components/messages/PlayerConnectionChanged'
       MatchFinished:
@@ -290,6 +330,11 @@ operations:
       ronda abierta → legalidad de la orden. La primera orden aceptada de la ronda es definitiva.
       Idempotente por `clientActionId`. Si con esta orden ya decidieron todos los vivos,
       el servidor intenta cerrar la ronda de inmediato.
+
+      Desde 1.3.0 también dan órdenes la Brasa errante (`EMBER_SPIRIT`: `MOVE` = Deriva, `ABILITY` = Avivar,
+      `INTERACT` = Reavivar, `ATTACK` = Estorbo, `GUARD` = Faro; Estorbo en enfriamiento → `INVALID_ORDER`)
+      y el Renegado ya presente (`RENEGADE`, con las mismas órdenes que su héroe). Un extinto o un Renegado
+      que aún no apareció recibe `PLAYER_DOWN`.
     tags:
       - name: invocacion
     messages:
@@ -355,6 +400,29 @@ operations:
       messages:
         - $ref: '#/channels/match/messages/DraftPickAck'
         - $ref: '#/channels/match/messages/InvocationError'
+  choosePath:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: ChoosePath
+    summary: Elige camino tras extinguirse (Camino de la Amistad o de la Venganza).
+    description: |
+      Responde a una `PathOffer`. Validación en orden: esquema → idempotencia → participante → partida
+      en curso → oferta vigente (`offerId` de la extinción actual, sin elección previa). Vale la primera
+      elección: repetirla devuelve el mismo ACK con `result: DUPLICATE_ACTION` y cambiarla da
+      `PATH_CLOSED`. La elección es **privada** hasta que se resuelve la ronda (`PATH_CHOSEN`). Si vence el
+      plazo (15 s desde que abrió la ronda) el servidor elige `FRIENDSHIP`. Desde 1.3.0.
+    tags:
+      - name: invocacion
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/ChoosePath'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/ChoosePathAck'
+        - $ref: '#/channels/match/messages/InvocationError'
 
   # ───────────── Servidor → cliente ─────────────
   sendRoundOpened:
@@ -411,6 +479,19 @@ operations:
       - name: privado
     messages:
       - $ref: '#/channels/match/messages/DraftOffer'
+  sendPathOffer:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: PathOffer
+    summary: Oferta privada de camino a un jugador que se acaba de extinguir.
+    description: |
+      Llega justo después del `RoundResolved` en el que se extinguió y se reenvía tras `JoinMatch` y
+      `GetSnapshot` mientras siga abierta. Una oferta nueva por extinción (`offerId` distinto). Desde 1.3.0.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/PathOffer'
   sendPlayerConnectionChanged:
     action: send
     channel:
@@ -698,6 +779,60 @@ components:
             blessingId: LAMPARA
             acceptedAt: '2026-11-03T18:00:41Z'
 
+    ChoosePath:
+      name: ChoosePath
+      title: ChoosePath
+      summary: Elegir camino tras extinguirse.
+      x-since: 1.3.0
+      x-errors: [INVALID_PAYLOAD, PATH_CLOSED, NOT_PARTICIPANT, NOT_JOINED, MATCH_NOT_FOUND, MATCH_NOT_ACTIVE, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/ChoosePathRequest'
+      examples:
+        - name: venganza
+          summary: Volver como Renegado.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000c7
+            path: VENGEANCE
+        - name: amistad
+          summary: Seguir como Brasa errante.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000c7
+            path: FRIENDSHIP
+
+    ChoosePathAck:
+      name: ChoosePathAck
+      title: ACK de ChoosePath
+      summary: La elección quedó registrada (privada hasta que se resuelve la ronda).
+      x-since: 1.3.0
+      tags:
+        - name: invocacion
+        - name: privado
+      payload:
+        $ref: '#/components/schemas/ChoosePathAck'
+      examples:
+        - name: aceptada
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000c7
+            path: VENGEANCE
+            result: ACCEPTED
+            acceptedAt: '2026-11-03T18:07:12Z'
+        - name: reenvio
+          summary: La misma elección repetida devuelve el ACK original.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000c7
+            path: VENGEANCE
+            result: DUPLICATE_ACTION
+            acceptedAt: '2026-11-03T18:07:12Z'
+
     InvocationError:
       name: InvocationError
       title: Error de invocación
@@ -730,6 +865,19 @@ components:
               message: La habilidad está en enfriamiento.
               details:
                 field: order.type
+        - name: caminoCerrado
+          summary: Cambiar de camino dentro de la misma oferta (vale la primera elección).
+          payload:
+            error:
+              code: PATH_CLOSED
+              message: Ya elegiste un camino en esta oferta.
+        - name: caminoInvalido
+          payload:
+            error:
+              code: INVALID_PAYLOAD
+              message: path debe ser FRIENDSHIP o VENGEANCE.
+              details:
+                field: path
 
     # ───────────── Servidor → cliente ─────────────
     RoundOpened:
@@ -849,6 +997,53 @@ components:
                 - { type: MOVED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, position: { x: 4, y: 3 } }
                 - { type: ENEMY_KILLED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, targetId: 'enemy:9' }
                 - { type: EMBERS_GAINED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, amount: 1 }
+        - name: brasaErrante
+          summary: |
+            Desde 1.3.0. Ana eligió Amistad en la ronda anterior: al resolverse esta ronda todos ven
+            `PATH_CHOSEN` y ella es una Brasa errante (su `me.path` es privado). Ya puede dar órdenes.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 15
+            previousSeq: 240
+            seq: 247
+            delta:
+              status: IN_PROGRESS
+              floorChanged: null
+              me:
+                playerId: 0193a1b0-1111-7c00-9a00-00000000a001
+                displayName: ana
+                hero: CHISPA
+                state: EMBER_SPIRIT
+                hp: 0
+                maxHp: 4
+                shield: 0
+                position: { x: 2, y: 5 }
+                facing: N
+                embers: 0
+                charges: 0
+                abilityCooldown: 0
+                stealthRoundsLeft: 0
+                downRoundsLeft: null
+                blessings: [LAMPARA]
+                pact:
+                  pactId: OPEN_3_CHESTS
+                  description: Abrir 3 cofres.
+                decided: false
+                pendingOrder: null
+                path:
+                  offerId: null
+                  choice: null
+                  savedEmbers: 10
+                  echoes: 0
+                  rebirthEmbers: 3
+                  hinderCooldown: 0
+                  awaitingSpawn: null
+                  spawnRound: null
+              alliesChanged: []
+              events:
+                - { type: PATH_CHOSEN, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, detail: FRIENDSHIP }
+                - { type: SHIELD_KINDLED, actorId: 0193a1b0-1111-7c00-9a00-00000000a003, targetId: 0193a1b0-1111-7c00-9a00-00000000a002 }
+                - { type: ECHO_GAINED, actorId: 0193a1b0-1111-7c00-9a00-00000000a001, amount: 1, detail: WARMTH }
 
     Snapshot:
       name: Snapshot
@@ -944,6 +1139,34 @@ components:
             source: INITIAL_DRAFT
             options: [LAMPARA, BRASA_VIVA]
             deadline: '2026-11-03T18:00:45Z'
+
+    PathOffer:
+      name: PathOffer
+      title: PathOffer
+      summary: Elección de camino tras extinguirse; solo la ve su destinatario.
+      description: |
+        Se responde con `ChoosePath`. Trae lo necesario para el diálogo: plazo (`deadline`, 15 s desde que
+        abrió la ronda), camino por defecto y cuántas ascuas recuperaría por cada camino.
+      x-since: 1.3.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/PathOffer'
+      examples:
+        - name: extinta
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000c7
+            options: [FRIENDSHIP, VENGEANCE]
+            defaultPath: FRIENDSHIP
+            deadline: '2026-11-03T18:07:20Z'
+            savedEmbers: 10
+            vengeanceEmbers: 5
+            friendshipEmbersMin: 3
+            friendshipEmbersMax: 9
+            wardenRoom: false
 
     PlayerConnectionChanged:
       name: PlayerConnectionChanged
@@ -1097,8 +1320,15 @@ components:
       enum: [YUNQUE, CHISPA, CUERVO, RAIZ]
     HeroState:
       type: string
-      enum: [ALIVE, DOWN, EXTINCT, RETIRED]
-      description: '`DOWN` = caído; `EXTINCT` = extinto; `RETIRED` = abandonó.'
+      enum: [ALIVE, DOWN, EXTINCT, RETIRED, EMBER_SPIRIT, RENEGADE]
+      description: |
+        `DOWN` = caído; `EXTINCT` = extinto (eligiendo camino); `RETIRED` = abandonó. Desde 1.3.0:
+        `EMBER_SPIRIT` = Brasa errante (Camino de la Amistad, aliada e intangible) y `RENEGADE` = Renegado
+        (Camino de la Venganza, del lado de la mazmorra).
+    PathKind:
+      type: string
+      enum: [FRIENDSHIP, VENGEANCE]
+      description: '`FRIENDSHIP` = Camino de la Amistad (Brasa errante); `VENGEANCE` = Camino de la Venganza (Renegado). Desde 1.3.0.'
     MatchStatus:
       type: string
       enum: [LOBBY, DRAFTING, IN_PROGRESS, FINISHED, FAULTED, ABANDONED, EXPIRED, TERMINATED]
@@ -1198,6 +1428,18 @@ components:
           $ref: '#/components/schemas/Uuid'
         blessingId:
           $ref: '#/components/schemas/BlessingId'
+    ChoosePathRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, path]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+          description: El de la `PathOffer` vigente (también en `me.path.offerId`).
+        path:
+          $ref: '#/components/schemas/PathKind'
 
     # ───────────── Respuestas (ACK) ─────────────
     JoinMatchAck:
@@ -1258,6 +1500,23 @@ components:
           $ref: '#/components/schemas/BlessingId'
         acceptedAt:
           $ref: '#/components/schemas/Timestamp'
+    ChoosePathAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, path, result, acceptedAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        path:
+          $ref: '#/components/schemas/PathKind'
+        result:
+          type: string
+          enum: [ACCEPTED, DUPLICATE_ACTION]
+          description: '`DUPLICATE_ACTION` = la misma elección repetida; se devuelve el ACK original.'
+        acceptedAt:
+          $ref: '#/components/schemas/Timestamp'
 
     # ───────────── Errores ─────────────
     ErrorCode:
@@ -1281,6 +1540,7 @@ components:
         - INTERNAL_ERROR
         - SESSION_REPLACED
         - KICKED_BY_ADMIN
+        - PATH_CLOSED
       description: Código estable. Nunca cambia de significado; los nuevos se agregan en versiones menores.
     ErrorBody:
       type: object
@@ -1402,7 +1662,8 @@ components:
         abilityCooldown:
           type: integer
           minimum: 0
-          maximum: 4
+          maximum: 8
+          description: Rondas para volver a usar la habilidad (Avivar, para la Brasa). Hasta 8 para el Renegado (×2) desde 1.3.0.
         stealthRoundsLeft:
           type: integer
           minimum: 0
@@ -1427,11 +1688,65 @@ components:
           description: Si ya envió su orden en la ronda abierta.
         pendingOrder:
           $ref: '#/components/schemas/NullableOrder'
+        path:
+          description: Caminos tras la extinción (privado). `null` si nunca se extinguió. Desde 1.3.0.
+          anyOf:
+            - $ref: '#/components/schemas/SelfPath'
+            - type: 'null'
+    SelfPath:
+      type: object
+      description: |
+        Lo privado de los caminos; solo lo recibe su dueño. Desde 1.3.0.
+      additionalProperties: false
+      required: [offerId, choice, savedEmbers, echoes, rebirthEmbers, hinderCooldown, awaitingSpawn, spawnRound]
+      properties:
+        offerId:
+          description: Oferta abierta (hay que llamar a `ChoosePath`); `null` si no hay que elegir.
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        choice:
+          description: Camino elegido y aún no revelado; `null` si no eligió o ya se reveló.
+          anyOf:
+            - $ref: '#/components/schemas/PathKind'
+            - type: 'null'
+        savedEmbers:
+          $ref: '#/components/schemas/Embers'
+          description: Ascuas guardadas al extinguirse.
+        echoes:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: Ecos ganados como Brasa errante.
+        rebirthEmbers:
+          description: 'Brasa: ascuas con las que renacería ahora, ⌈guardadas × (25% + 8% × ecos)⌉ con tope 85%; si no es Brasa, `null`.'
+          anyOf:
+            - $ref: '#/components/schemas/Embers'
+            - type: 'null'
+        hinderCooldown:
+          type: integer
+          minimum: 0
+          maximum: 2
+          description: 'Brasa: rondas para volver a usar Estorbo (`ATTACK`). El de Avivar es `abilityCooldown`.'
+        awaitingSpawn:
+          description: 'Renegado que aún no apareció: `NEXT_FLOOR` (al bajar de piso) o `ROUND` (sala del Celador, en `spawnRound`); si no, `null`.'
+          anyOf:
+            - type: string
+              enum: [NEXT_FLOOR, ROUND]
+            - type: 'null'
+        spawnRound:
+          description: Ronda en la que reaparece el Renegado en la sala del Celador; si no, `null`.
+          anyOf:
+            - $ref: '#/components/schemas/RoundNumber'
+            - type: 'null'
     OtherHero:
       type: object
       description: |
         Otro portador, tal como lo ve este jugador. `position` y `facing` son `null` si está en
-        sigilo. Nunca incluye pacto, bendiciones concretas ni orden pendiente.
+        sigilo. Nunca incluye pacto, bendiciones concretas ni orden pendiente. Desde 1.3.0: una Brasa
+        (`EMBER_SPIRIT`) se ve siempre si eres del grupo; un `RENEGADE` (o, para un Renegado, un héroe) solo
+        trae posición dentro de la visión; un extinto o un Renegado que aún no apareció no tiene posición.
+        Nunca incluye ecos, ascuas guardadas ni el camino elegido sin revelar.
       additionalProperties: false
       required: [playerId, displayName, hero, state, hp, maxHp, position, facing, embers, blessingCount, connected, decided]
       properties:
@@ -1517,12 +1832,35 @@ components:
       description: |
         Evento de la ronda que este jugador pudo ver. `type` es **extensible**: los clientes deben
         ignorar tipos desconocidos. `actorId`/`targetId` son un `playerId` o `enemy:{enemyId}`.
+
+        Tipos de los caminos (desde 1.3.0; los marcados *privado* solo los recibe `actorId`):
+
+        | `type` | Campos | Significado |
+        |---|---|---|
+        | `PATH_OFFERED` *privado* | `actorId`, `amount` = ascuas guardadas | Se abrió tu elección (llega también `PathOffer`) |
+        | `PATH_SELECTED` *privado* | `actorId`, `detail` = `FRIENDSHIP`/`VENGEANCE` (`_AUTO` si venció el plazo) | Tu elección quedó registrada |
+        | `PATH_CHOSEN` | `actorId`, `detail` = camino | Al resolver la ronda, todos ven el camino |
+        | `EMBER_REBORN` | `actorId`, `position`, `amount` = vida | La Brasa renació al bajar de piso |
+        | `RENEGADE_SPAWNED` | `actorId`, `position` (solo si lo ves) | Apareció un Renegado; cada héroe activo ganó +1 de escudo |
+        | `RENEGADE_DEFEATED` | `actorId` = quien lo derrotó (si hubo), `targetId` = Renegado | Derrotaron a un Renegado (+2 ascuas al autor) |
+        | `ECHO_GAINED` *privado* | `actorId`, `amount`, `detail` = `SHIELD_ABSORBED`/`REKINDLED`/`ATTACK_HINDERED`/`BEACON_KILL`/`WARMTH` | La Brasa ganó ecos |
+        | `SHIELD_KINDLED` | `actorId` = Brasa, `targetId` = aliado (sin `targetId` si no hubo a quién) | Avivar |
+        | `ATTACK_HINDERED` | `actorId` = Brasa, `targetId` = `enemy:{id}` (sin él si no funcionó) | Estorbo |
+        | `BEACON_LIT` | `actorId`, `position` | Faro |
+        | `WARMTH_HEALED` | `actorId` = Brasa, `targetId` = aliado | Calidez (llega también `HEALED`) |
+
+        Reavivar se informa como `REVIVED` (con `actorId` = la Brasa) y la Deriva como `MOVED`. El primer golpe
+        de un Renegado a cada héroe llega como `BLOCKED` con `detail: WARNING_SHIELD`.
       additionalProperties: false
       required: [type]
       properties:
         type:
           type: string
-          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED]
+          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED, PATH_OFFERED, PATH_SELECTED, PATH_CHOSEN, EMBER_REBORN, RENEGADE_SPAWNED, RENEGADE_DEFEATED, ECHO_GAINED, SHIELD_KINDLED, ATTACK_HINDERED, BEACON_LIT, WARMTH_HEALED]
+        detail:
+          type: string
+          maxLength: 32
+          description: Dato extra del evento (desde 1.3.0), p. ej. el camino en `PATH_CHOSEN`. Extensible.
         actorId:
           type: string
           maxLength: 36
@@ -1654,7 +1992,7 @@ components:
           type: integer
           minimum: 1
           maximum: 4
-          description: Jugadores vivos de los que se espera orden.
+          description: Jugadores de los que se espera orden (héroes activos y, desde 1.3.0, Brasas y Renegados presentes).
     PlayerDecided:
       type: object
       additionalProperties: false
@@ -1723,6 +2061,42 @@ components:
             $ref: '#/components/schemas/BlessingId'
         deadline:
           $ref: '#/components/schemas/Timestamp'
+    PathOffer:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, options, defaultPath, deadline, savedEmbers, vengeanceEmbers, friendshipEmbersMin, friendshipEmbersMax, wardenRoom]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        options:
+          type: array
+          minItems: 2
+          maxItems: 2
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/PathKind'
+        defaultPath:
+          $ref: '#/components/schemas/PathKind'
+          description: Lo que elige el servidor si vence el plazo (siempre `FRIENDSHIP`).
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+          description: Fin del plazo (15 s desde que abrió la ronda, nunca después del cierre de la ronda).
+        savedEmbers:
+          $ref: '#/components/schemas/Embers'
+        vengeanceEmbers:
+          $ref: '#/components/schemas/Embers'
+          description: Ascuas con las que vuelve como Renegado, ⌈guardadas / 2⌉.
+        friendshipEmbersMin:
+          $ref: '#/components/schemas/Embers'
+          description: Ascuas al renacer como Brasa sin ecos (25%).
+        friendshipEmbersMax:
+          $ref: '#/components/schemas/Embers'
+          description: Ascuas al renacer como Brasa con el tope (85%, desde 8 ecos).
+        wardenRoom:
+          type: boolean
+          description: En la sala del Celador la Brasa no renace (puntúa con la fórmula al final) y el Renegado aparece 2 rondas después junto al Celador.
     PlayerConnectionChanged:
       type: object
       additionalProperties: false
@@ -1750,10 +2124,12 @@ components:
           $ref: '#/components/schemas/Seq'
         outcome:
           type: string
-          enum: [WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, FAULTED, TERMINATED]
+          enum: [WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, FAULTED, TERMINATED, THRESHOLD_CLAIMED]
           description: |
             `WARDEN_DEFEATED` = cayó el Celador con un ganador; `DRAW` = cayó con empate en ascuas;
             `EMBER_EXTINGUISHED` = derrota colectiva (todos caídos o 60 rondas);
+            `THRESHOLD_CLAIMED` = «El Umbral reclama» (desde 1.3.0): todos los héroes caídos o extintos con
+            Renegados en pie; `winners` son los Renegados con más ascuas (puede haber empate);
             `ABANDONED` = quedaron menos de 1 humano activo; `FAULTED` = error aislado del servidor;
             `TERMINATED` = un administrador detuvo la partida (sin ganadores; pactos sin revelar).
         rounds:
