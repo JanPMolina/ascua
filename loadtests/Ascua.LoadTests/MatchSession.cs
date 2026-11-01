@@ -95,6 +95,7 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
         connection.On<RoundResolved>("RoundResolved", resolved => OnRoundResolved(seat, resolved));
         connection.On<SeqOnly>("Snapshot", snapshot => seat.SeeSeq(snapshot.Seq));
         connection.On<DraftOffer>("DraftOffer", offer => _ = Task.Run(() => PickAsync(seat, offer), CancellationToken.None));
+        connection.On<PathOffer>("PathOffer", offer => _ = Task.Run(() => ChoosePathAsync(seat, offer), CancellationToken.None));
         connection.On<MatchFinished>("MatchFinished", _ => _finished.TrySetResult());
         connection.On<ErrorPush>("Error", push => Console.Error.WriteLine($"[push] {push.Error?.Code}: {push.Error?.Message}"));
 
@@ -123,6 +124,24 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // El draft no es parte de la meta; si falla, el plazo elige por el bot.
+        }
+    }
+
+    /// <summary>Tras extinguirse, el bot elige camino al azar (si no, la ronda espera los 15 s del plazo).</summary>
+    private async Task ChoosePathAsync(Seat seat, PathOffer offer)
+    {
+        try
+        {
+            await seat.Connection.InvokeAsync<DraftReply>("ChoosePath", new ChoosePathRequest
+            {
+                MatchId = _matchId.ToString("D"),
+                OfferId = offer.OfferId,
+                Path = offer.Options[Random.Shared.Next(offer.Options.Count)],
+            });
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Si falla, el plazo elige Amistad por el bot.
         }
     }
 

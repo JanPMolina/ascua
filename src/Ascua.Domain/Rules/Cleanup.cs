@@ -3,7 +3,10 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
-/// <summary>Fase 6: trampas, fuego, quemaduras, caídos, contadores y paso de sala.</summary>
+/// <summary>
+/// Fase 6: trampas, fuego, quemaduras, caídos, contadores, Calidez de las Brasas, Renegados que reaparecen
+/// y paso de sala (con el renacer de las Brasas).
+/// </summary>
 internal static class Cleanup
 {
     public const int SpikeDamage = 1;
@@ -16,6 +19,8 @@ internal static class Cleanup
         TickBurns(ctx);
         TickDownedHeroes(ctx, downAtStart);
         TickCounters(ctx);
+        Paths.Warmth(ctx);
+        Paths.SpawnDueRenegades(ctx);
         TryAdvanceRoom(ctx);
     }
 
@@ -110,22 +115,27 @@ internal static class Cleanup
         foreach (var hero in ctx.Heroes.ToList())
         {
             var charges = hero.Charges;
-            if (hero is { IsActive: true, Class: HeroClass.Chispa } && !ctx.Attacked.Contains(hero.Player))
+            if (hero is { IsVulnerable: true, Class: HeroClass.Chispa } && !ctx.Attacked.Contains(hero.Player))
             {
-                charges = Math.Min(HeroCatalog.MaxCharges, charges + 1);
+                charges = Math.Min(hero.MaxCharges, charges + 1);
             }
 
             var stealth = ctx.FreshStealth.Contains(hero.Player) ? hero.StealthRounds : Math.Max(0, hero.StealthRounds - 1);
             ctx.Update(hero with
             {
                 SkillCooldown = Math.Max(0, hero.SkillCooldown - 1),
+                HinderCooldown = Math.Max(0, hero.HinderCooldown - 1),
+                WarmthCooldown = Math.Max(0, hero.WarmthCooldown - 1),
                 StealthRounds = stealth,
                 Charges = charges,
             });
         }
     }
 
-    /// <summary>Con la sala sin enemigos, un héroe activo en la escalera lleva a todos a la siguiente sala.</summary>
+    /// <summary>
+    /// Con la sala sin enemigos, un héroe activo en la escalera lleva a todos a la siguiente sala. Las Brasas
+    /// renacen en la entrada, cada Renegado quita un monstruo de la sala (mínimo 1) y aparece lejos del grupo.
+    /// </summary>
     private static void TryAdvanceRoom(RoundContext ctx)
     {
         if (ctx.Enemies.Count > 0 || ctx.RoomIndex >= ctx.Rooms.Count - 1)
@@ -141,14 +151,29 @@ internal static class Cleanup
 
         ctx.RoomIndex++;
         var room = ctx.Room;
-        ctx.Enemies.AddRange(room.InitialEnemies);
+        var enemies = room.InitialEnemies;
+        var renegades = ctx.Heroes.Count(h => h.IsPresentRenegade || h is { IsRenegade: true, SpawnRound: 0 });
+        if (!ctx.IsWardenRoom && renegades > 0)
+        {
+            enemies = enemies.RemoveRange(0, Math.Min(renegades, Math.Max(0, enemies.Count - 1)));
+        }
+
+        ctx.Enemies.AddRange(enemies);
         ctx.NextEnemyId = Math.Max(ctx.NextEnemyId, room.InitialEnemies.Select(e => e.Id + 1).DefaultIfEmpty(0).Max());
+        var reborn = Paths.Rebirth(ctx);
         var seat = 0;
-        foreach (var hero in ctx.Heroes.Where(h => h.IsOnBoard).OrderBy(h => h.Seat).ToList())
+        foreach (var hero in ctx.Heroes.Where(h => h.Status is HeroStatus.Active or HeroStatus.Down).OrderBy(h => h.Seat).ToList())
         {
             ctx.Update(hero with { Position = room.SpawnPoints[seat++ % room.SpawnPoints.Count], Facing = Direction.North });
         }
 
         ctx.Emit(new RoomEntered(ctx.RoomIndex));
+        foreach (var player in reborn)
+        {
+            var hero = ctx.Hero(player);
+            ctx.Emit(new EmberReborn(hero.Player, hero.Position, hero.Hp));
+        }
+
+        Paths.PlaceRenegades(ctx);
     }
 }

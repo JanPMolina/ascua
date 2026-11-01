@@ -24,8 +24,14 @@ internal static class HeroActions
         {
             var hero = ctx.Hero(player);
             var order = plan[player];
-            if (!hero.IsActive || order.Direction is not { } direction)
+            if (!hero.CanAct || order.Direction is not { } direction)
             {
+                continue;
+            }
+
+            if (hero.IsEmber)
+            {
+                EmberAction(ctx, hero, order.Type, direction);
                 continue;
             }
 
@@ -40,12 +46,31 @@ internal static class HeroActions
                 case OrderType.Skill when hero.Class == HeroClass.Raiz:
                     Sprout(ctx, hero, direction);
                     break;
-                case OrderType.Interact:
+                case OrderType.Interact when !hero.IsRenegade:
                     Interact(ctx, hero, direction);
                     break;
                 default:
                     break;
             }
+        }
+    }
+
+    /// <summary>Órdenes de la Brasa: HABILIDAD = Avivar, INTERACTUAR = Reavivar, ATACAR = Estorbo.</summary>
+    private static void EmberAction(RoundContext ctx, Hero ember, OrderType type, Direction direction)
+    {
+        switch (type)
+        {
+            case OrderType.Skill:
+                Paths.Kindle(ctx, ember, direction);
+                break;
+            case OrderType.Interact:
+                Paths.Rekindle(ctx, ember, direction);
+                break;
+            case OrderType.Attack:
+                Paths.Hinder(ctx, ember, direction);
+                break;
+            default:
+                break;
         }
     }
 
@@ -82,7 +107,7 @@ internal static class HeroActions
     /// <summary>Descarga de Chispa: cruz desde sí (brazos de 3) con 1 + cargas de daño.</summary>
     private static void Discharge(RoundContext ctx, Hero hero, Direction direction)
     {
-        var damage = 1 + hero.Charges + (hero.Has(Blessing.StoneFist) ? 1 : 0);
+        var damage = hero.IsRenegade ? PathRules.RenegadeMaxDamage : 1 + hero.Charges + (hero.Has(Blessing.StoneFist) ? 1 : 0);
         hero = hero with { Facing = direction, Charges = 0 };
         ctx.Update(hero);
         ctx.Attacked.Add(hero.Player);
@@ -111,16 +136,19 @@ internal static class HeroActions
         }
     }
 
-    /// <summary>Brote de Raíz: cura 2 al aliado más cercano a ≤2 casillas en esa dirección; si no hay, a sí mismo.</summary>
+    /// <summary>
+    /// Brote de Raíz: cura 2 al aliado más cercano a ≤2 casillas en esa dirección; si no hay, a sí mismo.
+    /// Para un Renegado, "aliado" es otro Renegado.
+    /// </summary>
     private static void Sprout(RoundContext ctx, Hero hero, Direction direction)
     {
-        hero = hero with { Facing = direction, SkillCooldown = hero.Stats.SkillCooldown };
+        hero = hero with { Facing = direction, SkillCooldown = hero.SkillCooldownOnUse };
         ctx.Update(hero);
         ctx.Emit(new SkillUsed(hero.Player, hero.Class, direction) { Audience = RoundContext.AudienceOf(hero) });
 
         var origin = hero.Position;
         var target = ctx.Heroes
-            .Where(h => h.IsActive && h.Player != hero.Player)
+            .Where(h => h.IsVulnerable && h.Player != hero.Player && h.IsSameFaction(hero))
             .Where(h => origin.DistanceTo(h.Position) <= SproutRange && origin.DirectionTo(h.Position) == direction)
             .OrderBy(h => origin.DistanceTo(h.Position))
             .ThenBy(h => h.Seat)
@@ -196,11 +224,17 @@ internal static class HeroActions
     }
 
     /// <summary>Golpea lo que haya en la casilla. Devuelve si había un objetivo (para cortar el proyectil).</summary>
+    /// <remarks>El Renegado no daña a los monstruos ni a otros Renegados: lo detienen sin efecto.</remarks>
     private static bool StrikeAt(RoundContext ctx, PlayerId attackerId, Position position, int damage)
     {
         var attacker = ctx.Hero(attackerId);
         if (ctx.EnemyAt(position) is { } enemy)
         {
+            if (attacker.IsRenegade)
+            {
+                return true;
+            }
+
             var dealt = IsBackstab(attacker, enemy.Position, enemy.Facing) ? damage * 2 : damage;
             if (Combat.HitEnemy(ctx, enemy.Id, dealt, Attacker.FromHero(attacker)))
             {
@@ -210,8 +244,13 @@ internal static class HeroActions
             return true;
         }
 
-        if (ctx.HeroAt(position) is { IsActive: true } ally && ally.Player != attackerId)
+        if (ctx.HeroAt(position) is { IsVulnerable: true } ally && ally.Player != attackerId)
         {
+            if (attacker.IsRenegade && ally.IsRenegade)
+            {
+                return true;
+            }
+
             var dealt = IsBackstab(attacker, ally.Position, ally.Facing) ? damage * 2 : damage;
             if (Combat.HitHero(ctx, ally.Player, dealt, Attacker.FromHero(attacker)))
             {
@@ -224,7 +263,7 @@ internal static class HeroActions
         return false;
     }
 
-    /// <summary>Pasiva de Cuervo: daño ×2 si golpea al objetivo por la espalda.</summary>
+    /// <summary>Pasiva de Cuervo: daño ×2 si golpea al objetivo por la espalda (el Renegado no tiene ese bonus).</summary>
     private static bool IsBackstab(Hero attacker, Position target, Direction targetFacing) =>
-        attacker.Class == HeroClass.Cuervo && target.DirectionTo(attacker.Position) == targetFacing.Opposite();
+        attacker is { Class: HeroClass.Cuervo, IsRenegade: false } && target.DirectionTo(attacker.Position) == targetFacing.Opposite();
 }

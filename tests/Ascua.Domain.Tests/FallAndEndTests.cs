@@ -57,7 +57,7 @@ public sealed class FallAndEndTests
     }
 
     [Fact]
-    public void Three_rounds_down_without_help_extinguishes_and_halves_embers()
+    public void Three_rounds_down_without_help_extinguishes_and_opens_the_path_choice()
     {
         var fallen = Hero(A, HeroClass.Chispa, 4, 4, seat: 0) with { Hp = 0, Status = HeroStatus.Down, Embers = 5 };
         var bystander = Hero(B, HeroClass.Raiz, 0, 8, seat: 1);
@@ -73,8 +73,12 @@ public sealed class FallAndEndTests
         var (next, events) = Resolve(state, FixedRandom.Never);
 
         Assert.Equal(HeroStatus.Extinct, next.H(A).Status);
-        Assert.Equal(3, next.H(A).Embers);
-        Assert.Contains(events, e => e is HeroExtinguished { Reason: ExtinctionReason.NotRevived, EmbersLost: 2 });
+        Assert.Equal(0, next.H(A).Embers);
+        Assert.Equal(5, next.H(A).SavedEmbers);
+        Assert.True(next.H(A).IsChoosingPath);
+        Assert.Contains(events, e => e is HeroExtinguished { Reason: ExtinctionReason.NotRevived, EmbersLost: 0 });
+        var offer = Assert.Single(events.OfType<PathOffered>());
+        Assert.Equal(AudienceKind.Player, offer.Audience.Kind);
     }
 
     [Fact]

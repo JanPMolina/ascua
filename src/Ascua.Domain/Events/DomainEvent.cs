@@ -13,6 +13,12 @@ public enum AudienceKind
 
     /// <summary>Quien tenga la casilla en su visión.</summary>
     Location,
+
+    /// <summary>
+    /// El grupo (héroes y Brasas) siempre; los Renegados solo si ven la casilla. Para lo que hace una
+    /// Brasa errante, que el grupo ve aunque esté lejos.
+    /// </summary>
+    Group,
 }
 
 /// <summary>Quién puede recibir un evento. Lo usa <c>PlayerViewProjector</c> para filtrar.</summary>
@@ -23,6 +29,8 @@ public readonly record struct Audience(AudienceKind Kind, PlayerId? Player, Posi
     public static Audience Only(PlayerId player) => new(AudienceKind.Player, player, null);
 
     public static Audience At(Position position) => new(AudienceKind.Location, null, position);
+
+    public static Audience Group(Position position) => new(AudienceKind.Group, null, position);
 }
 
 /// <summary>
@@ -49,6 +57,9 @@ public enum PreventionReason
 
     /// <summary>GUARDAR redujo el daño a 0.</summary>
     Guard,
+
+    /// <summary>Primer golpe de un Renegado a ese héroe: lo absorbe el escudo de aviso.</summary>
+    WarningShield,
 }
 
 public enum StatusEffect
@@ -65,6 +76,9 @@ public enum ExtinctionReason
 
     /// <summary>Cayó en una grieta.</summary>
     Chasm,
+
+    /// <summary>Era un Renegado y lo derrotaron.</summary>
+    Defeated,
 }
 
 public enum EmberReason
@@ -76,6 +90,18 @@ public enum EmberReason
     StolenFromAlly,
     StolenByAlly,
     Extinction,
+
+    /// <summary>La Brasa renació: recupera parte de sus ascuas guardadas.</summary>
+    Rebirth,
+
+    /// <summary>Tomó el Camino de la Venganza: conserva la mitad de sus ascuas guardadas.</summary>
+    RenegadeReturn,
+
+    /// <summary>Un Renegado dejó caído a un héroe (+2).</summary>
+    HeroDowned,
+
+    /// <summary>Derrotó a un Renegado (+2).</summary>
+    RenegadeDefeated,
 }
 
 public sealed record MatchCreated(int PlayerCount) : DomainEvent;
@@ -155,3 +181,26 @@ public sealed record PactRevealed(PlayerId Player, PactKind Pact, bool Fulfilled
 public sealed record MatchEnded(GameOutcome Outcome) : DomainEvent;
 
 public sealed record RoundResolved(int ResolvedRound) : DomainEvent;
+
+/// <summary>Se abrió la elección de camino tras extinguirse (privado). <see cref="Extinctions"/> identifica la oferta.</summary>
+public sealed record PathOffered(PlayerId Player, int Extinctions, int SavedEmbers) : DomainEvent;
+
+/// <summary>El jugador eligió camino; privado hasta que se resuelve la ronda. <see cref="Auto"/>: venció el plazo.</summary>
+public sealed record PathSelected(PlayerId Player, PathKind Path, bool Auto) : DomainEvent;
+
+/// <summary>Al resolverse la ronda, todos ven qué camino tomó.</summary>
+public sealed record PathChosen(PlayerId Player, PathKind Path) : DomainEvent;
+
+/// <summary>La Brasa renació como héroe al entrar a la sala nueva.</summary>
+public sealed record EmberReborn(PlayerId Player, Position Position, int Hp) : DomainEvent;
+
+/// <summary>Un Renegado apareció en la sala. La posición se quita para quien no la ve.</summary>
+public sealed record RenegadeSpawned(PlayerId Player, Position? Position) : DomainEvent;
+
+public sealed record RenegadeDefeated(PlayerId Renegade, PlayerId? By) : DomainEvent;
+
+/// <summary>Una Brasa ganó ecos (privado: el grupo solo ve que la Brasa ayudó).</summary>
+public sealed record EchoGained(PlayerId Player, int Amount, EchoReason Reason, int Total) : DomainEvent;
+
+/// <summary>Una Brasa usó una habilidad (Deriva se informa como <see cref="HeroMoved"/>).</summary>
+public sealed record EmberAbilityUsed(PlayerId Player, EmberAbility Ability, EntityRef? Target, Position? Tile) : DomainEvent;

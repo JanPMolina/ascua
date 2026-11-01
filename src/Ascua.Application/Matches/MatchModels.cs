@@ -91,6 +91,13 @@ public sealed record MatchSnapshot
     /// </summary>
     public TimeSpan RoundDuration { get; init; } = TimeSpan.FromSeconds(20);
 
+    /// <summary>
+    /// Plazo para elegir camino tras extinguirse (15 s). Cuenta desde que abre la ronda: la oferta nace al
+    /// resolverse la anterior, así que se deriva de <see cref="Deadline"/> y <see cref="RoundDuration"/>, que son
+    /// durables (sobrevive a reinicios sin columnas nuevas).
+    /// </summary>
+    public TimeSpan PathChoiceDuration { get; init; } = TimeSpan.FromSeconds(15);
+
     public required DateTimeOffset CreatedAt { get; init; }
 
     public MatchParticipant? FindParticipant(Guid userId)
@@ -106,8 +113,25 @@ public sealed record MatchSnapshot
         return null;
     }
 
-    /// <summary>Jugadores de los que se espera orden en la ronda abierta.</summary>
-    public IReadOnlyList<PlayerId> ActivePlayers() => [.. State.Heroes.Where(h => h.IsActive).Select(h => h.Player)];
+    /// <summary>
+    /// Vence la elección de camino abierta (si alguien está eligiendo): 15 s desde que abrió la ronda, nunca
+    /// después del cierre de la ronda. Al vencer se toma el Camino de la Amistad.
+    /// </summary>
+    public DateTimeOffset? PathDeadline =>
+        Status == MatchStatus.InProgress && Deadline is { } deadline && State.Heroes.Any(h => h.IsChoosingPath)
+            ? Min(deadline, deadline - RoundDuration + PathChoiceDuration)
+            : null;
+
+    /// <summary>Próximo instante en que el temporizador debe procesar la partida (elección de camino o plazo).</summary>
+    public DateTimeOffset? WakeAt => PathDeadline is { } path && Deadline is { } deadline ? Min(path, deadline) : Deadline;
+
+    /// <summary>Jugadores de los que se espera orden en la ronda abierta (héroes activos, Brasas y Renegados presentes).</summary>
+    public IReadOnlyList<PlayerId> ActivePlayers() => [.. State.Heroes.Where(h => h.CanAct).Select(h => h.Player)];
+
+    /// <summary>Jugadores con la elección de camino abierta.</summary>
+    public IReadOnlyList<PlayerId> ChoosingPlayers() => [.. State.Heroes.Where(h => h.IsChoosingPath).Select(h => h.Player)];
+
+    private static DateTimeOffset Min(DateTimeOffset a, DateTimeOffset b) => a < b ? a : b;
 }
 
 /// <summary>ACK guardado de una orden: un reenvío con el mismo <c>clientActionId</c> devuelve exactamente este.</summary>
@@ -115,6 +139,9 @@ public sealed record OrderAck(Guid MatchId, int Round, Guid ClientActionId, Guid
 
 /// <summary>ACK guardado de un <c>DraftPick</c>, para que repetir la misma elección devuelva lo mismo.</summary>
 public sealed record DraftAck(Guid MatchId, Guid OfferId, Blessing Blessing, DateTimeOffset AcceptedAt);
+
+/// <summary>ACK guardado de un <c>ChoosePath</c>: repetir la misma elección devuelve lo mismo.</summary>
+public sealed record PathAck(Guid MatchId, Guid OfferId, PathKind Path, DateTimeOffset AcceptedAt);
 
 public enum ConnectionState
 {

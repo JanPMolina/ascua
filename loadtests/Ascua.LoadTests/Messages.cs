@@ -52,6 +52,19 @@ public sealed class DraftPickRequest
 }
 
 [MessagePackObject]
+public sealed class ChoosePathRequest
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("path")]
+    public string Path { get; set; } = "";
+}
+
+[MessagePackObject]
 public sealed class ErrorBody
 {
     [Key("code")]
@@ -142,6 +155,16 @@ public sealed class RoundDelta
 
 [MessagePackObject]
 public sealed class DraftOffer
+{
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("options")]
+    public IReadOnlyList<string> Options { get; set; } = [];
+}
+
+[MessagePackObject]
+public sealed class PathOffer
 {
     [Key("offerId")]
     public string OfferId { get; set; } = "";

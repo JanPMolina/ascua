@@ -3,7 +3,7 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
-/// <summary>Fase 2: movimientos simultáneos con rebote (incluye el Paso sombrío de Cuervo).</summary>
+/// <summary>Fase 2: movimientos simultáneos con rebote (incluye el Paso sombrío de Cuervo y la Deriva de la Brasa).</summary>
 internal static class HeroMovement
 {
     public const int ShadowStepDistance = 2;
@@ -23,6 +23,16 @@ internal static class HeroMovement
             }
 
             var hero = ctx.Hero(player);
+            if (hero.IsEmber)
+            {
+                if (order.Type == OrderType.Move)
+                {
+                    Paths.Drift(ctx, hero, direction);
+                }
+
+                continue;
+            }
+
             if (order.Type == OrderType.Move)
             {
                 hero = hero with { Facing = direction };
@@ -43,7 +53,7 @@ internal static class HeroMovement
                 hero = hero with
                 {
                     Facing = direction,
-                    SkillCooldown = hero.Stats.SkillCooldown,
+                    SkillCooldown = hero.SkillCooldownOnUse,
                     StealthRounds = ShadowStepStealth,
                 };
                 ctx.Update(hero);

@@ -57,6 +57,20 @@ public sealed class DraftPickRequest
     public string? BlessingId { get; set; }
 }
 
+[MessagePackObject]
+public sealed class ChoosePathRequest
+{
+    [Key("matchId")]
+    public string? MatchId { get; set; }
+
+    [Key("offerId")]
+    public string? OfferId { get; set; }
+
+    /// <summary><c>FRIENDSHIP</c> o <c>VENGEANCE</c>.</summary>
+    [Key("path")]
+    public string? Path { get; set; }
+}
+
 // ───────────── ACK ─────────────
 
 [MessagePackObject]
@@ -119,6 +133,26 @@ public sealed class DraftPickAck
 
     [Key("blessingId")]
     public string BlessingId { get; set; } = "";
+
+    [Key("acceptedAt")]
+    public string AcceptedAt { get; set; } = "";
+}
+
+[MessagePackObject]
+public sealed class ChoosePathAck
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("path")]
+    public string Path { get; set; } = "";
+
+    /// <summary><c>ACCEPTED</c> o <c>DUPLICATE_ACTION</c>.</summary>
+    [Key("result")]
+    public string Result { get; set; } = "";
 
     [Key("acceptedAt")]
     public string AcceptedAt { get; set; } = "";
@@ -203,6 +237,44 @@ public sealed class SelfHeroDto
     /// <summary><c>{type, direction?}</c>: GUARD no lleva dirección.</summary>
     [Key("pendingOrder")]
     public IDictionary<string, object>? PendingOrder { get; set; }
+
+    /// <summary>Caminos tras la extinción (desde 1.3.0). Solo lo ve su dueño.</summary>
+    [Key("path")]
+    public SelfPathDto? Path { get; set; }
+}
+
+/// <summary>Lo privado de los caminos (contrato 1.3.0): elección, ecos y ascuas guardadas.</summary>
+[MessagePackObject]
+public sealed class SelfPathDto
+{
+    /// <summary>Id de la oferta abierta (hay que llamar a <c>ChoosePath</c>); <c>null</c> si no hay que elegir.</summary>
+    [Key("offerId")]
+    public string? OfferId { get; set; }
+
+    /// <summary>Camino elegido que aún no se reveló (<c>FRIENDSHIP</c> o <c>VENGEANCE</c>).</summary>
+    [Key("choice")]
+    public string? Choice { get; set; }
+
+    [Key("savedEmbers")]
+    public int SavedEmbers { get; set; }
+
+    [Key("echoes")]
+    public int Echoes { get; set; }
+
+    /// <summary>Brasa: ascuas con las que renacería ahora (fórmula de renacer).</summary>
+    [Key("rebirthEmbers")]
+    public int? RebirthEmbers { get; set; }
+
+    /// <summary>Brasa: enfriamiento de Estorbo (el de Avivar es <c>abilityCooldown</c>).</summary>
+    [Key("hinderCooldown")]
+    public int HinderCooldown { get; set; }
+
+    /// <summary>Renegado que todavía no apareció: <c>NEXT_FLOOR</c> o <c>ROUND</c> (ver <c>spawnRound</c>).</summary>
+    [Key("awaitingSpawn")]
+    public string? AwaitingSpawn { get; set; }
+
+    [Key("spawnRound")]
+    public int? SpawnRound { get; set; }
 }
 
 [MessagePackObject]
@@ -436,6 +508,44 @@ public sealed class DraftOfferMessage
 
     [Key("deadline")]
     public string Deadline { get; set; } = "";
+}
+
+/// <summary>Oferta privada de camino tras extinguirse (contrato 1.3.0).</summary>
+[MessagePackObject]
+public sealed class PathOfferMessage
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("options")]
+    public IReadOnlyList<string> Options { get; set; } = [];
+
+    [Key("defaultPath")]
+    public string DefaultPath { get; set; } = "";
+
+    [Key("deadline")]
+    public string Deadline { get; set; } = "";
+
+    [Key("savedEmbers")]
+    public int SavedEmbers { get; set; }
+
+    /// <summary>Ascuas con las que vuelve como Renegado: ⌈guardadas / 2⌉.</summary>
+    [Key("vengeanceEmbers")]
+    public int VengeanceEmbers { get; set; }
+
+    /// <summary>Ascuas con las que renacería la Brasa con 0 ecos (25%) y con el tope (85%).</summary>
+    [Key("friendshipEmbersMin")]
+    public int FriendshipEmbersMin { get; set; }
+
+    [Key("friendshipEmbersMax")]
+    public int FriendshipEmbersMax { get; set; }
+
+    /// <summary>En la sala del Celador la Brasa no renace y el Renegado aparece 2 rondas después.</summary>
+    [Key("wardenRoom")]
+    public bool WardenRoom { get; set; }
 }
 
 [MessagePackObject]

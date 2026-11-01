@@ -202,6 +202,37 @@ public sealed class MatchHub(
         };
     }
 
+    /// <summary>Elige camino tras extinguirse (contrato 1.3.0): <c>FRIENDSHIP</c> (Brasa errante) o <c>VENGEANCE</c> (Renegado).</summary>
+    public async Task<object> ChoosePath(ChoosePathRequest request)
+    {
+        if (RealtimeValidation.ChoosePath(request, out var matchId, out var offerId, out var path) is { } invalid)
+        {
+            return RealtimeReplies.Error(invalid);
+        }
+
+        if (NotJoined(matchId) is { } notJoined)
+        {
+            return notJoined;
+        }
+
+        using var scope = Scope(matchId);
+        var result = await engine.ChoosePathAsync(matchId, UserId, offerId, path, Context.ConnectionAborted);
+        if (result.Error is { } error)
+        {
+            return RealtimeReplies.Error(error);
+        }
+
+        var (ack, duplicate) = result.Value;
+        return new ChoosePathAck
+        {
+            MatchId = RealtimeMapper.Id(matchId),
+            OfferId = RealtimeMapper.Id(ack.OfferId),
+            Path = RealtimeMapper.Path(ack.Path),
+            Result = duplicate ? "DUPLICATE_ACTION" : "ACCEPTED",
+            AcceptedAt = RealtimeMapper.Timestamp(ack.AcceptedAt),
+        };
+    }
+
     private IDictionary<string, object>? NotJoined(Guid matchId) =>
         JoinedMatch == matchId ? null : RealtimeReplies.Error(RealtimeErrors.NotJoined, "Primero hay que llamar a JoinMatch en esta conexión.");
 
@@ -211,11 +242,22 @@ public sealed class MatchHub(
         return RealtimeMapper.Snapshot(snapshot, participant, context, clock.UtcNow);
     }
 
-    /// <summary>La oferta de draft pendiente se reenvía al (re)conectar: el cliente pudo perder la original.</summary>
-    private Task PushDraftOfferAsync(MatchSnapshot snapshot, MatchParticipant participant) =>
-        RealtimeMapper.DraftOffer(snapshot, participant, clock.UtcNow, snapshot.RoundDuration) is { } offer
-            ? Clients.Caller.SendAsync("DraftOffer", offer, Context.ConnectionAborted)
-            : Task.CompletedTask;
+    /// <summary>
+    /// Las ofertas pendientes (draft y camino) se reenvían al (re)conectar o pedir el snapshot: el cliente pudo
+    /// perder la original.
+    /// </summary>
+    private async Task PushDraftOfferAsync(MatchSnapshot snapshot, MatchParticipant participant)
+    {
+        if (RealtimeMapper.DraftOffer(snapshot, participant, clock.UtcNow, snapshot.RoundDuration) is { } offer)
+        {
+            await Clients.Caller.SendAsync("DraftOffer", offer, Context.ConnectionAborted);
+        }
+
+        if (RealtimeMapper.PathOffer(snapshot, participant, clock.UtcNow) is { } pathOffer)
+        {
+            await Clients.Caller.SendAsync("PathOffer", pathOffer, Context.ConnectionAborted);
+        }
+    }
 
     private IDisposable? Scope(Guid matchId, int? round = null)
     {

@@ -66,6 +66,7 @@ public sealed class MatchEngine(
             Participants = participants,
             Deadline = now + options.DraftDuration,
             RoundDuration = options.RoundDuration,
+            PathChoiceDuration = options.PathChoiceDuration,
             CreatedAt = now,
         };
 
@@ -289,6 +290,12 @@ public sealed class MatchEngine(
         }
 
         var now = clock.UtcNow;
+        if (snapshot.PathDeadline is { } pathDeadline && pathDeadline <= now && snapshot.Deadline > now)
+        {
+            await ExpirePathChoicesAsync(matchId, now, cancellationToken);
+            return;
+        }
+
         if (snapshot.Deadline > now)
         {
             await hot.SaveAsync(snapshot, cancellationToken);
@@ -386,6 +393,74 @@ public sealed class MatchEngine(
     }
 
     /// <summary>
+    /// Elige camino tras extinguirse (planteamiento/04-caminos-tras-morir.md). Orden de validación: idempotencia
+    /// → participante → partida en curso → oferta vigente. Vale la primera elección; repetirla devuelve el mismo
+    /// ACK y cambiarla da <c>PATH_CLOSED</c>. Con la elección hecha, la ronda puede cerrarse si ya decidieron todos.
+    /// </summary>
+    public async Task<MatchResult<(PathAck Ack, bool Duplicate)>> ChoosePathAsync(
+        Guid matchId, Guid userId, Guid offerId, PathKind path, CancellationToken cancellationToken)
+    {
+        var previous = await hot.FindPathAckAsync(matchId, userId, offerId, cancellationToken);
+        if (previous is not null)
+        {
+            return previous.Path == path
+                ? MatchResult<(PathAck, bool)>.Ok((previous, true))
+                : new MatchError(RealtimeErrors.PathClosed, "Ya elegiste un camino en esta oferta.");
+        }
+
+        var found = await GetForPlayerAsync(matchId, userId, cancellationToken);
+        if (found.Error is { } notFound)
+        {
+            return notFound;
+        }
+
+        var (snapshot, participant) = found.Value;
+        if (snapshot.Status != MatchStatus.InProgress)
+        {
+            return new MatchError(RealtimeErrors.MatchNotActive, "La partida no está en una ronda.") { Status = snapshot.Status };
+        }
+
+        MatchError? error = null;
+        var now = clock.UtcNow;
+        var mutation = await MutateAsync(
+            matchId,
+            CommandLockWait,
+            current =>
+            {
+                error = CheckPath(current, participant.PlayerId, offerId);
+                if (error is not null)
+                {
+                    return Task.FromResult<MatchChange?>(null);
+                }
+
+                var result = Domain(() => MatchRules.ChoosePath(current.State, participant.PlayerId, path));
+                if (result.Error is { } domainError)
+                {
+                    error = Map(domainError, current.State.Round);
+                    return Task.FromResult<MatchChange?>(null);
+                }
+
+                return Task.FromResult<MatchChange?>(Advance(current, result.State, result.Events, now, roundResolved: false, NoDefaults));
+            },
+            cancellationToken);
+
+        if (error is not null)
+        {
+            return error;
+        }
+
+        if (mutation.Status != MutationStatus.Changed)
+        {
+            return MutationFailure(mutation);
+        }
+
+        var ack = new PathAck(matchId, offerId, path, now);
+        await hot.SavePathAckAsync(userId, ack, cancellationToken);
+        ScheduleCloseCheck(matchId, mutation.Snapshot!.State.Round);
+        return MatchResult<(PathAck, bool)>.Ok((ack, false));
+    }
+
+    /// <summary>
     /// Abandono (voluntario con <c>LeaveMatch</c> o por gracia vencida): el héroe se retira y pierde sus
     /// ascuas. Devuelve si contó como abandono de una partida en curso.
     /// </summary>
@@ -409,7 +484,7 @@ public sealed class MatchEngine(
             CommandLockWait,
             current =>
             {
-                if (current.State.FindHero(participant.PlayerId) is not { IsOnBoard: true })
+                if (current.State.FindHero(participant.PlayerId) is null or { Status: HeroStatus.Retired })
                 {
                     return Task.FromResult<MatchChange?>(null);
                 }
@@ -532,6 +607,61 @@ public sealed class MatchEngine(
         return new Guid(hash.AsSpan(0, 16));
     }
 
+    /// <summary>Id estable de la oferta de camino vigente de un héroe (una por extinción).</summary>
+    public static Guid PathOfferIdFor(Guid matchId, Hero hero)
+    {
+        ArgumentNullException.ThrowIfNull(hero);
+        var key = $"{matchId:N}|{hero.Player}|path|{hero.Extinctions}";
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(key));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
+    private static MatchError? CheckPath(MatchSnapshot snapshot, PlayerId player, Guid offerId)
+    {
+        var hero = snapshot.State.FindHero(player);
+        if (hero is null)
+        {
+            return new MatchError(RealtimeErrors.NotParticipant, "No participas en esta partida.");
+        }
+
+        if (!hero.IsChoosingPath || PathOfferIdFor(snapshot.MatchId, hero) != offerId)
+        {
+            return new MatchError(
+                RealtimeErrors.PathClosed,
+                hero.PathOfferPending ? "Ya elegiste un camino en esta oferta." : "La oferta de camino ya se resolvió o venció.");
+        }
+
+        return null;
+    }
+
+    /// <summary>Venció el plazo de la elección de camino: quien no eligió toma Amistad y la ronda puede cerrarse.</summary>
+    private async Task ExpirePathChoicesAsync(Guid matchId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var mutation = await MutateAsync(
+            matchId,
+            TimeSpan.Zero,
+            current =>
+            {
+                if (current.PathDeadline is not { } deadline || deadline > now)
+                {
+                    return Task.FromResult<MatchChange?>(null);
+                }
+
+                var result = Domain(() => MatchRules.AutoChoosePaths(current.State));
+                return Task.FromResult<MatchChange?>(Advance(current, result.State, result.Events, now, roundResolved: false, NoDefaults));
+            },
+            cancellationToken);
+
+        if (mutation.Status == MutationStatus.Changed)
+        {
+            ScheduleCloseCheck(matchId, mutation.Snapshot!.State.Round);
+        }
+        else if (mutation.Snapshot is { } unchanged)
+        {
+            await hot.SaveAsync(unchanged, cancellationToken);
+        }
+    }
+
     private static MatchError? CheckDraft(MatchSnapshot snapshot, PlayerId player, Guid offerId, Blessing blessing, out int index)
     {
         index = -1;
@@ -566,6 +696,12 @@ public sealed class MatchEngine(
         var orders = await hot.GetOrdersAsync(snapshot.MatchId, snapshot.State.Round, cancellationToken);
         var connected = await hot.ConnectedUsersAsync(snapshot.MatchId, cancellationToken);
 
+        // Una elección de camino abierta de un conectado también se espera (hasta su plazo de 15 s).
+        if (snapshot.ChoosingPlayers().Any(p => connected.Contains(PlayerIds.ToUserId(p))))
+        {
+            return false;
+        }
+
         // Un desconectado (en gracia) no frena la ronda: recibirá GUARDAR. Si nadie decidió, se espera el plazo.
         return active.Any(orders.ContainsKey)
             && active.All(p => orders.ContainsKey(p) || !connected.Contains(PlayerIds.ToUserId(p)));
@@ -592,7 +728,7 @@ public sealed class MatchEngine(
     /// </summary>
     private void ScheduleDeadline(MatchSnapshot snapshot)
     {
-        if (!options.PreciseDeadlines || !snapshot.Status.IsActive() || snapshot.Deadline is not { } deadline)
+        if (!options.PreciseDeadlines || !snapshot.Status.IsActive() || snapshot.WakeAt is not { } deadline)
         {
             return;
         }
@@ -818,6 +954,8 @@ public sealed class MatchEngine(
         ErrorCode.PlayerDown or ErrorCode.PlayerOut => new MatchError(RealtimeErrors.PlayerDown, error.Message),
         ErrorCode.MatchNotInProgress => new MatchError(RealtimeErrors.MatchNotActive, error.Message),
         ErrorCode.InvalidDraftChoice => new MatchError(RealtimeErrors.InvalidPick, error.Message),
+        ErrorCode.NoPathOffer => new MatchError(RealtimeErrors.PathClosed, error.Message),
+        ErrorCode.InvalidPathChoice => new MatchError(RealtimeErrors.InvalidPayload, error.Message) { Field = "path" },
         _ => new MatchError(RealtimeErrors.InvalidOrder, error.Message) { Field = "order.type" },
     };
 

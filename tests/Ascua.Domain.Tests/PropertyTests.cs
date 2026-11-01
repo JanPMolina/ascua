@@ -67,9 +67,63 @@ public sealed class PropertyTests
                 Assert.DoesNotContain(visible, e => e is BlessingChosen b && b.Player != viewer.Player);
                 Assert.DoesNotContain(visible, e => e is ChestLooted c && c.Player != viewer.Player);
                 Assert.DoesNotContain(visible, e => e is EmbersChanged c && c.Player != viewer.Player);
-                Assert.All(view.Tiles, t => Assert.True(t.Position.DistanceTo(viewer.Position) <= viewer.VisionRadius));
-                Assert.All(view.Enemies, e => Assert.True(e.Position.DistanceTo(viewer.Position) <= viewer.VisionRadius));
+                Assert.All(view.Tiles, t => Assert.True(PlayerViewProjector.IsVisible(after, viewer, t.Position)));
+                Assert.All(view.Enemies, e => Assert.True(PlayerViewProjector.IsVisible(after, viewer, e.Position)));
             }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void No_view_ever_leaks_another_bearers_path_choice_echoes_or_saved_embers(ulong seed)
+    {
+        foreach (var (_, after, events) in Play(seed))
+        {
+            foreach (var viewer in after.Heroes)
+            {
+                var visible = PlayerViewProjector.VisibleEvents(after, events, viewer.Player);
+                Assert.DoesNotContain(visible, e => e is PathOffered o && o.Player != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is PathSelected s && s.Player != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is EchoGained g && g.Player != viewer.Player);
+                Assert.All(visible.OfType<RenegadeSpawned>(), r => Assert.True(
+                    r.Position is null || r.Player == viewer.Player || after.FindHero(r.Player)!.IsSameFaction(viewer)
+                    || PlayerViewProjector.IsVisible(after, viewer, r.Position.Value)));
+
+                var view = PlayerViewProjector.For(after, viewer.Player);
+                Assert.Equal(viewer.SavedEmbers, view.Self.Path.SavedEmbers);
+                Assert.Equal(viewer.Echoes, view.Self.Path.Echoes);
+                var json = Json.Of(view.Allies);
+                Assert.DoesNotContain("SavedEmbers", json, StringComparison.Ordinal);
+                Assert.DoesNotContain("Echoes", json, StringComparison.Ordinal);
+                Assert.DoesNotContain("PathChoice", json, StringComparison.Ordinal);
+
+                // Del otro bando (Renegado frente al grupo) solo se ve la posición dentro de la visión.
+                foreach (var ally in view.Allies.Where(a => a.Position is not null))
+                {
+                    var other = after.FindHero(ally.Player)!;
+                    Assert.True(other.IsSameFaction(viewer) || PlayerViewProjector.IsVisible(after, viewer, ally.Position!.Value));
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Random_matches_exercise_both_paths()
+    {
+        var events = Enumerable.Range(1, 40).SelectMany(seed => Play((ulong)seed).SelectMany(r => r.Events)).ToList();
+
+        Assert.Contains(events, e => e is PathChosen { Path: PathKind.Friendship });
+        Assert.Contains(events, e => e is PathChosen { Path: PathKind.Vengeance });
+    }
+
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void Monsters_never_strike_renegades_or_embers(ulong seed)
+    {
+        foreach (var (before, _, events) in Play(seed))
+        {
+            var spared = before.Heroes.Where(h => h.IsRenegade || h.IsEmber).Select(h => h.Player).ToHashSet();
+            Assert.DoesNotContain(events, e => e is EntityDamaged { Source.EnemyId: not null, Target.Hero: { } hero } && spared.Contains(hero));
         }
     }
 
@@ -89,7 +143,7 @@ public sealed class PropertyTests
         while (state.Phase == MatchPhase.InProgress)
         {
             var orders = state.Heroes
-                .Where(h => h.IsActive)
+                .Where(h => h.CanAct)
                 .ToDictionary(
                     h => h.Player,
                     h =>
@@ -101,6 +155,16 @@ public sealed class PropertyTests
             foreach (var hero in state.Heroes.Where(h => !h.DraftOptions.IsEmpty).ToList())
             {
                 state = MatchRules.ChooseBlessing(state, hero.Player, 0).State;
+            }
+
+            // Los bots eligen camino al azar; a veces no eligen y la resolución toma Amistad.
+            foreach (var hero in state.Heroes.Where(h => h.IsChoosingPath).ToList())
+            {
+                var pick = bots.Next(3);
+                if (pick < 2)
+                {
+                    state = MatchRules.ChoosePath(state, hero.Player, pick == 0 ? PathKind.Friendship : PathKind.Vengeance).State;
+                }
             }
 
             var (next, events) = Resolver.Resolve(state, orders, rng);
@@ -121,9 +185,12 @@ public sealed class PropertyTests
             Assert.InRange(hero.Hp, 0, Math.Max(hero.MaxHp, before.FindHero(hero.Player)!.Hp));
             Assert.True(hero.Embers >= 0);
             Assert.True(hero.Shield >= 0);
-            Assert.InRange(hero.Charges, 0, HeroCatalog.MaxCharges);
+            Assert.InRange(hero.Charges, 0, hero.MaxCharges);
             Assert.True(hero.SkillCooldown >= 0);
-            Assert.Equal(hero.Status == HeroStatus.Active, hero.Hp > 0);
+            Assert.Equal(hero.IsActive || hero.IsPresentRenegade, hero.Hp > 0);
+            Assert.True(hero.SavedEmbers >= 0 && hero.Echoes >= 0);
+            Assert.InRange(hero.EmberShieldBy.Count, 0, Math.Min(PathRules.MaxEmberShield, hero.Shield));
+            Assert.Equal(hero.Status == HeroStatus.Extinct, hero.PathOfferPending);
             Assert.True(Room.IsInside(hero.Position));
         }
 

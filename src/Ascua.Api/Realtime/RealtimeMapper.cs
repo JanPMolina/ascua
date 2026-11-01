@@ -201,13 +201,65 @@ public static class RealtimeMapper
             Facing = Direction(self.Facing),
             Embers = Math.Clamp(self.Embers, 0, 999),
             Charges = Math.Clamp(self.Charges, 0, 3),
-            AbilityCooldown = Math.Clamp(self.SkillCooldown, 0, 4),
+            AbilityCooldown = Math.Clamp(self.SkillCooldown, 0, 8),
             StealthRoundsLeft = Math.Clamp(self.StealthRounds, 0, 2),
             DownRoundsLeft = self.Status == HeroStatus.Down ? Math.Clamp(HeroCatalog.RoundsUntilExtinct - self.DownRounds, 0, 3) : null,
             Blessings = [.. self.Blessings.Distinct().Select(BlessingId)],
             Pact = new PactDto { PactId = PactId(self.Pact), Description = PactDescription(self.Pact) },
             Decided = snapshot.Status == MatchStatus.InProgress && pending is not null,
             PendingOrder = snapshot.Status == MatchStatus.InProgress && pending is not null ? OrderDto(pending) : null,
+            Path = SelfPath(snapshot, participant, self),
+        };
+    }
+
+    /// <summary>Lo privado de los caminos; <c>null</c> mientras no haya nada que mostrar (héroe que nunca se extinguió).</summary>
+    private static SelfPathDto? SelfPath(MatchSnapshot snapshot, MatchParticipant participant, SelfView self)
+    {
+        var path = self.Path;
+        if (path.Extinctions == 0 && path.SavedEmbers == 0 && path.Echoes == 0)
+        {
+            return null;
+        }
+
+        var hero = snapshot.State.FindHero(participant.PlayerId);
+        return new SelfPathDto
+        {
+            OfferId = path.OfferPending && hero is not null && snapshot.Status == MatchStatus.InProgress
+                ? Id(MatchEngine.PathOfferIdFor(snapshot.MatchId, hero))
+                : null,
+            Choice = path.Choice is { } choice ? Path(choice) : null,
+            SavedEmbers = Math.Clamp(path.SavedEmbers, 0, 999),
+            Echoes = Math.Clamp(path.Echoes, 0, 99),
+            RebirthEmbers = self.Status == HeroStatus.EmberSpirit ? Math.Clamp(PathRules.RebirthEmbers(path.SavedEmbers, path.Echoes), 0, 999) : null,
+            HinderCooldown = Math.Clamp(path.HinderCooldown, 0, 2),
+            AwaitingSpawn = path.AwaitingSpawn ? (path.SpawnRound is null ? "NEXT_FLOOR" : "ROUND") : null,
+            SpawnRound = path.AwaitingSpawn && path.SpawnRound is { } round ? Math.Clamp(round, 1, 60) : null,
+        };
+    }
+
+    /// <summary>Oferta de camino vigente del jugador (privada); <c>null</c> si no tiene que elegir.</summary>
+    public static PathOfferMessage? PathOffer(MatchSnapshot snapshot, MatchParticipant participant, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(participant);
+        var hero = snapshot.State.FindHero(participant.PlayerId);
+        if (hero is not { IsChoosingPath: true } || snapshot.Status != MatchStatus.InProgress)
+        {
+            return null;
+        }
+
+        return new PathOfferMessage
+        {
+            MatchId = Id(snapshot.MatchId),
+            OfferId = Id(MatchEngine.PathOfferIdFor(snapshot.MatchId, hero)),
+            Options = [Path(PathKind.Friendship), Path(PathKind.Vengeance)],
+            DefaultPath = Path(PathKind.Friendship),
+            Deadline = Timestamp(snapshot.PathDeadline ?? snapshot.Deadline ?? now),
+            SavedEmbers = Math.Clamp(hero.SavedEmbers, 0, 999),
+            VengeanceEmbers = Math.Clamp(PathRules.RenegadeEmbers(hero.SavedEmbers), 0, 999),
+            FriendshipEmbersMin = Math.Clamp(PathRules.RebirthEmbers(hero.SavedEmbers, 0), 0, 999),
+            FriendshipEmbersMax = Math.Clamp(PathRules.RebirthEmbers(hero.SavedEmbers, int.MaxValue / 16), 0, 999),
+            WardenRoom = snapshot.State.RoomIndex == snapshot.State.Rooms.Count - 1,
         };
     }
 
@@ -266,6 +318,7 @@ public static class RealtimeMapper
     internal static Dictionary<string, object>? VisibleEvent(DomainEvent domainEvent) => domainEvent switch
     {
         HeroMoved e => Event("MOVED", actor: e.Player.Value, position: e.To),
+        HitPrevented { Reason: PreventionReason.WarningShield } e => Event("BLOCKED", actor: Ref(e.Source), target: Ref(e.Target), detail: "WARNING_SHIELD"),
         MoveBounced e => Event("BOUNCED", actor: e.Player.Value, position: e.Attempted),
         HeroAttacked e => Event("ATTACKED", actor: e.Player.Value),
         SkillUsed e => Event("ABILITY_USED", actor: e.Player.Value),
@@ -288,10 +341,19 @@ public static class RealtimeMapper
         FireStarted e => Event("FIRE_STARTED", position: e.Position),
         WardenEnraged e => Event("BOSS_PHASE_CHANGED", target: EnemyRef(e.EnemyId)),
         RoomEntered e => Event("FLOOR_ENTERED", amount: e.RoomIndex + 1),
+        PathOffered e => Event("PATH_OFFERED", actor: e.Player.Value, amount: e.SavedEmbers),
+        PathSelected e => Event("PATH_SELECTED", actor: e.Player.Value, detail: e.Auto ? Path(e.Path) + "_AUTO" : Path(e.Path)),
+        PathChosen e => Event("PATH_CHOSEN", actor: e.Player.Value, detail: Path(e.Path)),
+        EmberReborn e => Event("EMBER_REBORN", actor: e.Player.Value, position: e.Position, amount: e.Hp),
+        RenegadeSpawned e => Event("RENEGADE_SPAWNED", actor: e.Player.Value, position: e.Position),
+        RenegadeDefeated e => Event("RENEGADE_DEFEATED", actor: e.By?.Value, target: e.Renegade.Value),
+        EchoGained e => Event("ECHO_GAINED", actor: e.Player.Value, amount: e.Amount, detail: EchoReasonCode(e.Reason)),
+        EmberAbilityUsed e => Event(EmberAbilityCode(e.Ability), actor: e.Player.Value, target: Ref(e.Target), position: e.Tile),
         _ => null,
     };
 
-    internal static Dictionary<string, object> Event(string type, string? actor = null, string? target = null, Position? position = null, int? amount = null)
+    internal static Dictionary<string, object> Event(
+        string type, string? actor = null, string? target = null, Position? position = null, int? amount = null, string? detail = null)
     {
         var dto = new Dictionary<string, object> { ["type"] = type };
         if (actor is not null)
@@ -312,6 +374,11 @@ public static class RealtimeMapper
         if (amount is { } a)
         {
             dto["amount"] = Math.Clamp(a, -99, 99);
+        }
+
+        if (detail is not null)
+        {
+            dto["detail"] = detail;
         }
 
         return dto;
@@ -353,6 +420,8 @@ public static class RealtimeMapper
         HeroStatus.Active => "ALIVE",
         HeroStatus.Down => "DOWN",
         HeroStatus.Extinct => "EXTINCT",
+        HeroStatus.EmberSpirit => "EMBER_SPIRIT",
+        HeroStatus.Renegade => "RENEGADE",
         _ => "RETIRED",
     };
 
@@ -417,7 +486,28 @@ public static class RealtimeMapper
         OutcomeKind.Victory => "WARDEN_DEFEATED",
         OutcomeKind.Draw => "DRAW",
         OutcomeKind.CollectiveDefeat => "EMBER_EXTINGUISHED",
+        OutcomeKind.ThresholdClaimed => "THRESHOLD_CLAIMED",
         _ => "ABANDONED",
+    };
+
+    public static string Path(PathKind path) => path == PathKind.Vengeance ? "VENGEANCE" : "FRIENDSHIP";
+
+    private static string EchoReasonCode(EchoReason reason) => reason switch
+    {
+        EchoReason.ShieldAbsorbed => "SHIELD_ABSORBED",
+        EchoReason.Rekindled => "REKINDLED",
+        EchoReason.AttackHindered => "ATTACK_HINDERED",
+        EchoReason.BeaconKill => "BEACON_KILL",
+        _ => "WARMTH",
+    };
+
+    private static string EmberAbilityCode(EmberAbility ability) => ability switch
+    {
+        EmberAbility.Kindle => "SHIELD_KINDLED",
+        EmberAbility.Hinder => "ATTACK_HINDERED",
+        EmberAbility.Beacon => "BEACON_LIT",
+        EmberAbility.Warmth => "WARMTH_HEALED",
+        _ => "REVIVED",
     };
 
     /// <summary>Del texto del contrato al dominio. <c>null</c> si no es un valor válido.</summary>
@@ -437,6 +527,13 @@ public static class RealtimeMapper
         "S" => Domain.Model.Direction.South,
         "E" => Domain.Model.Direction.East,
         "W" => Domain.Model.Direction.West,
+        _ => null,
+    };
+
+    public static PathKind? ParsePath(string? value) => value switch
+    {
+        "FRIENDSHIP" => PathKind.Friendship,
+        "VENGEANCE" => PathKind.Vengeance,
         _ => null,
     };
 

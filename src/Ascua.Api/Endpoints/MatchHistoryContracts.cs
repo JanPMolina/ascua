@@ -11,7 +11,7 @@ public sealed record MatchHistoryItem(
     DateTimeOffset CreatedAt,
     DateTimeOffset? FinishedAt,
     [property: Description("DRAFTING, IN_PROGRESS, FINISHED, ABANDONED, EXPIRED o FAULTED.")] string Status,
-    [property: Description("Resultado global: WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, EXPIRED, FAULTED; null si sigue en curso.")] string? Outcome,
+    [property: Description("Resultado global: WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, THRESHOLD_CLAIMED (ganan los Renegados), ABANDONED, EXPIRED, FAULTED; null si sigue en curso.")] string? Outcome,
     [property: Description("Resultado para quien consulta: VICTORY, DRAW, DEFEAT (otro ganó), COLLECTIVE_DEFEAT, ABANDONED; null sin resultado del juego.")] string? Result,
     [property: Description("Héroe con el que jugó: YUNQUE, CHISPA, CUERVO o RAIZ.")] string Hero,
     [property: Description("Puesto final (1 = más ascuas, empates comparten puesto); null sin resultado.")] int? Placement,

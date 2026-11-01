@@ -59,6 +59,12 @@ public sealed class SignalRMatchNotifier(
             {
                 sends.Add(user.SendAsync("DraftOffer", offer, cancellationToken));
             }
+
+            if (IsNewPathOffer(before, after, participant.PlayerId)
+                && RealtimeMapper.PathOffer(after, participant, now) is { } pathOffer)
+            {
+                sends.Add(user.SendAsync("PathOffer", pathOffer, cancellationToken));
+            }
         }
 
         await Task.WhenAll(sends);
@@ -143,6 +149,11 @@ public sealed class SignalRMatchNotifier(
 
     private Task<ViewContext> ContextAsync(MatchSnapshot snapshot, CancellationToken cancellationToken) =>
         BuildContextAsync(hot, snapshot, cancellationToken);
+
+    /// <summary>Se abrió una oferta de camino nueva (cada extinción tiene la suya).</summary>
+    private static bool IsNewPathOffer(MatchSnapshot before, MatchSnapshot after, PlayerId player) =>
+        after.State.FindHero(player) is { IsChoosingPath: true } now
+        && before.State.FindHero(player)?.Extinctions != now.Extinctions;
 
     private static bool IsNewOffer(MatchSnapshot before, MatchSnapshot after, PlayerId player)
     {

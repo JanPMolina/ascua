@@ -54,7 +54,7 @@ public interface IMatchHotState
 {
     Task<MatchSnapshot?> GetAsync(Guid matchId, CancellationToken cancellationToken);
 
-    /// <summary>Guarda la instantánea si es más nueva que la guardada y (re)programa su plazo.</summary>
+    /// <summary>Guarda la instantánea si es más nueva que la guardada y (re)programa su plazo (<see cref="MatchSnapshot.WakeAt"/>).</summary>
     Task SaveAsync(MatchSnapshot snapshot, CancellationToken cancellationToken);
 
     /// <summary>Lock exclusivo por partida (<c>SET NX PX</c>). <c>null</c> si no se obtuvo dentro de <paramref name="wait"/>.</summary>
@@ -76,6 +76,10 @@ public interface IMatchHotState
     Task<DraftAck?> FindDraftAckAsync(Guid matchId, Guid userId, Guid offerId, CancellationToken cancellationToken);
 
     Task SaveDraftAckAsync(Guid userId, DraftAck ack, CancellationToken cancellationToken);
+
+    Task<PathAck?> FindPathAckAsync(Guid matchId, Guid userId, Guid offerId, CancellationToken cancellationToken);
+
+    Task SavePathAckAsync(Guid userId, PathAck ack, CancellationToken cancellationToken);
 
     Task<IReadOnlyList<Guid>> DueDeadlinesAsync(DateTimeOffset now, int limit, CancellationToken cancellationToken);
 
