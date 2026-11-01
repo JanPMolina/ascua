@@ -482,8 +482,24 @@ form[aria-busy="true"] button[type="submit"]::after {
 @keyframes dot { 0%, 60%, 100% { opacity: .2; } 30% { opacity: 1; } }
 
 /* ───────── Partida ───────── */
-.match { display: grid; grid-template-columns: minmax(0, 580px) minmax(300px, 1fr); gap: 1rem; align-items: start; }
-.board-col { position: sticky; top: 4.2rem; }
+/* La partida ocupa exactamente la ventana: sin scroll de página. El tablero toma todo el alto que queda
+   (cuadrado, centrado) y las columnas laterales se desplazan solas si su contenido no cabe. */
+body[data-screen="match"] { height: 100vh; height: 100dvh; overflow: hidden; display: flex; flex-direction: column; }
+body[data-screen="match"] > main { flex: 1; min-height: 0; max-width: none; width: 100%; padding: .6rem .8rem; }
+body[data-screen="match"] #screen-match { height: 100%; }
+body[data-screen="match"] > .debug { display: none; }
+.match {
+  display: grid; height: 100%; gap: .8rem; align-items: stretch;
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) minmax(280px, 340px);
+}
+.match-left, .match-right { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding-right: 2px; }
+.match-left > .card, .match-right > .card { margin-bottom: .6rem; }
+.board-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.board-stage { flex: 1; min-height: 0; container-type: size; display: grid; place-items: center; }
+.board-stage .board-frame { width: min(100cqw, 100cqh); }
+.board-col .legend { justify-content: center; margin-top: .4rem; }
+.board-col .hud-bar { margin-bottom: .3rem; }
+.board-col .clock { width: 52px; height: 52px; }
 
 .hud-bar { display: flex; align-items: center; justify-content: space-between; gap: .8rem; margin-bottom: .45rem; flex-wrap: wrap; }
 .hud-pills { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
@@ -940,12 +956,18 @@ button.blessing.chosen { border-color: var(--ok); box-shadow: inset 0 0 0 4px #1
   .hero-banner { grid-template-columns: 1fr; padding-top: .5rem; }
   .hero-copy { text-align: center; display: grid; justify-items: center; }
   .features { text-align: left; }
-  /* En la partida, una sola columna: tablero, órdenes, héroe, jugadores, eventos. */
-  .match { display: flex; flex-direction: column; gap: .8rem; }
-  .board-col { position: static; order: 1; width: 100%; }
-  .side-col { display: contents; }
-  .side-col > .card { margin: 0; width: 100%; }
+  /* Pantalla angosta: una sola columna que se desplaza, pero tablero y órdenes quedan juntos arriba y el
+     tablero nunca pasa de ~55% del alto, para ver el d-pad sin bajar. */
+  body[data-screen="match"] { height: auto; overflow: visible; display: block; }
+  body[data-screen="match"] #screen-match { height: auto; }
+  .match { display: flex; flex-direction: column; gap: .8rem; height: auto; }
+  .match-left, .match-right { display: contents; }
+  .match-left > .card, .match-right > .card { margin: 0; width: 100%; }
+  .board-col { order: 1; width: 100%; }
+  .board-stage { flex: none; height: min(calc(100vw - 1.6rem), 55vh); }
   .card-orders { order: 2; }
+  /* El guía del tutorial no debe empujar el tablero fuera de la vista: alto acotado y su propio scroll. */
+  #coach { order: 0; max-height: 32vh; overflow-y: auto; }
   .card-hero { order: 3; }
   .card-players { order: 4; }
   .card-events { order: 5; }
