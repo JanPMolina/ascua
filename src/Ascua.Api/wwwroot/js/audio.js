@@ -81,6 +81,28 @@ function applyVolumes(seconds = 0.15) {
   }
 }
 
+/**
+ * Pestaña o ventana oculta (minimizada, otra pestaña, panel cerrado): nada debe seguir sonando.
+ * Se funde a silencio y se suspende el AudioContext; al volver se reanuda donde iba (salvo silencio).
+ */
+function onVisibility() {
+  const { ctx } = engine;
+  if (!ctx) return;
+  if (document.hidden) {
+    rampTo(engine.master.gain, 0, 0.15);
+    setTimeout(() => { if (document.hidden && ctx.state === 'running') ctx.suspend().catch(() => {}); }, 200);
+  } else {
+    applyVolumes();
+  }
+}
+
+function shutdown() {
+  const { ctx } = engine;
+  if (!ctx || ctx.state === 'closed') return;
+  try { engine.master.gain.value = 0; } catch { /* ya cerrado */ }
+  ctx.close().catch(() => {});
+}
+
 function unlock() {
   const ctx = ensureContext();
   if (!ctx) return;
@@ -305,7 +327,9 @@ export function initAudio() {
   engine.muted = Boolean(settings.muted);
   try {
     for (const type of ['pointerdown', 'keydown', 'touchstart']) document.addEventListener(type, unlock, { capture: true, passive: true });
-    document.addEventListener('visibilitychange', () => applyVolumes());
+    document.addEventListener('visibilitychange', onVisibility);
+    // La página se cierra o se descarta (también al cerrar el panel del navegador): el audio se apaga del todo.
+    window.addEventListener('pagehide', shutdown);
     bindInterface();
     bindBus();
   } catch (err) {

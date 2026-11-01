@@ -173,8 +173,10 @@
 
     <!-- ───────── Partida ───────── -->
     <section id="screen-match" class="screen" hidden>
+      <!-- Tres columnas que caben en la pantalla: héroe y jugadores | tablero | órdenes y eventos.
+           Cada columna lateral se desplaza sola si no le alcanza el alto; la página no. -->
       <div class="match">
-        <div class="board-col">
+        <aside class="match-left" aria-label="Tu héroe y jugadores">
           <div id="coach" class="card coach" hidden aria-live="polite">
             <div class="coach-head">
               <span class="badge warn">Tutorial</span>
@@ -187,30 +189,6 @@
             <div id="coach-body"></div>
             <button id="coach-next" type="button" class="primary" hidden></button>
           </div>
-          <div class="hud-bar">
-            <div class="hud-pills">
-              <span class="pill"><small>Piso</small><b id="m-floor">–</b></span>
-              <span class="pill"><small>Ronda</small><b id="m-round">–</b></span>
-              <span id="m-status" class="badge"></span>
-              <span id="conn-state" class="badge conn">desconectado</span>
-            </div>
-            <div id="m-clock" class="clock" role="timer" aria-label="Tiempo de la ronda">
-              <span class="clock-ring" aria-hidden="true"></span>
-              <b id="m-timer">–</b>
-            </div>
-          </div>
-          <div class="timerbar"><div id="m-timerbar"></div></div>
-          <div class="board-frame">
-            <canvas id="board" width="540" height="540" aria-label="Tablero 9×9"></canvas>
-          </div>
-          <p class="legend">
-            <span><span class="sw sw-wall"></span>muro</span> <span><span class="sw sw-chest"></span>cofre</span> <span><span class="sw sw-stairs"></span>escalera</span>
-            <span><span class="sw sw-spikes"></span>pinchos</span> <span><span class="sw sw-fire"></span>fuego</span> <span><span class="sw sw-tele"></span>ataque anunciado</span>
-            <span><span class="sw sw-fog"></span>recordado</span>
-          </p>
-        </div>
-
-        <div class="side-col">
           <div class="card card-hero">
             <div class="hero-head">
               <span id="me-portrait" class="portrait-slot"></span>
@@ -245,6 +223,43 @@
             <div id="me-pact" class="pact-card"><p>–</p></div>
           </div>
 
+          <div class="card card-players">
+            <div class="card-head">
+              <h3>Jugadores</h3>
+              <span class="spacer"></span>
+              <small id="m-decided" class="badge" aria-live="polite"></small>
+            </div>
+            <ul id="players" class="players"></ul>
+          </div>
+        </aside>
+
+        <div class="board-col">
+          <div class="hud-bar">
+            <div class="hud-pills">
+              <span class="pill"><small>Piso</small><b id="m-floor">–</b></span>
+              <span class="pill"><small>Ronda</small><b id="m-round">–</b></span>
+              <span id="m-status" class="badge"></span>
+              <span id="conn-state" class="badge conn">desconectado</span>
+            </div>
+            <div id="m-clock" class="clock" role="timer" aria-label="Tiempo de la ronda">
+              <span class="clock-ring" aria-hidden="true"></span>
+              <b id="m-timer">–</b>
+            </div>
+          </div>
+          <div class="timerbar"><div id="m-timerbar"></div></div>
+          <div class="board-stage">
+            <div class="board-frame">
+              <canvas id="board" width="540" height="540" aria-label="Tablero 9×9"></canvas>
+            </div>
+          </div>
+          <p class="legend">
+            <span><span class="sw sw-wall"></span>muro</span> <span><span class="sw sw-chest"></span>cofre</span> <span><span class="sw sw-stairs"></span>escalera</span>
+            <span><span class="sw sw-spikes"></span>pinchos</span> <span><span class="sw sw-fire"></span>fuego</span> <span><span class="sw sw-tele"></span>ataque anunciado</span>
+            <span><span class="sw sw-fog"></span>recordado</span>
+          </p>
+        </div>
+
+        <aside class="match-right" aria-label="Órdenes y eventos">
           <div class="card card-orders">
             <div class="card-head">
               <h3>Orden</h3>
@@ -279,15 +294,6 @@
             </details>
           </div>
 
-          <div class="card card-players">
-            <div class="card-head">
-              <h3>Jugadores</h3>
-              <span class="spacer"></span>
-              <small id="m-decided" class="badge" aria-live="polite"></small>
-            </div>
-            <ul id="players" class="players"></ul>
-          </div>
-
           <div class="card card-events">
             <h3>Eventos de la ronda</h3>
             <ul id="events" class="events" role="log" aria-live="polite"></ul>
@@ -298,7 +304,7 @@
             <button id="btn-demo-drop" type="button" class="secondary" hidden>Simular caída de conexión</button>
             <button id="btn-demo-finish" type="button" class="secondary" hidden>Simular fin de partida</button>
           </div>
-        </div>
+        </aside>
       </div>
 
       <!-- Draft de bendiciones -->
