@@ -33,7 +33,8 @@ export function ensureContext() {
       return null;
     }
   }
-  if (engine.ctx.state === 'suspended' && !engine.muted) engine.ctx.resume().catch(() => {});
+  // Con la página oculta no se reanuda: lo hace audio.js al volver a ser visible.
+  if (engine.ctx.state === 'suspended' && !engine.muted && !document.hidden) engine.ctx.resume().catch(() => {});
   return engine.ctx;
 }
 

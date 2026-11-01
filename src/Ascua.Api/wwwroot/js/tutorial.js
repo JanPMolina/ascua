@@ -296,6 +296,10 @@ class Coach {
     step.setup?.(this);
     this.dangerBefore = this.dangerOnMe();
     this.render();
+    // Paso nuevo: el guía vuelve a mostrarse desde su título (su columna o él mismo pueden tener scroll).
+    const coach = $('coach');
+    coach.scrollTop = 0;
+    if (coach.parentElement) coach.parentElement.scrollTop = 0;
   }
 
   onMessage(type, payload) {
