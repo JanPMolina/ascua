@@ -175,18 +175,18 @@ public static class PlayerViewProjector
         switch (domainEvent)
         {
             case AttackTelegraphed telegraphed:
-            {
-                var tiles = VisibleTelegraph(state, me, telegraphed.EnemyId, telegraphed.Tiles);
-                var source = audience.Position is { } origin && IsVisible(state, me, origin) ? telegraphed.EnemyId : null;
-                return tiles.IsEmpty ? null : telegraphed with { EnemyId = source, Tiles = tiles };
-            }
+                {
+                    var tiles = VisibleTelegraph(state, me, telegraphed.EnemyId, telegraphed.Tiles);
+                    var source = audience.Position is { } origin && IsVisible(state, me, origin) ? telegraphed.EnemyId : null;
+                    return tiles.IsEmpty ? null : telegraphed with { EnemyId = source, Tiles = tiles };
+                }
 
             case AttackCorrected corrected:
-            {
-                var tiles = VisibleTelegraph(state, me, corrected.EnemyId, corrected.Tiles);
-                var source = audience.Position is { } origin && IsVisible(state, me, origin) ? corrected.EnemyId : null;
-                return tiles.IsEmpty ? null : corrected with { EnemyId = source, Tiles = tiles };
-            }
+                {
+                    var tiles = VisibleTelegraph(state, me, corrected.EnemyId, corrected.Tiles);
+                    var source = audience.Position is { } origin && IsVisible(state, me, origin) ? corrected.EnemyId : null;
+                    return tiles.IsEmpty ? null : corrected with { EnemyId = source, Tiles = tiles };
+                }
 
             default:
                 break;
