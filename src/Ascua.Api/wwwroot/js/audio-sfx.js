@@ -290,4 +290,113 @@ export const SFX = {
     bell({ freq: midi(93), t: t + 0.08, dur: 0.8, peak: 0.06, out });
     return 0.9;
   },
+
+  // ───────── caminos tras la extinción ─────────
+  /** Se abre la elección: un acorde suspendido, mitad campana clara (Amistad) y mitad bordón grave (Venganza). */
+  pathOffer(t, out) {
+    [81, 86, 88, 93].forEach((n, i) => bell({ freq: midi(n), t: t + 0.15 + i * 0.12, dur: 2.2, peak: 0.045, out }));
+    for (const d of [-6, 6]) tone({ type: 'sawtooth', freq: midi(38), t, dur: 2.4, attack: 0.6, peak: 0.05, detune: d, filter: LP(260, 700), out });
+    tone({ freq: midi(26), t, dur: 2.2, attack: 0.4, peak: 0.18, out });
+    noise({ t, dur: 1.8, attack: 1, peak: 0.05, filter: BP(900, 3500, 0.7), curve: 'lin', out });
+    return 2.6;
+  },
+  /** Amistad: aire que sube y campanas en mayor. */
+  pathFriendship(t, out) {
+    noise({ t, dur: 0.8, attack: 0.5, peak: 0.1, filter: BP(600, 5000, 0.9), curve: 'lin', out });
+    [74, 78, 81, 86, 90].forEach((n, i) => bell({ freq: midi(n), t: t + 0.25 + i * 0.08, dur: 1.6, peak: 0.05, out }));
+    for (const n of [62, 69, 74]) tone({ type: 'triangle', freq: midi(n), t: t + 0.2, dur: 1.8, attack: 0.3, peak: 0.04, out });
+    return 2;
+  },
+  /** Venganza: un rugido grave y un metal disonante. */
+  pathVengeance(t, out) {
+    for (const [f, d] of [[55, -9], [58.3, 9]]) tone({ type: 'sawtooth', freq: f, freqEnd: f * 0.8, t, dur: 1.6, attack: 0.08, peak: 0.12, detune: d, filter: LP(900, 220, 3), out });
+    tone({ freq: 70, freqEnd: 32, t, dur: 0.9, peak: 0.45, out });
+    bell({ freq: 116.5, t: t + 0.05, dur: 2.4, peak: 0.12, metal: true, out });
+    noise({ t, dur: 1, attack: 0.05, peak: 0.16, filter: LP(1400, 180), out });
+    return 2.4;
+  },
+  /** Deriva: soplo que pasa. */
+  emberDrift(t, out) {
+    noise({ t, dur: 0.45, attack: 0.18, peak: 0.16, filter: BP(900, 2600, 1.4), curve: 'lin', out });
+    tone({ freq: midi(84), freqEnd: midi(91), t, dur: 0.4, attack: 0.1, peak: 0.025, out });
+    return 0.5;
+  },
+  /** Avivar: brillo cristalino que se cierra sobre el aliado. */
+  emberKindle(t, out) {
+    [88, 93, 96].forEach((n, i) => bell({ freq: midi(n), t: t + i * 0.05, dur: 0.9, peak: 0.05, out }));
+    tone({ freq: midi(76), freqEnd: midi(83), t, dur: 0.35, attack: 0.05, peak: 0.06, out });
+    noise({ t, dur: 0.3, attack: 0.1, peak: 0.05, filter: HP(5000), out });
+    return 1;
+  },
+  /** Estorbo: el tiempo se estira (barrido hacia abajo con trémolo) y un tic de reloj. */
+  emberHinder(t, out) {
+    tone({ type: 'triangle', freq: midi(79), freqEnd: midi(67), t, dur: 0.6, attack: 0.02, peak: 0.08, vibrato: { rate: 9, depth: 18 }, filter: LP(2200), out });
+    for (const dt of [0.05, 0.3]) noise({ t: t + dt, dur: 0.02, peak: 0.25, filter: BP(3200, null, 6), out });
+    bell({ freq: midi(70), t: t + 0.3, dur: 0.8, peak: 0.04, metal: true, out });
+    return 1;
+  },
+  /** Faro: una luz que se abre (acorde que crece). */
+  emberBeacon(t, out) {
+    for (const n of [69, 76, 81]) tone({ freq: midi(n), t, dur: 1.2, attack: 0.35, peak: 0.035, out });
+    bell({ freq: midi(93), t: t + 0.3, dur: 1.2, peak: 0.035, out });
+    noise({ t, dur: 0.8, attack: 0.4, peak: 0.04, filter: HP(4500), curve: 'lin', out });
+    return 1.3;
+  },
+  /** Calidez: zumbido tibio. */
+  emberWarmth(t, out) {
+    for (const n of [57, 64]) tone({ type: 'triangle', freq: midi(n), t, dur: 0.9, attack: 0.25, peak: 0.05, filter: LP(1600), out });
+    crackles(t + 0.1, out, { count: 5, span: 0.6, peak: 0.12, freq: 2500 });
+    return 1;
+  },
+  /** Eco ganado: un «ping» que sube más cuantos más ecos. */
+  echoGained(t, out, { amount = 1 } = {}) {
+    const n = Math.min(3, Math.max(1, amount));
+    for (let i = 0; i < n; i++) {
+      bell({ freq: midi(91 + i * 3), t: t + i * 0.09, dur: 0.9, peak: 0.05, out });
+      tone({ freq: midi(79 + i * 3), t: t + i * 0.09, dur: 0.3, attack: 0.01, peak: 0.03, out });
+    }
+    return 1 + n * 0.09;
+  },
+  /** Renacer: la llama azul se vuelve fuego; acorde que crece y estalla en campanas. */
+  emberReborn(t, out) {
+    noise({ t, dur: 1.2, attack: 0.9, peak: 0.14, filter: BP(300, 4200, 0.8), curve: 'lin', out });
+    for (const n of [50, 57, 62, 66]) tone({ type: 'triangle', freq: midi(n), t: t + 0.1, dur: 2.4, attack: 0.8, peak: 0.05, out });
+    tone({ freq: 90, freqEnd: 45, t: t + 0.95, dur: 0.6, peak: 0.4, out });
+    [86, 90, 93, 98].forEach((n, i) => bell({ freq: midi(n), t: t + 1 + i * 0.07, dur: 1.4, peak: 0.05, out }));
+    crackles(t + 1, out, { count: 10, span: 0.8, peak: 0.2 });
+    return 2.6;
+  },
+  /** Aparece un Renegado: golpe de bronce bajo, desgarro y bordón. */
+  renegadeSpawned(t, out) {
+    noise({ t, dur: 0.7, attack: 0.6, peak: 0.16, filter: LP(400, 2400), curve: 'lin', out });
+    for (const n of [38, 39, 45]) brass(midi(n), t + 0.6, 1.4, 0.05, out);
+    tone({ freq: 60, freqEnd: 30, t: t + 0.6, dur: 1, peak: 0.5, out });
+    bell({ freq: 92.5, t: t + 0.62, dur: 3, peak: 0.16, metal: true, out });
+    return 3.2;
+  },
+  /** Cae un Renegado: algo que se quiebra y se apaga. */
+  renegadeDefeated(t, out) {
+    noise({ t, dur: 0.06, peak: 0.5, filter: HP(2500), out });
+    [93, 89, 84, 79, 74].forEach((n, i) => bell({ freq: midi(n), t: t + 0.02 + i * 0.06, dur: 0.7, peak: 0.05, metal: true, out }));
+    tone({ type: 'sawtooth', freq: 180, freqEnd: 50, t, dur: 0.9, peak: 0.1, filter: LP(1200, 200), out });
+    return 1.2;
+  },
+  /** Escudo de aviso: cristal que se raja. */
+  warningShield(t, out) {
+    noise({ t, dur: 0.05, peak: 0.45, filter: HP(4500), out });
+    bell({ freq: 1320, t, dur: 0.5, peak: 0.12, metal: true, out });
+    bell({ freq: 1870, t: t + 0.01, dur: 0.35, peak: 0.06, metal: true, out });
+    crackles(t + 0.02, out, { count: 6, span: 0.15, peak: 0.2, freq: 5000 });
+    return 0.6;
+  },
+  /** «El Umbral reclama»: la derrota del grupo, más grave y con un bordón que no resuelve. */
+  threshold(t, out) {
+    const chords = [[45, 48, 52], [44, 47, 51], [41, 45, 48], [40, 46, 49]];
+    chords.forEach((c, i) => {
+      const at = t + i * 1;
+      for (const n of c) tone({ type: 'sawtooth', freq: midi(n), t: at, dur: i === 3 ? 4 : 1.4, attack: 0.2, peak: 0.04, filter: LP(900, 400), out });
+    });
+    for (const dt of [0, 2, 4]) bell({ freq: midi(26), t: t + dt, dur: 3.5, peak: 0.2, metal: true, out });
+    return 7.5;
+  },
 };

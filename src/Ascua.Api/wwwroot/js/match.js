@@ -9,8 +9,8 @@ import { emit } from './bus.js';
 import { BLESSING_ICONS, heroAvatar, heroInfo } from './heroes.js';
 import { settingsOpen } from './settings-panel.js';
 import {
-  BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
-  MATCH_STATUS, ORDER_TYPES, OUTCOMES, label,
+  BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ECHO_REASONS, EMBER_ORDERS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
+  MATCH_STATUS, ORDER_TYPES, OUTCOMES, PATHS, label,
 } from './labels.js';
 
 const KEY_DIRS = { ArrowUp: 'N', ArrowDown: 'S', ArrowLeft: 'W', ArrowRight: 'E' };
@@ -24,12 +24,38 @@ const EVENT_STYLE = {
   ENEMY_KILLED: ['💀', 'gold'], ENEMY_SPAWNED: ['👁', 'bad'], CHEST_OPENED: ['📦', 'gold'], EMBERS_GAINED: ['✦', 'gold'],
   EMBERS_STOLEN: ['✦', 'bad'], BLESSING_GAINED: ['✧', 'gold'], TRAP_TRIGGERED: ['⚠', 'bad'], FIRE_STARTED: ['🔥', 'bad'],
   FROZEN: ['❄', 'info'], BOSS_PHASE_CHANGED: ['👑', 'bad'], FLOOR_ENTERED: ['⇣', 'info'], DEFAULT_GUARD_APPLIED: ['⛨', ''],
+  ABILITY_USED: ['✺', ''], GUARDED: ['⛨', ''],
+  // Caminos tras la extinción.
+  PATH_OFFERED: ['🕯', 'bad'], PATH_SELECTED: ['✔', 'info'], PATH_CHOSEN: ['⚖', 'info'], EMBER_REBORN: ['↺', 'ember'],
+  RENEGADE_SPAWNED: ['☠', 'renegade'], RENEGADE_DEFEATED: ['⚔', 'gold'], ECHO_GAINED: ['❖', 'ember'],
+  SHIELD_KINDLED: ['❂', 'ember'], ATTACK_HINDERED: ['⧖', 'ember'], BEACON_LIT: ['☼', 'ember'], WARMTH_HEALED: ['♨', 'ember'],
 };
 
 const ARMED_TEXT = {
   ABILITY: 'Habilidad armada: elige una dirección (flecha o d-pad). Esc cancela.',
   INTERACT: 'Interactuar armado: elige la casilla vecina (flecha o d-pad). Esc cancela.',
 };
+const EMBER_ARMED_TEXT = {
+  ABILITY: 'Avivar armado: elige hacia qué aliado (flecha o d-pad). Esc cancela.',
+  INTERACT: 'Reavivar armado: elige la casilla del caído (flecha o d-pad). Esc cancela.',
+};
+
+/** Nombres e íconos originales de los botones de orden (se restauran al dejar de ser Brasa). */
+const HERO_ORDERS = {
+  MOVE: { name: 'Mover', icon: '➜' }, ATTACK: { name: 'Atacar', icon: '⚔' }, ABILITY: { name: 'Habilidad', icon: '✺' },
+  INTERACT: { name: 'Interactuar', icon: '✋' }, GUARD: { name: 'Guardar', icon: '⛨' },
+};
+
+const PATH_DEADLINE_MS = 15000;
+/** Fórmula del renacer de la Brasa: 25% de las ascuas guardadas, +8% por eco, tope 85%. */
+const rebirthPct = (echoes) => Math.min(85, 25 + 8 * Math.max(0, echoes));
+
+/** Renegado que todavía no apareció (no tiene casilla). */
+const awaitingSpawn = (me) => me?.state === 'RENEGADE' && Boolean(me.path?.awaitingSpawn);
+/** Puede dar órdenes en la ronda: héroe vivo, Brasa o Renegado presente. */
+const canAct = (me) => me?.state === 'ALIVE' || me?.state === 'EMBER_SPIRIT' || (me?.state === 'RENEGADE' && !awaitingSpawn(me));
+/** Clase de estilo del camino de un portador ('' si no recorre ninguno). */
+const pathClass = (state) => ({ EMBER_SPIRIT: 'ember', RENEGADE: 'renegade', EXTINCT: 'choosing' }[state] ?? '');
 
 /** Reinicia una animación CSS de clase (quitar, forzar reflow y volver a poner). */
 function replay(node, cls) {
@@ -73,6 +99,7 @@ class MatchController {
     this.armedMode = null;
     this.order = null; // { payload, status: sending|waiting|acked|error, ack, error }
     this.draft = null;
+    this.pathOffer = null; // oferta de camino abierta { offerId, deadlineLocal, savedEmbers, …, sending }
     this.resetView();
 
     this.onKey = (e) => this.handleKey(e);
@@ -95,8 +122,9 @@ class MatchController {
     this.decidedCount = 0;
     this.expectedPlayers = 0;
     this.events = [];
+    this.clockOffset = 0; // hora del servidor − hora local (ms)
     // Lo último que se pintó, para animar solo lo que cambia.
-    this.shown = { hp: null, embers: null, blessings: null, pact: null, events: null, hero: null, decided: new Set() };
+    this.shown = { hp: null, embers: null, echoes: null, blessings: null, pact: null, events: null, hero: null, orders: null, decided: new Set() };
   }
 
   // ───────────── ciclo de vida ─────────────
@@ -106,8 +134,9 @@ class MatchController {
     const demo = this.transport.protocolName === 'demo';
     $('btn-demo-drop').hidden = !demo;
     $('btn-demo-finish').hidden = !demo;
+    $('demo-paths').hidden = !demo;
     this.bindUi();
-    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer',
+    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer',
       'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error']) {
       this.transport.on(type, (payload) => {
         if (this.disposed) return;
@@ -131,6 +160,7 @@ class MatchController {
     this.transport.stop();
     this.transport.dispose?.();
     $('draft').hidden = true;
+    $('path').hidden = true;
     emit('match:stop');
   }
 
@@ -158,6 +188,16 @@ class MatchController {
     listen($('btn-leave-match'), 'click', () => this.leave());
     listen($('btn-demo-drop'), 'click', () => toast(this.transport.simulateDrop()));
     listen($('btn-demo-finish'), 'click', () => this.transport.simulateFinish());
+    listen($('btn-demo-extinct'), 'click', () => toast(this.transport.simulateExtinction()));
+    listen($('btn-demo-renegade'), 'click', () => toast(this.transport.simulateRenegadeAlly()));
+    listen($('btn-demo-floor'), 'click', () => toast(this.transport.simulateDescend()));
+    document.querySelectorAll('.path-card').forEach((btn) => listen(btn, 'click', () => this.choosePath(btn.dataset.path)));
+    // En el diálogo de caminos las flechas pasan de una carta a la otra (Enter o Espacio eligen).
+    listen($('path'), 'keydown', (e) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      e.preventDefault();
+      document.querySelector(`.path-card[data-path="${e.key === 'ArrowLeft' ? 'FRIENDSHIP' : 'VENGEANCE'}"]`)?.focus();
+    });
   }
 
   // ───────────── conexión ─────────────
@@ -287,16 +327,46 @@ class MatchController {
     this.enemies = new Map((v.enemies ?? []).map((e) => [e.enemyId, e]));
     this.tiles = new Map((v.tiles ?? []).map((t) => [`${t.x},${t.y}`, t.kind]));
     // El plazo se traduce al reloj local con el desfase que informa el servidor.
-    if (v.roundDeadline) {
-      const offset = Date.parse(snap.serverTime) - Date.now();
-      this.deadlineLocal = Date.parse(v.roundDeadline) - (Number.isFinite(offset) ? offset : 0);
-    } else {
-      this.deadlineLocal = null;
-    }
+    const offset = Date.parse(snap.serverTime) - Date.now();
+    this.clockOffset = Number.isFinite(offset) ? offset : 0;
+    this.deadlineLocal = v.roundDeadline ? Date.parse(v.roundDeadline) - this.clockOffset : null;
     this.decidedCount = [this.me, ...this.allies].filter((h) => h?.decided).length;
-    this.expectedPlayers = [this.me, ...this.allies].filter((h) => h?.state === 'ALIVE').length;
+    // Dan orden los héroes vivos, las Brasas y los Renegados presentes (un aliado Renegado se cuenta si se le ve).
+    this.expectedPlayers = (canAct(this.me) ? 1 : 0) + this.allies.filter((a) => a.state === 'ALIVE' || a.state === 'EMBER_SPIRIT'
+      || (a.state === 'RENEGADE' && a.position)).length;
     if (this.order && this.order.payload.round !== this.round) this.order = null;
     setLastSeq(this.seq);
+    this.syncPathOffer();
+  }
+
+  /**
+   * La vista manda: con `me.path.offerId` y sin elección hay que elegir (al reconectar puede no llegar el
+   * PathOffer antes que la vista, así que se abre con los números que se pueden calcular); si ya no hay
+   * oferta o ya se eligió, el diálogo se cierra.
+   */
+  syncPathOffer() {
+    const path = this.me?.path;
+    const open = Boolean(path?.offerId) && !path.choice && this.me.state === 'EXTINCT' && this.status === 'IN_PROGRESS';
+    if (!open) {
+      if (this.pathOffer && path?.choice && !this.pathOffer.sending) {
+        // El plazo solo puede tomar Amistad; otro camino lo eligió este jugador desde otra conexión.
+        toast(path.choice === 'FRIENDSHIP' ? `Venció el plazo: tomaste el ${label(PATHS, path.choice)}.` : `Quedó registrado el ${label(PATHS, path.choice)}.`, 'info', 5000);
+      }
+      if (this.pathOffer) this.closePathDialog();
+      return;
+    }
+    if (this.pathOffer?.offerId === path.offerId) return;
+    const saved = path.savedEmbers ?? 0;
+    const deadline = this.deadlineLocal ?? Date.now() + PATH_DEADLINE_MS;
+    this.openPathDialog({
+      offerId: path.offerId,
+      savedEmbers: saved,
+      vengeanceEmbers: Math.ceil(saved / 2),
+      friendshipEmbersMin: Math.ceil(saved * 0.25),
+      friendshipEmbersMax: Math.ceil(saved * 0.85),
+      wardenRoom: (this.floor ?? 1) >= 5,
+      deadlineLocal: Math.min(deadline, Date.now() + PATH_DEADLINE_MS),
+    });
   }
 
   onRoundOpened(m) {
@@ -312,6 +382,8 @@ class MatchController {
     this.allies.forEach((a) => { a.decided = false; });
     if (this.order && this.order.payload.round !== m.round) this.order = null;
     this.lowTimeRound = null;
+    // La elección de camino vence 15 s después de abrir la ronda (nunca después de su cierre).
+    if (this.pathOffer && !this.pathOffer.precise) this.pathOffer.deadlineLocal = Date.now() + Math.min(PATH_DEADLINE_MS, m.durationMs);
     emit('round:opened', { round: m.round, durationMs: m.durationMs });
   }
 
@@ -354,6 +426,7 @@ class MatchController {
     setLastSeq(this.seq);
     if (d.floorChanged) emit('floor:changed', { floor: d.floorChanged });
     emit('round:resolved', { round: m.round, events: this.events, before, after: this.entities(), myId: this.playerId });
+    this.syncPathOffer();
   }
 
   /** Copia de lo que se ve del tablero, para que las animaciones interpolen entre el antes y el después. */
@@ -411,6 +484,89 @@ class MatchController {
     }
   }
 
+  // ───────────── caminos tras la extinción ─────────────
+
+  onPathOffer(m) {
+    if (this.me?.path?.choice && this.me.path.offerId === m.offerId) return; // ya elegido: el reenvío no reabre
+    this.openPathDialog({
+      offerId: m.offerId,
+      savedEmbers: m.savedEmbers,
+      vengeanceEmbers: m.vengeanceEmbers,
+      friendshipEmbersMin: m.friendshipEmbersMin,
+      friendshipEmbersMax: m.friendshipEmbersMax,
+      wardenRoom: Boolean(m.wardenRoom),
+      deadlineLocal: Date.parse(m.deadline) - this.clockOffset,
+      precise: true,
+    });
+  }
+
+  openPathDialog(offer) {
+    const same = this.pathOffer?.offerId === offer.offerId;
+    // Un PathOffer con el plazo exacto reemplaza los números aproximados de la vista, sin reiniciar la elección.
+    this.pathOffer = { ...(same ? this.pathOffer : {}), ...offer, sending: same ? this.pathOffer.sending : false };
+    const range = offer.friendshipEmbersMin === offer.friendshipEmbersMax
+      ? String(offer.friendshipEmbersMin) : `${offer.friendshipEmbersMin}–${offer.friendshipEmbersMax}`;
+    setText('path-saved', offer.savedEmbers);
+    setText('path-friend-embers', range);
+    setText('path-friend-label', offer.wardenRoom ? 'No renaces: al final puntúas con' : 'Renaces al bajar de piso con');
+    setText('path-veng-embers', offer.vengeanceEmbers);
+    setText('path-veng-label', offer.wardenRoom ? 'Apareces en 2 rondas junto al Celador con' : 'Apareces en la sala siguiente con');
+    $('path-warden').hidden = !offer.wardenRoom;
+    if (!same) {
+      document.querySelectorAll('.path-card').forEach((b) => { b.disabled = false; b.classList.remove('chosen'); });
+    }
+    if ($('path').hidden) {
+      $('path').hidden = false;
+      this.armedMode = null;
+      document.querySelector('.path-card[data-path="FRIENDSHIP"]')?.focus();
+      emit('path:offer', { savedEmbers: offer.savedEmbers, wardenRoom: offer.wardenRoom });
+    }
+    this.renderTimer();
+  }
+
+  closePathDialog() {
+    this.pathOffer = null;
+    $('path').hidden = true;
+  }
+
+  async choosePath(path) {
+    const offer = this.pathOffer;
+    if (!offer || offer.sending) return;
+    offer.sending = true;
+    const cards = document.querySelectorAll('.path-card');
+    cards.forEach((b) => { b.disabled = true; b.classList.toggle('chosen', b.dataset.path === path); });
+    const unlock = () => {
+      if (this.pathOffer !== offer) return;
+      offer.sending = false;
+      cards.forEach((b) => { b.disabled = false; b.classList.remove('chosen'); });
+    };
+    try {
+      const res = await this.invoke('ChoosePath', { matchId: this.matchId, offerId: offer.offerId, path });
+      if (res.error) {
+        if (res.error.code === 'PATH_CLOSED') {
+          // Ya se eligió otro camino, venció el plazo o la oferta era de otra extinción: la vista dirá cuál quedó.
+          toast(`${label(ERROR_CODES, 'PATH_CLOSED')}: se usará lo que registró el servidor.`, 'info', 6000);
+          if (this.pathOffer === offer) this.closePathDialog();
+          this.requestSnapshot();
+          return;
+        }
+        toast(`ChoosePath: ${label(ERROR_CODES, res.error.code)}`, 'bad');
+        unlock();
+        return;
+      }
+      // DUPLICATE_ACTION: la misma elección ya estaba registrada; vale igual que ACCEPTED.
+      const chosen = res.path ?? path;
+      if (this.me?.path) this.me.path.choice = chosen;
+      toast(`Elegiste el ${label(PATHS, chosen)}. Se revela al resolver la ronda.`, 'ok', 5000);
+      emit('path:chosen', { path: chosen });
+      if (this.pathOffer === offer) this.closePathDialog();
+      this.render();
+    } catch {
+      unlock();
+      toast('Sin conexión; vuelve a elegir cuando reconecte.', 'bad');
+    }
+  }
+
   onPlayerConnectionChanged(m) {
     const ally = this.allies.find((a) => a.playerId === m.playerId);
     if (ally) ally.connected = m.state === 'CONNECTED';
@@ -424,6 +580,7 @@ class MatchController {
     this.status = 'FINISHED';
     this.deadlineLocal = null;
     $('draft').hidden = true;
+    this.closePathDialog();
     showFinished(m, this.playerId, () => this.exit());
     emit('match:finished', { outcome: m.outcome, iWon: m.winners.includes(this.playerId), standings: m.standings, myId: this.playerId });
   }
@@ -441,7 +598,7 @@ class MatchController {
   // ───────────── órdenes ─────────────
 
   handleKey(e) {
-    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('howto').hidden || settingsOpen()) return;
+    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('path').hidden || !$('howto').hidden || settingsOpen()) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
@@ -476,9 +633,29 @@ class MatchController {
     this.submitOrder({ type: 'GUARD' });
   }
 
+  /** Motivo por el que la orden no puede salir ahora (o null). Evita gastar la orden de la ronda en algo que no vale. */
+  orderBlocked(order) {
+    const me = this.me;
+    if (!me) return null;
+    if (me.state === 'EXTINCT') return me.path?.choice ? 'Ya elegiste camino: se revela al resolver la ronda.' : 'Te extinguiste: elige tu camino.';
+    if (awaitingSpawn(me)) return 'Todavía no apareciste como Renegado.';
+    if (me.state !== 'EMBER_SPIRIT') return null;
+    if (order.type === 'ABILITY' && me.abilityCooldown > 0) return `Avivar se enfría: lista en ${me.abilityCooldown} ronda${me.abilityCooldown === 1 ? '' : 's'}.`;
+    const hinder = me.path?.hinderCooldown ?? 0;
+    if (order.type === 'ATTACK' && hinder > 0) return `Estorbo se enfría: listo en ${hinder} ronda${hinder === 1 ? '' : 's'}.`;
+    return null;
+  }
+
   submitOrder(order) {
     if (this.status !== 'IN_PROGRESS' || this.deadlineLocal === null) {
       toast('No hay una ronda abierta.');
+      this.render();
+      return;
+    }
+    const blocked = this.orderBlocked(order);
+    if (blocked) {
+      toast(blocked);
+      emit('order:rejected', { order, code: 'CLIENT_BLOCKED' });
       this.render();
       return;
     }
@@ -575,29 +752,7 @@ class MatchController {
     // Jugadores y quién decidió.
     const players = me ? [{ ...me, connected: this.transport.connected, isMe: true }, ...this.allies] : this.allies;
     const decidedNow = new Set();
-    $('players').replaceChildren(...players.map((p) => {
-      const info = heroInfo(p.hero);
-      const alive = p.state === 'ALIVE';
-      const pct = p.maxHp ? Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100)) : 0;
-      if (p.decided) decidedNow.add(p.playerId);
-      let state;
-      if (!alive) state = el('span', { class: 'badge bad p-state' }, label(HERO_STATES, p.state));
-      else if (p.decided) {
-        const fresh = !this.shown.decided.has(p.playerId);
-        state = el('span', { class: `badge ok p-state${fresh ? ' decided' : ''}` }, '✔ decidió');
-      } else {
-        state = el('span', { class: 'badge p-state thinking' }, 'pensando',
-          el('span', { class: 'dots', 'aria-hidden': 'true' }, el('i', {}, '.'), el('i', {}, '.'), el('i', {}, '.')));
-      }
-      const hp = el('span', { class: pct <= 34 ? 'mini-hp low' : 'mini-hp', 'aria-hidden': 'true' }, el('i'));
-      hp.firstChild.style.width = `${pct}%`;
-      return el('li', { class: [p.isMe ? 'me' : '', alive ? '' : 'down'].filter(Boolean).join(' '), dataset: { hero: p.hero } },
-        el('span', { class: 'p-avatar' }, heroAvatar(p.hero, 'sm'),
-          el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' })),
-        el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`)),
-        state,
-        el('span', { class: 'p-stats' }, hp, el('span', {}, `♥ ${p.hp}/${p.maxHp}`), el('span', { class: 'em' }, `✦ ${p.embers}`)));
-    }));
+    $('players').replaceChildren(...players.map((p) => this.playerItem(p, decidedNow)));
     this.shown.decided = decidedNow;
     setText('m-decided', this.status === 'IN_PROGRESS' && this.expectedPlayers
       ? `${this.decidedCount}/${this.expectedPlayers} decidieron` : '');
@@ -605,6 +760,8 @@ class MatchController {
 
     // Modo de orden (resaltado distinto cuando Q o E esperan una dirección).
     const mode = this.armedMode ?? this.selectedMode;
+    const ember = me?.state === 'EMBER_SPIRIT';
+    this.renderOrderModes(me);
     document.querySelectorAll('.mode').forEach((b) => {
       const on = b.dataset.mode === mode;
       b.classList.toggle('active', on && !this.armedMode);
@@ -613,9 +770,11 @@ class MatchController {
     });
     const armed = $('order-armed');
     armed.hidden = !this.armedMode;
-    armed.textContent = this.armedMode ? ARMED_TEXT[this.armedMode] ?? '' : '';
+    armed.textContent = this.armedMode ? (ember ? EMBER_ARMED_TEXT : ARMED_TEXT)[this.armedMode] ?? '' : '';
     document.querySelector('.dpad').classList.toggle('armed', Boolean(this.armedMode));
+    this.renderOrderNote(me, mode);
     this.renderOrderStatus();
+    $('legend-paths').hidden = ![me, ...this.allies].some((p) => p?.state === 'EMBER_SPIRIT' || p?.state === 'RENEGADE');
 
     // Eventos de la última ronda (se rehacen solo cuando llega una ronda nueva, para no repetir la animación).
     if (this.shown.events !== this.events) {
@@ -638,6 +797,121 @@ class MatchController {
     this.renderTimer();
   }
 
+  /** Fila de la lista de jugadores: estado del camino, si decidió y su vida (la Brasa no tiene vida). */
+  playerItem(p, decidedNow) {
+    const info = heroInfo(p.hero);
+    const kind = pathClass(p.state);
+    const absent = p.state === 'RENEGADE' && !p.position && !p.isMe;
+    const active = p.isMe ? canAct(p) : p.state === 'ALIVE' || p.state === 'EMBER_SPIRIT' || (p.state === 'RENEGADE' && (p.position || p.decided));
+    const pct = p.maxHp ? Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100)) : 0;
+    if (p.decided) decidedNow.add(p.playerId);
+    let state;
+    if (p.state === 'EXTINCT') {
+      state = el('span', { class: 'badge warn p-state thinking' }, p.isMe && p.path?.choice ? 'eligió' : 'eligiendo',
+        el('span', { class: 'dots', 'aria-hidden': 'true' }, el('i', {}, '.'), el('i', {}, '.'), el('i', {}, '.')));
+    } else if (!active) {
+      const text = p.state === 'RENEGADE' ? (absent ? 'acecha' : 'por aparecer') : label(HERO_STATES, p.state);
+      state = el('span', { class: `badge ${kind || 'bad'} p-state` }, text);
+    } else if (p.decided) {
+      const fresh = !this.shown.decided.has(p.playerId);
+      state = el('span', { class: `badge ok p-state${fresh ? ' decided' : ''}` }, '✔ decidió');
+    } else {
+      state = el('span', { class: 'badge p-state thinking' }, 'pensando',
+        el('span', { class: 'dots', 'aria-hidden': 'true' }, el('i', {}, '.'), el('i', {}, '.'), el('i', {}, '.')));
+    }
+    const marks = { ember: ['❂', 'Brasa errante'], renegade: ['☠', 'Renegado: del lado de la mazmorra'], choosing: ['🕯', 'Extinto: eligiendo camino'] };
+    const mark = kind ? el('span', { class: `p-mark ${kind}`, title: marks[kind][1], 'aria-hidden': 'true' }, marks[kind][0]) : null;
+    let stats;
+    if (p.state === 'EMBER_SPIRIT') {
+      stats = [el('span', { class: 'p-tag ember' }, '❂ Brasa')];
+    } else {
+      const hp = el('span', { class: pct <= 34 ? 'mini-hp low' : 'mini-hp', 'aria-hidden': 'true' }, el('i'));
+      hp.firstChild.style.width = `${pct}%`;
+      stats = [
+        p.state === 'RENEGADE' ? el('span', { class: 'p-tag renegade' }, '☠ Renegado') : p.state === 'EXTINCT' ? el('span', { class: 'p-tag choosing' }, '🕯 Extinto') : hp,
+        el('span', {}, `♥ ${p.hp}/${p.maxHp}`),
+      ];
+    }
+    const classes = [p.isMe ? 'me' : '', kind, p.state === 'DOWN' || p.state === 'RETIRED' ? 'down' : ''].filter(Boolean).join(' ');
+    return el('li', { class: classes, dataset: { hero: p.hero } },
+      el('span', { class: 'p-avatar' }, heroAvatar(p.hero, 'sm'), mark,
+        el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' })),
+      el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`)),
+      state,
+      el('span', { class: 'p-stats' }, ...stats, el('span', { class: 'em' }, `✦ ${p.embers}`)));
+  }
+
+  /** Botones de orden: los de la Brasa cambian de nombre e ícono y muestran su enfriamiento. */
+  renderOrderModes(me) {
+    const ember = me?.state === 'EMBER_SPIRIT';
+    const cooldowns = ember ? { ABILITY: me.abilityCooldown ?? 0, ATTACK: me.path?.hinderCooldown ?? 0 } : {};
+    const key = `${ember}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}`;
+    const card = document.querySelector('.card-orders');
+    card.dataset.path = pathClass(me?.state) || 'hero';
+    card.classList.toggle('inactive', Boolean(me) && !canAct(me));
+    if (this.shown.orders === key) return;
+    this.shown.orders = key;
+    const names = ember ? EMBER_ORDERS : HERO_ORDERS;
+    document.querySelectorAll('.mode').forEach((b) => {
+      const type = b.dataset.mode;
+      b.querySelector('.mode-name').textContent = names[type].name;
+      b.querySelector('.mode-ico').textContent = names[type].icon;
+      b.title = ember ? `${names[type].name}: ${names[type].text}` : '';
+      const cd = cooldowns[type] ?? 0;
+      const badge = b.querySelector('.mode-cd');
+      badge.hidden = cd <= 0;
+      badge.textContent = cd > 0 ? String(cd) : '';
+      badge.title = cd > 0 ? `Lista en ${cd} ronda${cd === 1 ? '' : 's'}` : '';
+      b.classList.toggle('cooling', cd > 0);
+    });
+    setText('guard-name', names.GUARD.name);
+    setText('guard-ico', names.GUARD.icon);
+    $('btn-guard').title = ember ? `Faro: ${EMBER_ORDERS.GUARD.text}` : '';
+  }
+
+  /** Nota bajo los modos: qué hace la orden de la Brasa, o por qué no se puede dar orden. */
+  renderOrderNote(me, mode) {
+    const note = $('order-note');
+    let kind = '';
+    let parts = null;
+    if (me?.state === 'EMBER_SPIRIT') {
+      const o = EMBER_ORDERS[mode] ?? EMBER_ORDERS.MOVE;
+      kind = 'ember';
+      parts = [el('b', {}, `${o.name}: `), o.text, mode === 'GUARD' ? '' : ' Sin orden, enciendes un Faro.'];
+    } else if (me?.state === 'EXTINCT') {
+      kind = 'wait';
+      parts = [me.path?.choice ? `Elegiste el ${label(PATHS, me.path.choice)}; se revela al resolver la ronda.` : 'Te extinguiste: elige tu camino.'];
+    } else if (awaitingSpawn(me)) {
+      kind = 'renegade';
+      parts = [this.spawnText(me)];
+    } else if (me?.state === 'RENEGADE') {
+      kind = 'renegade';
+      parts = [el('b', {}, 'Renegado: '), 'tus órdenes son las de tu héroe, pero los monstruos no te atacan y solo dañas a los héroes (máx. 1 por golpe).'];
+    } else if (me?.state === 'DOWN') {
+      kind = 'wait';
+      parts = ['Estás caído: un aliado (o una Brasa) puede levantarte con Interactuar.'];
+    }
+    note.hidden = !parts;
+    note.className = kind ? `order-note ${kind}` : 'order-note';
+    const text = parts ? parts.map((p) => (typeof p === 'string' ? p : p.textContent)).join('') : '';
+    if (note.dataset.text !== text) {
+      note.dataset.text = text;
+      note.replaceChildren(...(parts ?? []));
+    }
+  }
+
+  /** Cuándo aparece el Renegado que espera. */
+  spawnText(me) {
+    const p = me.path ?? {};
+    if (p.awaitingSpawn === 'ROUND' && p.spawnRound) {
+      const left = Math.max(0, p.spawnRound - this.round);
+      return left > 0
+        ? `Aparecerás junto al Celador al terminar la ronda ${p.spawnRound} (faltan ${left} ronda${left === 1 ? '' : 's'}).`
+        : 'Aparecerás junto al Celador al terminar esta ronda.';
+    }
+    return 'Aparecerás cuando el grupo baje a la sala siguiente, en la casilla más lejana de los héroes.';
+  }
+
   renderMe(me) {
     const info = heroInfo(me.hero);
     const card = document.querySelector('.card-hero');
@@ -647,7 +921,15 @@ class MatchController {
       $('me-portrait').replaceChildren(heroAvatar(me.hero, 'lg'));
     }
     setText('me-title', me.displayName);
-    setText('me-role', `${info.name} · ${info.role}`);
+    const kind = pathClass(me.state);
+    const roles = { ember: 'espíritu', renegade: 'enemigo', choosing: 'sin cuerpo' };
+    setText('me-role', `${info.name} · ${roles[kind] ?? info.role}`);
+    if (kind) card.dataset.path = kind; else delete card.dataset.path;
+    const ember = kind === 'ember';
+    $('me-hearts').hidden = ember;
+    $('me-hpwrap').hidden = ember;
+    $('me-tiles').hidden = ember;
+    this.renderPathPanel(me, kind);
 
     // Vida: corazones + barra; si bajó, sacudida y corazones perdidos.
     const prev = this.shown.hp;
@@ -699,7 +981,8 @@ class MatchController {
 
     const downNote = me.state === 'DOWN' && me.downRoundsLeft !== null ? ` (${me.downRoundsLeft} rondas)` : '';
     setText('me-state', `${label(HERO_STATES, me.state)}${downNote}`);
-    $('me-state').className = me.state === 'ALIVE' ? 'badge ok' : me.state === 'DOWN' ? 'badge bad' : 'badge';
+    const badge = { ALIVE: 'ok', DOWN: 'bad', EXTINCT: 'warn', EMBER_SPIRIT: 'ember', RENEGADE: 'renegade' }[me.state];
+    $('me-state').className = badge ? `badge ${badge}` : 'badge';
 
     // Bendiciones (chips con su efecto al pasar el cursor o con el foco) y pacto secreto.
     const blessingKey = me.blessings.join(',');
@@ -717,10 +1000,81 @@ class MatchController {
     }
   }
 
+  /** Panel del camino en la tarjeta del héroe: eligiendo, Brasa (ecos y renacer) o Renegado. */
+  renderPathPanel(me, kind) {
+    const panel = $('me-path');
+    panel.hidden = !kind;
+    if (!kind) {
+      this.shown.echoes = null;
+      return;
+    }
+    panel.className = `path-panel ${kind}`;
+    const path = me.path ?? {};
+    const ember = kind === 'ember';
+    $('path-ember-stats').hidden = !ember;
+    $('rebirth-meter').hidden = !ember;
+    const wardenRoom = (this.floor ?? 1) >= 5;
+    if (kind === 'choosing') {
+      setText('path-panel-title', path.choice ? label(PATHS, path.choice) : 'Eligiendo camino');
+      setText('path-panel-sub', path.choice ? 'Elegido: se revela al resolver la ronda' : 'Amistad o Venganza');
+      setText('path-panel-text', `Guardaste ${path.savedEmbers ?? 0} ascuas. ${path.choice ? 'Espera la resolución.' : 'Si vence el plazo, tomas la Amistad.'}`);
+    } else if (kind === 'renegade') {
+      setText('path-panel-title', 'Renegado');
+      setText('path-panel-sub', 'Del lado de la mazmorra');
+      setText('path-panel-text', awaitingSpawn(me)
+        ? this.spawnText(me)
+        : 'Golpear a un héroe te da +1 ascua robada y dejarlo caído +2. El primer golpe a cada héroe lo absorbe su escudo de aviso. Si todos caen, el Umbral reclama.');
+    } else {
+      const echoes = path.echoes ?? 0;
+      const pct = rebirthPct(echoes);
+      setText('path-panel-title', 'Brasa errante');
+      setText('path-panel-sub', wardenRoom ? 'Sala del Celador: puntúas al final' : 'Renaces al bajar de piso');
+      setText('me-echoes', echoes);
+      setText('me-saved', path.savedEmbers ?? 0);
+      setText('me-rebirth', path.rebirthEmbers ?? Math.ceil((path.savedEmbers ?? 0) * pct / 100));
+      // Eco nuevo: el número salta y flota el +N.
+      const tile = $('tile-echoes');
+      if (this.shown.echoes !== null && echoes > this.shown.echoes) {
+        replay(tile, 'bump');
+        const float = el('span', { class: 'float-delta', 'aria-hidden': 'true' }, `+${echoes - this.shown.echoes}`);
+        tile.append(float);
+        setTimeout(() => float.remove(), 1300);
+      }
+      this.shown.echoes = echoes;
+      const cooldown = (id, tileId, cd, name) => {
+        setText(id, cd > 0 ? cd : 'Lista');
+        $(tileId).className = `tile tile-ability ${cd > 0 ? 'cooling' : 'ready'}`;
+        $(tileId).title = cd > 0 ? `${name}: faltan ${cd} rondas` : `${name}: lista para usar`;
+      };
+      cooldown('me-kindle-cd', 'tile-kindle', me.abilityCooldown ?? 0, 'Avivar');
+      cooldown('me-hinder-cd', 'tile-hinder', path.hinderCooldown ?? 0, 'Estorbo');
+      $('rebirth-fill').style.width = `${pct}%`;
+      const meter = $('rebirth-meter');
+      meter.setAttribute('aria-valuenow', String(pct));
+      meter.title = `Recuperas el ${pct}% de tus ascuas guardadas (25% + 8% por eco, máx. 85%)`;
+      setText('rebirth-label', `${pct}% de tus ascuas${pct >= 85 ? ' · máximo' : ` · +8% por eco`}`);
+      const ticks = $('rebirth-ticks');
+      if (!ticks.childElementCount) {
+        // Una marca por eco (25%, 33%… 81%) y el tope del 85%.
+        for (let k = 0; k <= 7; k++) {
+          const tick = el('i');
+          tick.style.left = `${25 + 8 * k}%`;
+          ticks.append(tick);
+        }
+        const cap = el('i', { class: 'cap' });
+        cap.style.left = '85%';
+        ticks.append(cap);
+      }
+      setText('path-panel-text', `Cada ayuda da ecos. Con ${echoes} eco${echoes === 1 ? '' : 's'} recuperas el ${pct}% de tus ${path.savedEmbers ?? 0} ascuas guardadas.`);
+    }
+  }
+
   eventItem(ev) {
     const [icon, tone] = EVENT_STYLE[ev.type] ?? ['•', ''];
     let cls = tone;
     if (ev.type === 'DAMAGED') cls = ev.targetId === this.playerId ? 'bad' : ev.actorId === this.playerId ? 'good' : '';
+    if (ev.type === 'BLOCKED' && ev.detail === 'WARNING_SHIELD') cls = 'renegade';
+    if (ev.type === 'PATH_CHOSEN') cls = ev.detail === 'VENGEANCE' ? 'renegade' : 'ember';
     const classes = [cls ? `ev-${cls}` : '', ev.actorId === this.playerId ? 'ev-mine' : ''].filter(Boolean).join(' ');
     return el('li', { class: classes }, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, icon), el('span', {}, this.describeEvent(ev)));
   }
@@ -735,6 +1089,7 @@ class MatchController {
     if (!o) {
       const pending = this.me?.pendingOrder;
       if (pending) show('ok', `✔ Orden registrada: ${describeOrder(pending)}`);
+      else if (this.me && !canAct(this.me)) show('', `Ronda ${this.round || '–'}: no das órdenes por ahora.`);
       else if (this.status === 'IN_PROGRESS' && this.deadlineLocal !== null) show('', `Ronda ${this.round}: elige tu orden.`);
       else show('', `Ronda ${this.round || '–'}: sin orden enviada.`);
       return;
@@ -780,6 +1135,14 @@ class MatchController {
       setText('draft-timer', `${Math.ceil(left / 1000)} s`);
       $('draft-timer').classList.toggle('low', left < 5000);
     }
+    if (this.pathOffer) {
+      const left = Math.max(0, this.pathOffer.deadlineLocal - Date.now());
+      setText('path-timer', `${Math.ceil(left / 1000)} s`);
+      $('path-timer').classList.toggle('low', left < 5000);
+      const bar = $('path-timebar');
+      bar.style.width = `${Math.min(100, (left / PATH_DEADLINE_MS) * 100)}%`;
+      bar.classList.toggle('low', left < 5000);
+    }
   }
 
   describeEvent(ev) {
@@ -794,6 +1157,50 @@ class MatchController {
     };
     if (ev.type === 'DAMAGED' && ev.targetId) {
       return `${who(ev.targetId)} recibió ${ev.amount ?? '?'} de daño${ev.actorId ? ` de ${who(ev.actorId)}` : ''}`;
+    }
+    const path = (p) => label(PATHS, String(p ?? '').replace(/_AUTO$/, ''));
+    const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+    switch (ev.type) {
+      case 'EXTINGUISHED':
+        return `${who(ev.targetId ?? ev.actorId)} se extinguió${ev.amount ? ` (${ev.amount} ascuas)` : ''}`;
+      case 'PATH_OFFERED':
+        return `Te extinguiste: elige camino (guardaste ${plural(ev.amount ?? 0, 'ascua', 'ascuas')})`;
+      case 'PATH_SELECTED':
+        return String(ev.detail ?? '').endsWith('_AUTO')
+          ? `Venció el plazo: tomaste el ${path(ev.detail)}`
+          : `Tu elección quedó registrada: ${path(ev.detail)}`;
+      case 'PATH_CHOSEN':
+        return `${who(ev.actorId)} tomó el ${path(ev.detail)}${ev.detail === 'VENGEANCE' ? ': volverá como Renegado' : ': ahora es una Brasa errante'}`;
+      case 'EMBER_REBORN':
+        return `${who(ev.actorId)} renació en la escalera con ${ev.amount ?? '?'} de vida`;
+      case 'RENEGADE_SPAWNED':
+        return `${who(ev.actorId)} apareció como Renegado${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}: cada héroe gana +1 de escudo`;
+      case 'RENEGADE_DEFEATED':
+        return ev.actorId
+          ? `${who(ev.actorId)} derrotó al Renegado ${who(ev.targetId)} (+2 ascuas)`
+          : `El Renegado ${who(ev.targetId)} fue derrotado`;
+      case 'ECHO_GAINED':
+        return `+${plural(ev.amount ?? 1, 'eco', 'ecos')}: ${ECHO_REASONS[ev.detail] ?? 'ayudaste al grupo'}`;
+      case 'SHIELD_KINDLED':
+        return ev.targetId ? `${who(ev.actorId)} avivó a ${who(ev.targetId)} (+1 de escudo)` : `${who(ev.actorId)} intentó avivar, pero no había nadie`;
+      case 'ATTACK_HINDERED':
+        return ev.targetId
+          ? `${who(ev.actorId)} estorbó a ${who(ev.targetId)}: su golpe se retrasa una ronda`
+          : `${who(ev.actorId)} intentó estorbar, sin efecto`;
+      case 'BEACON_LIT':
+        return `${who(ev.actorId)} encendió un Faro${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
+      case 'WARMTH_HEALED':
+        return `La calidez de ${who(ev.actorId)} curó a ${who(ev.targetId)}`;
+      case 'BLOCKED':
+        if (ev.detail === 'WARNING_SHIELD') return `El escudo de aviso de ${who(ev.targetId)} absorbió el golpe del Renegado ${who(ev.actorId)}`;
+        if (ev.targetId) return `${who(ev.targetId)} bloqueó el golpe${ev.actorId ? ` de ${who(ev.actorId)}` : ''}`;
+        break;
+      case 'REVIVED':
+        return ev.actorId ? `${who(ev.actorId)} levantó a ${who(ev.targetId)}` : `${who(ev.targetId)} fue levantado`;
+      case 'HEALED':
+        return `${who(ev.targetId)} se curó${ev.amount ? ` ${ev.amount}` : ''}`;
+      default:
+        break;
     }
     const parts = [who(ev.actorId), label(EVENTS, ev.type)];
     if (ev.targetId) parts.push(`→ ${who(ev.targetId)}`);
@@ -813,17 +1220,25 @@ function showFinished(m, myPlayerId, onBack) {
   showScreen('finished');
   const iWon = m.winners.includes(myPlayerId);
   const lostAll = m.outcome === 'EMBER_EXTINGUISHED';
-  $('fin-banner').className = `fin-banner${iWon ? ' victory' : lostAll ? ' defeat' : ''}`;
-  setText('fin-emblem', iWon ? '♛' : lostAll ? '🕯' : '✦');
-  setText('fin-title', iWon ? '¡Victoria!' : label(OUTCOMES, m.outcome));
-  const verdict = iWon ? label(OUTCOMES, m.outcome) : m.winners.length ? 'Otro portador se quedó con el fuego.' : 'Sin ganador.';
+  // «El Umbral reclama»: todos los héroes cayeron y ganan los Renegados en pie. Tiene su propio tono, gane quien gane.
+  const threshold = m.outcome === 'THRESHOLD_CLAIMED';
+  document.querySelector('#screen-finished .fin').classList.toggle('threshold-claimed', threshold);
+  $('fin-banner').className = `fin-banner${threshold ? ' threshold' : ''}${iWon ? ' victory' : lostAll ? ' defeat' : ''}`;
+  setText('fin-emblem', threshold ? '☠' : iWon ? '♛' : lostAll ? '🕯' : '✦');
+  setText('fin-title', threshold ? (iWon ? '¡El Umbral reclama… para ti!' : 'El Umbral reclama') : iWon ? '¡Victoria!' : label(OUTCOMES, m.outcome));
+  let verdict = iWon ? label(OUTCOMES, m.outcome) : m.winners.length ? 'Otro portador se quedó con el fuego.' : 'Sin ganador.';
+  if (threshold) {
+    verdict = iWon
+      ? 'Todos los héroes cayeron: ganaste como Renegado'
+      : `Todos los héroes cayeron: ${m.winners.length > 1 ? 'los Renegados se quedan' : 'el Renegado se queda'} con el fuego`;
+  }
   setText('fin-summary', `${verdict} · ${m.rounds} rondas · terminó a las ${String(m.finishedAt).slice(11, 19)} UTC`);
 
   const sorted = [...m.standings].sort((a, b) => a.placement - b.placement);
   const isWinner = (s) => m.winners.includes(s.playerId);
   const you = (s) => (s.playerId === myPlayerId ? ' (tú)' : '');
 
-  $('fin-podium').replaceChildren(...sorted.slice(0, 3).map((s, i) => el('li', { class: `p${i + 1}`, dataset: { hero: s.hero } },
+  $('fin-podium').replaceChildren(...sorted.slice(0, 3).map((s, i) => el('li', { class: [`p${i + 1}`, pathClass(s.finalState)].filter(Boolean).join(' '), dataset: { hero: s.hero } },
     isWinner(s) ? el('span', { class: 'crown', 'aria-label': 'Ganador' }, '♛') : null,
     heroAvatar(s.hero, i === 0 ? 'xl' : 'lg'),
     el('b', {}, `${s.displayName}${you(s)}`),
@@ -831,11 +1246,12 @@ function showFinished(m, myPlayerId, onBack) {
     el('span', { class: 'step', 'aria-hidden': 'true' }, String(s.placement)))));
 
   $('fin-standings').replaceChildren(...sorted.map((s, i) => {
-    const li = el('li', { class: [s.playerId === myPlayerId ? 'me' : '', isWinner(s) ? 'winner' : ''].filter(Boolean).join(' '), dataset: { hero: s.hero } },
+    const stateIcon = { EMBER_SPIRIT: '❂ ', RENEGADE: '☠ ', EXTINCT: '🕯 ' }[s.finalState] ?? '';
+    const li = el('li', { class: [s.playerId === myPlayerId ? 'me' : '', isWinner(s) ? 'winner' : '', pathClass(s.finalState)].filter(Boolean).join(' '), dataset: { hero: s.hero } },
       el('span', { class: 'place' }, `${s.placement}${isWinner(s) ? '♛' : ''}`),
       heroAvatar(s.hero, 'sm'),
       el('span', { class: 's-who' }, el('b', {}, `${s.displayName}${you(s)}`),
-        el('small', {}, `${label(HEROES, s.hero)} · ${label(HERO_STATES, s.finalState)}`)),
+        el('small', {}, `${label(HEROES, s.hero)} · ${stateIcon}${label(HERO_STATES, s.finalState)}`)),
       el('span', { class: 'em' }, String(s.embers), el('small', {}, 'ascuas')));
     li.style.animationDelay = `${0.9 + i * 0.08}s`;
     return li;

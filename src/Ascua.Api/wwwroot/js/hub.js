@@ -8,7 +8,7 @@ export const HUB_PATH = '/realtime/match';
 
 /** Mensajes que el servidor empuja (operaciones `send` del contrato). */
 export const SERVER_MESSAGES = [
-  'RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer',
+  'RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer',
   'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error',
 ];
 

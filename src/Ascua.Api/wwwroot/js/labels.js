@@ -15,7 +15,30 @@ export const ABILITIES = {
   RAIZ: 'Brote',
 };
 
-export const HERO_STATES = { ALIVE: 'vivo', DOWN: 'caído', EXTINCT: 'extinto', RETIRED: 'retirado' };
+export const HERO_STATES = {
+  ALIVE: 'vivo', DOWN: 'caído', EXTINCT: 'extinto', RETIRED: 'retirado', EMBER_SPIRIT: 'Brasa errante', RENEGADE: 'Renegado',
+};
+
+/** Caminos tras la extinción (planteamiento/04-caminos-tras-morir.md). */
+export const PATHS = { FRIENDSHIP: 'Camino de la Amistad', VENGEANCE: 'Camino de la Venganza' };
+
+/** Órdenes de la Brasa errante: mismos tipos del contrato, otro efecto. */
+export const EMBER_ORDERS = {
+  MOVE: { name: 'Deriva', icon: '〰', text: 'Avanza hasta 2 casillas en esa dirección, atravesando muros, enemigos y héroes.' },
+  ATTACK: { name: 'Estorbo', icon: '⧖', text: 'El primer enemigo a 2 casillas o menos retrasa una ronda su ataque anunciado. Enfriamiento 2.' },
+  ABILITY: { name: 'Avivar', icon: '❂', text: 'El primer aliado a 2 casillas o menos recibe +1 de escudo (máx. 2 de brasas). +1 eco por cada punto que absorba.' },
+  INTERACT: { name: 'Reavivar', icon: '✚', text: 'Levanta con 1 de vida a un aliado caído en la casilla vecina. +3 ecos.' },
+  GUARD: { name: 'Faro', icon: '☼', text: 'Ilumina un radio de 2 a tu alrededor para todo el grupo. +1 eco por cada golpe final dentro.' },
+};
+
+/** Por qué ganó ecos la Brasa (ECHO_GAINED.detail). */
+export const ECHO_REASONS = {
+  SHIELD_ABSORBED: 'tu escudo absorbió un golpe',
+  REKINDLED: 'reavivaste a un aliado',
+  ATTACK_HINDERED: 'estorbaste un golpe a un héroe',
+  BEACON_KILL: 'un aliado dio un golpe final bajo tu Faro',
+  WARMTH: 'tu calidez curó a un aliado',
+};
 
 export const MATCH_STATUS = {
   LOBBY: 'sala', DRAFTING: 'draft', IN_PROGRESS: 'en curso', FINISHED: 'terminada',
@@ -60,6 +83,7 @@ export const OUTCOMES = {
   ABANDONED: 'Partida abandonada',
   FAULTED: 'La partida falló en el servidor',
   TERMINATED: 'Un administrador terminó la partida',
+  THRESHOLD_CLAIMED: 'El Umbral reclama (ganan los Renegados)',
 };
 
 export const EVENTS = {
@@ -69,7 +93,11 @@ export const EVENTS = {
   EMBERS_GAINED: 'ganó ascuas', EMBERS_STOLEN: 'robó ascuas', BLESSING_GAINED: 'obtuvo una bendición',
   TRAP_TRIGGERED: 'activó una trampa', FIRE_STARTED: 'empezó un fuego', FROZEN: 'quedó congelado',
   BOSS_PHASE_CHANGED: 'el Celador cambió de fase', FLOOR_ENTERED: 'entraron a un piso nuevo',
-  DEFAULT_GUARD_APPLIED: 'guardó por defecto (no envió orden)',
+  DEFAULT_GUARD_APPLIED: 'guardó por defecto (no envió orden)', ABILITY_USED: 'usó su habilidad', GUARDED: 'guardó',
+  PATH_OFFERED: 'debe elegir camino', PATH_SELECTED: 'eligió camino', PATH_CHOSEN: 'tomó un camino',
+  EMBER_REBORN: 'renació en la escalera', RENEGADE_SPAWNED: 'apareció como Renegado', RENEGADE_DEFEATED: 'derrotó a un Renegado',
+  ECHO_GAINED: 'ganó ecos', SHIELD_KINDLED: 'avivó a un aliado', ATTACK_HINDERED: 'estorbó a un enemigo',
+  BEACON_LIT: 'encendió un Faro', WARMTH_HEALED: 'calentó a un aliado',
 };
 
 export const ERROR_CODES = {
@@ -85,6 +113,7 @@ export const ERROR_CODES = {
   ALREADY_IN_ANOTHER_MATCH: 'Ya estás en otra partida',
   DRAFT_CLOSED: 'El draft ya cerró',
   INVALID_PICK: 'Esa bendición no estaba en la oferta',
+  PATH_CLOSED: 'La elección de camino ya cerró',
   RATE_LIMITED: 'Demasiados mensajes; espera un momento',
   MESSAGE_TOO_LARGE: 'Mensaje demasiado grande',
   INTERNAL_ERROR: 'Error del servidor',

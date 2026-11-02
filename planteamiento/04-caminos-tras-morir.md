@@ -1,6 +1,6 @@
 # Caminos tras la extinción: Amistad y Venganza
 
-> **Estado:** aprobado el 31-oct-2026; implementado en el servidor (contrato AsyncAPI 1.3.0). Ver «Aclaraciones de implementación» al final. Amplía [01-juego.md](01-juego.md) §5 («Caer, levantar y abandonar»).
+> **Estado:** aprobado el 31-oct-2026; implementado en el servidor (contrato AsyncAPI 1.3.0) y en el cliente web. Ver «Aclaraciones de implementación» al final. Amplía [01-juego.md](01-juego.md) §5 («Caer, levantar y abandonar»).
 
 ## Problema
 
