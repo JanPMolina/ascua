@@ -72,6 +72,7 @@ class TutorialTransport extends DemoTransport {
   async invoke(method, payload) {
     const result = await super.invoke(method, payload);
     if (result?.error) this.listener('InvokeError', { method, error: result.error });
+    else if (method === 'ChoosePath') this.listener('PathChosen', result);
     return result;
   }
 }
@@ -82,7 +83,8 @@ class TutorialTransport extends DemoTransport {
  * - text(c): párrafos del guía (se recalculan tras cada ronda, para dar pistas según la posición);
  * - focus: ids o selectores que se resaltan;
  * - done(c, type, msg): true cuando el objetivo se cumplió;
- * - button: si existe, el paso avanza con ese botón en lugar de con una acción en el tablero.
+ * - button: si existe, el paso avanza con ese botón en lugar de con una acción en el tablero;
+ * - actions(c): botones secundarios opcionales [{ label, onClick }] bajo el texto.
  */
 const STEPS = [
   {
@@ -195,6 +197,22 @@ const STEPS = [
     focus: ['#board'],
     done: (c) => c.server.enemies.size === 0,
   },
+  {
+    // Opcional: se explica y se puede ver el diálogo, pero no hace falta jugarlos.
+    title: 'Si te extingues: dos caminos',
+    setup: (c) => { c.server.paused = true; },
+    text: (c) => {
+      const lines = [
+        'En una partida real, un héroe caído que nadie levanta en 3 rondas se extingue. Sus ascuas quedan guardadas y tiene 15 s para elegir:',
+        'Amistad: vagas como Brasa errante, una llama azul que atraviesa muros y ayuda al grupo. Cada ayuda da ecos, y al bajar de piso renaces con más ascuas cuantos más ecos tengas.',
+        'Venganza: vuelves como Renegado, del lado de la mazmorra. Robas ascuas a los héroes y, si todos caen, «el Umbral reclama» y ganas tú.',
+      ];
+      if (c.practiceResult) lines.push(c.practiceResult);
+      return lines;
+    },
+    actions: (c) => (c.practiceUsed ? [] : [{ label: 'Ver la elección (opcional)', onClick: () => c.practicePath() }]),
+    button: 'Terminar el tutorial',
+  },
 ];
 
 class Coach {
@@ -279,6 +297,23 @@ class Coach {
   /** Reenvía la vista completa para que el tablero muestre lo que el paso acaba de preparar. */
   refresh() { this.t.push('Snapshot', this.server.snapshot()); }
 
+  /** Muestra el diálogo de caminos sin cambiar la partida; si vence el plazo, toma la Amistad como el servidor. */
+  practicePath() {
+    this.practiceUsed = true;
+    this.render();
+    const ms = 30000;
+    const offer = this.server.sendPracticePathOffer(6, ms);
+    this.server.later(ms, () => {
+      if (offer.choice) return;
+      const me = this.me();
+      offer.choice = 'FRIENDSHIP';
+      me.path = { offerId: offer.offerId, choice: 'FRIENDSHIP', savedEmbers: 6, echoes: 0, rebirthEmbers: null, hinderCooldown: 0, awaitingSpawn: null, spawnRound: null };
+      this.refresh();
+      me.path = null;
+      this.onMessage('PathChosen', { path: 'FRIENDSHIP' });
+    });
+  }
+
   // ───── avance ─────
   start() {
     $('coach').hidden = false;
@@ -310,6 +345,13 @@ class Coach {
     const step = STEPS[this.index];
     if (!step) return;
     if (type === 'RoundResolved') this.lastResolved = payload;
+    if (type === 'PathChosen') {
+      this.practiceResult = payload.path === 'VENGEANCE'
+        ? 'Elegiste la Venganza. Aquí no pasa nada más: en una partida volverías como Renegado en la sala siguiente.'
+        : 'Elegiste la Amistad. Aquí no pasa nada más: en una partida seguirías como Brasa errante hasta bajar de piso.';
+      this.render();
+      return;
+    }
     if (type === 'InvokeError' && payload.error.code === 'INVALID_ORDER') {
       this.note = 'Esa orden no es válida ahora. Lee la pista de arriba.';
     }
@@ -334,6 +376,9 @@ class Coach {
     setText('coach-title', step.title);
     const paragraphs = step.text(this).map((t) => el('p', {}, t));
     if (this.note) paragraphs.push(el('p', { class: 'coach-note' }, this.note));
+    for (const action of step.actions?.(this) ?? []) {
+      paragraphs.push(el('button', { type: 'button', class: 'secondary small', onclick: action.onClick }, action.label));
+    }
     $('coach-body').replaceChildren(...paragraphs);
     $('coach-bar').style.width = `${(this.index / STEPS.length) * 100}%`;
     const next = $('coach-next');
