@@ -176,7 +176,7 @@ function onFinished({ iWon, outcome }) {
   setTheme('none');
   const teamWon = outcome === 'WARDEN_DEFEATED' || outcome === 'DRAW';
   let length = 7.5;
-  if (iWon) { playSfx('victory', { wet: 0.3 }); length = 4.5; } else if (teamWon) { playSfx('victory', { wet: 0.3, opts: { minor: true } }); length = 4.5; } else playSfx('defeat', { wet: 0.4 });
+  if (iWon) { playSfx('victory', { wet: 0.3, opts: { minor: outcome === 'THRESHOLD_CLAIMED' } }); length = 4.5; } else if (teamWon) { playSfx('victory', { wet: 0.3, opts: { minor: true } }); length = 4.5; } else if (outcome === 'THRESHOLD_CLAIMED') playSfx('threshold', { wet: 0.45 }); else playSfx('defeat', { wet: 0.4 });
   clearTimeout(finishTimer);
   finishTimer = setTimeout(() => { if (screen === 'finished') setTheme('ambient'); }, (length + 1) * 1000);
 }
@@ -191,9 +191,9 @@ function lookup(id, before, after) {
     return enemy ? { kind: enemy.kind, position: enemy.position, enemy: true } : { enemy: true };
   }
   for (const side of [after, before]) {
-    if (side.me?.playerId === id) return { hero: side.me.hero, position: side.me.position };
+    if (side.me?.playerId === id) return { hero: side.me.hero, position: side.me.position, state: side.me.state };
     const ally = side.allies.find((a) => a.playerId === id);
-    if (ally) return { hero: ally.hero, position: ally.position };
+    if (ally) return { hero: ally.hero, position: ally.position, state: ally.state };
   }
   return null;
 }
@@ -212,13 +212,25 @@ function soundFor(ev, ctx) {
   const target = lookup(ev.targetId, before, after);
   const onMe = ev.targetId === myId;
   switch (ev.type) {
-    case 'MOVED': return ctx.moves++ < 3 ? ['step', { gain: ev.actorId === myId ? 1 : 0.6 }, ev.position ?? actor?.position] : null;
+    case 'MOVED':
+      if (actor?.state === 'EMBER_SPIRIT') return ['emberDrift', { gain: ev.actorId === myId ? 1 : 0.6, wet: 0.35 }, ev.position ?? actor?.position];
+      return ctx.moves++ < 3 ? ['step', { gain: ev.actorId === myId ? 1 : 0.6 }, ev.position ?? actor?.position] : null;
     case 'BOUNCED': return ['bounce', {}, ev.position ?? actor?.position];
+    // Caminos tras la extinción.
+    case 'PATH_CHOSEN': return [ev.detail === 'VENGEANCE' ? 'pathVengeance' : 'pathFriendship', { wet: 0.5, gain: ev.actorId === myId ? 1 : 0.7 }, null];
+    case 'SHIELD_KINDLED': return ev.targetId ? ['emberKindle', { wet: 0.4 }, target?.position ?? actor?.position] : null;
+    case 'ATTACK_HINDERED': return ['emberHinder', { wet: 0.35 }, target?.position ?? actor?.position];
+    case 'BEACON_LIT': return ['emberBeacon', { wet: 0.45, gain: ev.actorId === myId ? 1 : 0.6 }, ev.position ?? actor?.position];
+    case 'WARMTH_HEALED': return ['emberWarmth', { wet: 0.4 }, target?.position];
+    case 'ECHO_GAINED': return ['echoGained', { opts: { amount: ev.amount ?? 1 }, wet: 0.4 }, null];
+    case 'EMBER_REBORN': return ['emberReborn', { wet: 0.5 }, ev.position];
+    case 'RENEGADE_SPAWNED': return ['renegadeSpawned', { wet: 0.5 }, ev.position];
+    case 'RENEGADE_DEFEATED': return ['renegadeDefeated', { wet: 0.35 }, target?.position];
     case 'ATTACKED':
       if (actor?.enemy) return ['attackEnemy', { opts: { boss: actor.kind === 'CELADOR' } }, actor.position];
       return [HERO_ATTACK[actor?.hero] ?? 'attackYunque', {}, actor?.position ?? ev.position];
     case 'DAMAGED': return ['damage', { opts: { onMe, onEnemy: Boolean(target?.enemy) }, gain: onMe ? 1.1 : 0.9 }, target?.position];
-    case 'BLOCKED': return ['block', {}, actor?.position];
+    case 'BLOCKED': return ev.detail === 'WARNING_SHIELD' ? ['warningShield', { wet: 0.3 }, target?.position] : ['block', {}, actor?.position];
     case 'HEALED': return ['heal', { wet: 0.4 }, (target ?? actor)?.position];
     case 'DOWNED': return ['downed', { opts: { onMe } }, target?.position];
     case 'REVIVED': return ['revived', { wet: 0.4 }, target?.position];
@@ -281,9 +293,9 @@ function updateMusic(after, events, myId) {
   const lowHp = me?.state === 'ALIVE' && me.maxHp > 0 && me.hp / me.maxHp <= 0.34;
   setMusicIntensity(target, lowHp);
   if (screen === 'match' || screen === '') setTheme(matchTheme());
-  // Caído o extinto: la música se oye como a través de la piedra.
+  // Caído o extinto: la música se oye como a través de la piedra; como Brasa, lejana y velada.
   if (engine.musicFilter) {
-    const cutoff = me?.state === 'DOWN' ? 700 : me?.state === 'EXTINCT' ? 420 : 18000;
+    const cutoff = { DOWN: 700, EXTINCT: 420, EMBER_SPIRIT: 2600 }[me?.state] ?? 18000;
     rampTo(engine.musicFilter.frequency, cutoff, 1.2);
   }
 }
@@ -318,6 +330,8 @@ function bindBus() {
   on('floor:changed', () => { bossSeen = false; floorPending = true; });
   on('draft:offer', () => playSfx('draftOffer', { wet: 0.5 }));
   on('draft:picked', () => playSfx('draftPicked', { wet: 0.4 }));
+  on('path:offer', () => playSfx('pathOffer', { wet: 0.55, delay: 0.4 }));
+  on('path:chosen', ({ path }) => playSfx(path === 'VENGEANCE' ? 'pathVengeance' : 'pathFriendship', { wet: 0.45, gain: 0.8 }));
   on('match:finished', onFinished);
 }
 
