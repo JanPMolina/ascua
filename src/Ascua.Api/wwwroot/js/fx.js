@@ -104,6 +104,34 @@ export class Particles {
     }
   }
 
+  /** Chorro a lo largo de un segmento (el lazo de la Calidez, la estela de una Brasa): cada partícula sale de un punto del tramo y deriva hacia el final. */
+  stream(x0, y0, x1, y1, count, { life = 0.7, size = 0.05, colors = ['#fff'], jitter = 0.12, speed = 0.6, drag = 1.5, glow = true } = {}) {
+    const len = Math.hypot(x1 - x0, y1 - y0) || 1;
+    const ux = (x1 - x0) / len;
+    const uy = (y1 - y0) / len;
+    for (let k = 0; k < count; k++) {
+      const p = Math.random();
+      this.spawn(x0 + (x1 - x0) * p + (Math.random() - 0.5) * jitter, y0 + (y1 - y0) * p + (Math.random() - 0.5) * jitter,
+        ux * speed + (Math.random() - 0.5) * 0.3, uy * speed - 0.2 - Math.random() * 0.3, life * (0.6 + Math.random() * 0.6),
+        size * (0.6 + Math.random() * 0.8), colors[k % colors.length], 0, drag, glow);
+    }
+  }
+
+  /** Remolino: partículas en un anillo que giran y caen hacia el centro (inward) o salen de él (portal, renacer). */
+  vortex(x, y, count, { radius = 0.8, life = 0.8, size = 0.06, colors = ['#fff'], inward = true, spin = 2.4, glow = true } = {}) {
+    for (let k = 0; k < count; k++) {
+      const a = (k / count) * Math.PI * 2 + Math.random() * 0.4;
+      const r = inward ? radius * (0.8 + Math.random() * 0.4) : radius * 0.15;
+      const px = x + Math.cos(a) * r;
+      const py = y + Math.sin(a) * r * 0.6;
+      // Velocidad tangencial más una radial (hacia adentro o hacia afuera).
+      const radial = (inward ? -1 : 1) * radius / life;
+      const vx = -Math.sin(a) * spin + Math.cos(a) * radial;
+      const vy = (Math.cos(a) * spin + Math.sin(a) * radial) * 0.6;
+      this.spawn(px, py, vx, vy, life * (0.7 + Math.random() * 0.5), size * (0.6 + Math.random() * 0.8), colors[k % colors.length], 0, 0.6, glow);
+    }
+  }
+
   update(dt) {
     let i = 0;
     while (i < this.n) {

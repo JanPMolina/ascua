@@ -5,7 +5,24 @@
 const OUTLINE = '#120c0a';
 
 // ───────────── sprites de personajes ─────────────
-// Cada fila tiene 16 columnas; '.' es transparente. La paleta es propia de cada sprite.
+// Cada fila tiene 16 columnas; '.' es transparente. La paleta es propia de cada sprite; `outline` cambia el
+// color del contorno automático (la Brasa lo tiene azul oscuro para que se vea translúcida, no recortada).
+
+/** Cuadros EMBER_SPIRIT_0..2 de la Brasa errante. */
+function spiritFrames() {
+  const palette = { o: '#1f5fc0', b: '#3f9ae8', c: '#86d2ff', w: '#e6f7ff', E: '#06163a' };
+  const tops = [
+    ['.......o........', '......oo........', '......obo.......', '.....obbo...o...',
+      '....obbbo..oo...', '....obcbbo.obo..', '...obccbboobbo..', '...obcwcbbbbbo..'],
+    ['........o.......', '........oo......', '.......obo......', '..o....obbo.....',
+      '..oo..obbbo.....', '..obo.obcbbo....', '..obbobccbbo....', '...obbcwcbbbo...'],
+    ['.........o......', '.....o..oo......', '.....oo.obo.....', '....obo.obbo....',
+      '....obbobbbo....', '...obbcbcbbo....', '...obccbccbbo...', '...obcwwcbbbo...'],
+  ];
+  const face = ['..obccwwwccbbo..', '..obcwwwwwccbo..', '..obcEwwwEwcbo..', '..obcwwwwwwcbo..',
+    '..obccwwwwccbo..', '...obcccccbbo...', '....oobbbboo....', '......oooo......'];
+  return Object.fromEntries(tops.map((top, i) => [`EMBER_SPIRIT_${i}`, { palette, outline: '#081a3a', rows: [...top, ...face] }]));
+}
 
 const ART = {
   YUNQUE: {
@@ -239,6 +256,8 @@ const ART = {
       '................',
     ],
   },
+  // Brasa errante: tres cuadros de una llama azul con ojos (las lenguas cambian; la cara no).
+  ...spiritFrames(),
   // Objetos del tablero.
   CHEST: {
     palette: { w: '#8a5a2e', W: '#5e3a1c', g: '#e0b546', G: '#a8802a', k: '#2a1a10' },
@@ -337,6 +356,8 @@ const VARIANTS = {
   white: () => '#ffffff',
   ice: (c) => { const [r, g, b] = hexToRgb(c); return rgbToHex(r * 0.35 + 150, g * 0.35 + 205, b * 0.3 + 235); },
   gray: (c) => { const [r, g, b] = hexToRgb(c); const l = (r * 0.3 + g * 0.59 + b * 0.11) * 0.62; return rgbToHex(l, l, l * 1.08); },
+  /** Renegado: el héroe teñido de rojo sangre (se superpone al sprite normal). */
+  blood: (c) => { const [r, g, b] = hexToRgb(c); const l = r * 0.3 + g * 0.59 + b * 0.11; return rgbToHex(l * 0.55 + 125, l * 0.22 + 8, l * 0.18 + 6); },
 };
 
 function canvas(w, h) {
@@ -349,7 +370,7 @@ function canvas(w, h) {
 const spriteCache = new Map();
 
 /**
- * Sprite listo para dibujar: { base, white, ice, gray, size, pixels }. Los canvas miden 18×18 (16 + contorno);
+ * Sprite listo para dibujar: { base, white, ice, gray, blood, size, pixels }. Los canvas miden 18×18 (16 + contorno);
  * `pixels` ([x, y, color]) sirve para deshacer el sprite en partículas al morir.
  */
 export function sprite(kind) {
@@ -359,6 +380,7 @@ export function sprite(kind) {
   const W = 16;
   const grid = art.rows.map((row) => row.padEnd(W, '.').slice(0, W));
   const at = (x, y) => (x >= 0 && y >= 0 && x < W && y < grid.length ? grid[y][x] : '.');
+  const outline = art.outline ?? OUTLINE;
   const out = { size: W + 2, pixels: [] };
   for (const [name, fn] of Object.entries(VARIANTS)) {
     const c = canvas(W + 2, W + 2);
@@ -368,9 +390,9 @@ export function sprite(kind) {
         const ch = at(x, y);
         let color = null;
         if (ch !== '.') color = art.palette[ch] ?? '#ff00ff';
-        else if (at(x - 1, y) !== '.' || at(x + 1, y) !== '.' || at(x, y - 1) !== '.' || at(x, y + 1) !== '.') color = OUTLINE;
+        else if (at(x - 1, y) !== '.' || at(x + 1, y) !== '.' || at(x, y - 1) !== '.' || at(x, y + 1) !== '.') color = outline;
         if (!color) continue;
-        g.fillStyle = name === 'white' ? '#ffffff' : color === OUTLINE && name !== 'gray' ? OUTLINE : fn(color);
+        g.fillStyle = name === 'white' ? '#ffffff' : color === outline && name !== 'gray' ? outline : fn(color);
         g.fillRect(x + 1, y + 1, 1, 1);
         if (name === 'base' && ch !== '.') out.pixels.push([x + 1, y + 1, color]);
       }

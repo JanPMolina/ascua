@@ -931,6 +931,294 @@ button.blessing.chosen { border-color: var(--ok); box-shadow: inset 0 0 0 4px #1
 .heroes dt { font-weight: 700; color: var(--ember-hi); font-family: var(--font-display); }
 .heroes dd { margin: .1rem 0 0; color: #e3d6c8; }
 
+/* ───────── Caminos tras la extinción ─────────
+   Amistad = llama azul (Brasa errante); Venganza = aura roja (Renegado). Ver planteamiento/04-caminos-tras-morir.md. */
+:root {
+  --spirit: #6fc8ff;
+  --spirit-hi: #c8ecff;
+  --spirit-lo: #2a6fd0;
+  --renegade: #ff4a3a;
+  --renegade-lo: #7a0d0a;
+}
+
+/* Diálogo de elección: dos cartas enfrentadas, azul y roja. */
+.path-overlay {
+  background:
+    radial-gradient(circle at 28% 48%, rgba(40, 110, 190, .32), transparent 46%),
+    radial-gradient(circle at 72% 48%, rgba(170, 20, 14, .32), transparent 46%),
+    radial-gradient(circle at 50% 40%, rgba(20, 10, 8, .82), rgba(0, 0, 0, .92));
+}
+.path-dialog { max-width: 720px; max-height: calc(100vh - 2rem); overflow: auto; text-align: center; display: grid; justify-items: center; gap: .3rem; }
+.path-dialog h2 { font-size: 1.9rem; margin: .2rem 0 0; }
+.path-dialog > .hint { margin: .1rem 0; }
+.path-badge { animation: pop .4s var(--ease-back); }
+.path-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; width: 100%; margin: .6rem 0 .3rem; perspective: 900px; }
+button.path-card {
+  --pc: 111, 200, 255;
+  position: relative; display: grid; justify-items: center; align-content: start; gap: .4rem; min-height: 290px;
+  padding: 1.3rem 1rem 1rem; text-align: center; font-weight: 400; color: var(--text); border-radius: 14px;
+  border: 1px solid rgba(var(--pc), .55);
+  background:
+    radial-gradient(90% 55% at 50% 0%, rgba(var(--pc), .28), transparent 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .02) 0 2px, transparent 2px 8px),
+    linear-gradient(180deg, #131b25, #0b0f15);
+  box-shadow: inset 0 0 0 4px #090c11, inset 0 0 0 5px rgba(var(--pc), .25), 0 12px 30px rgba(0, 0, 0, .5);
+  animation: card-deal .6s var(--ease-back) both;
+}
+button.path-card.vengeance {
+  --pc: 255, 74, 58;
+  animation-delay: .12s;
+  background:
+    radial-gradient(90% 55% at 50% 0%, rgba(var(--pc), .28), transparent 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .02) 0 2px, transparent 2px 8px),
+    linear-gradient(180deg, #24110f, #130908);
+  box-shadow: inset 0 0 0 4px #100606, inset 0 0 0 5px rgba(var(--pc), .25), 0 12px 30px rgba(0, 0, 0, .5);
+}
+button.path-card:hover:not(:disabled), button.path-card:focus-visible {
+  transform: translateY(-6px); border-color: rgba(var(--pc), .95);
+  background:
+    radial-gradient(90% 55% at 50% 0%, rgba(var(--pc), .45), transparent 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .02) 0 2px, transparent 2px 8px),
+    linear-gradient(180deg, #18222e, #0e131a);
+  box-shadow: inset 0 0 0 4px #090c11, inset 0 0 0 5px rgba(var(--pc), .55), 0 18px 36px rgba(0, 0, 0, .55), 0 0 34px rgba(var(--pc), .4);
+}
+button.path-card.vengeance:hover:not(:disabled), button.path-card.vengeance:focus-visible {
+  background:
+    radial-gradient(90% 55% at 50% 0%, rgba(var(--pc), .45), transparent 70%),
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, .02) 0 2px, transparent 2px 8px),
+    linear-gradient(180deg, #2e1512, #170b09);
+}
+button.path-card:focus-visible { outline-color: rgb(var(--pc)); }
+button.path-card.chosen { opacity: 1; filter: none; border-color: var(--ok); box-shadow: inset 0 0 0 4px #090c11, inset 0 0 0 5px var(--ok), 0 0 34px rgba(116, 207, 147, .45); }
+.path-default {
+  position: absolute; top: .55rem; right: .55rem; padding: .08rem .5rem; border-radius: 999px;
+  font-size: .64rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: #06131f;
+  background: linear-gradient(180deg, var(--spirit-hi), var(--spirit)); box-shadow: 0 0 12px rgba(111, 200, 255, .5);
+}
+.path-emblem {
+  position: relative; display: grid; place-items: center; width: 5rem; height: 5rem; border-radius: 50%; margin-bottom: .2rem;
+  background: radial-gradient(circle at 50% 62%, rgba(var(--pc), .38), rgba(0, 0, 0, .2) 62%, transparent 70%);
+  box-shadow: 0 0 0 1px rgba(var(--pc), .45), 0 0 30px rgba(var(--pc), .28);
+}
+/* Llama azul dibujada con tres gotas giradas que titilan. */
+.flame-css { position: relative; width: 2.6rem; height: 3.2rem; }
+.flame-css i {
+  position: absolute; left: 50%; border-radius: 50% 0 50% 50%; transform: translateX(-50%) rotate(-45deg);
+  animation: flame-flicker 1.3s ease-in-out infinite alternate;
+}
+.flame-css i:nth-child(1) { bottom: .2rem; width: 2.1rem; height: 2.1rem; background: var(--spirit-lo); box-shadow: 0 0 24px rgba(80, 160, 255, .85); }
+.flame-css i:nth-child(2) { bottom: .3rem; width: 1.45rem; height: 1.45rem; background: var(--spirit); animation-delay: -.45s; }
+.flame-css i:nth-child(3) { bottom: .4rem; width: .75rem; height: .75rem; background: #f0faff; animation-delay: -.9s; }
+@keyframes flame-flicker {
+  0% { transform: translateX(-50%) rotate(-45deg) scale(1); }
+  50% { transform: translateX(-54%) rotate(-41deg) scale(1.07, .95); }
+  100% { transform: translateX(-46%) rotate(-49deg) scale(.95, 1.06); }
+}
+.aura-css { position: absolute; inset: .45rem; }
+.aura-css i {
+  position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(255, 74, 58, .75);
+  box-shadow: 0 0 18px rgba(255, 60, 40, .6), inset 0 0 18px rgba(255, 60, 40, .45);
+  animation: aura-pulse 2s ease-out infinite;
+}
+.aura-css i:nth-child(2) { animation-delay: -1s; }
+@keyframes aura-pulse { 0% { transform: scale(.55); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+.path-skull { position: relative; font-size: 2.1rem; line-height: 1; color: #ffd6cc; text-shadow: 0 0 14px rgba(255, 60, 40, .95), 0 1px 0 #000; }
+.path-kicker { font-size: .7rem; text-transform: uppercase; letter-spacing: .14em; font-weight: 700; color: rgb(var(--pc)); }
+.path-name { font-family: var(--font-display); font-size: 1.45rem; line-height: 1.1; color: #fff4ea; }
+.path-text { color: #d9cbbd; font-size: .86rem; line-height: 1.42; }
+.path-stat {
+  margin-top: auto; width: 100%; padding: .45rem .6rem; border-radius: var(--radius-sm); font-size: .8rem; color: var(--muted);
+  background: rgba(0, 0, 0, .35); border: 1px solid rgba(var(--pc), .35);
+}
+.path-stat b { font: 700 1.3rem var(--font-display); color: var(--gold); margin: 0 .1rem; font-variant-numeric: tabular-nums; }
+.path-cta { font-size: .7rem; text-transform: uppercase; letter-spacing: .12em; color: rgb(var(--pc)); }
+.path-cta kbd { font-size: .7rem; }
+.path-warden { margin: .2rem 0; padding: .4rem .7rem; border-radius: var(--radius-sm); font-size: .84rem; color: #ffe6a8; background: rgba(240, 199, 94, .1); border: 1px dashed rgba(240, 199, 94, .55); }
+.path-timebar { width: 100%; height: 6px; margin-top: .3rem; border-radius: 3px; overflow: hidden; background: rgba(0, 0, 0, .45); border: 1px solid var(--line-soft); }
+.path-timebar > div { height: 100%; width: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--spirit-lo), var(--spirit) 45%, #ff8a6a); box-shadow: 0 0 10px rgba(111, 200, 255, .6); transition: width .2s linear; }
+.path-timebar > div.low { background: linear-gradient(90deg, #8a1f17, var(--bad)); box-shadow: 0 0 10px rgba(239, 107, 94, .8); }
+
+/* Tarjeta del héroe: tono del camino y panel propio. */
+.card-hero[data-path="ember"] { --hero-color: var(--spirit); box-shadow: var(--shadow), 0 0 26px rgba(111, 200, 255, .14); }
+.card-hero[data-path="renegade"] { --hero-color: var(--renegade); box-shadow: var(--shadow), 0 0 26px rgba(255, 60, 40, .16); }
+.card-hero[data-path="choosing"] { --hero-color: #9a8b7e; }
+.card-hero[data-path="ember"] #me-portrait .avatar { filter: hue-rotate(185deg) saturate(1.3) brightness(1.1); box-shadow: 0 0 0 2px var(--spirit), 0 0 14px rgba(111, 200, 255, .6); }
+.card-hero[data-path="renegade"] #me-portrait .avatar { box-shadow: 0 0 0 2px var(--renegade), 0 0 14px rgba(255, 60, 40, .7); }
+.badge.ember { border-color: rgba(111, 200, 255, .6); color: #9ad8ff; background: rgba(111, 200, 255, .08); }
+.badge.renegade { border-color: rgba(255, 74, 58, .7); color: #ff9a8c; background: rgba(255, 74, 58, .1); }
+.path-panel {
+  margin: .6rem 0 .1rem; padding: .6rem; border-radius: var(--radius-sm);
+  background: rgba(0, 0, 0, .25); border: 1px dashed var(--line); animation: rise-in .4s var(--ease-out);
+}
+.path-panel.ember { border: 1px solid rgba(111, 200, 255, .45); background: radial-gradient(120% 90% at 0% 0%, rgba(111, 200, 255, .14), transparent 60%), rgba(0, 0, 0, .25); }
+.path-panel.renegade { border: 1px solid rgba(255, 74, 58, .5); background: radial-gradient(120% 90% at 0% 0%, rgba(255, 74, 58, .16), transparent 60%), rgba(0, 0, 0, .25); }
+.path-panel-head { display: flex; align-items: center; gap: .6rem; }
+.path-panel-id { min-width: 0; }
+.path-panel-id b { display: block; font-family: var(--font-display); font-size: 1.05rem; line-height: 1.15; color: #f1e7dc; }
+.path-panel-id small { display: block; color: var(--muted); font-size: .78rem; line-height: 1.3; }
+.path-panel.ember .path-panel-id b { color: var(--spirit-hi); }
+.path-panel.renegade .path-panel-id b { color: #ffb4a8; }
+.path-sigil {
+  position: relative; display: grid; place-items: center; flex: none; width: 2.1rem; height: 2.1rem; border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #4a4038, #1e1813); box-shadow: 0 0 0 1px var(--line);
+}
+.path-sigil::before { content: "🕯"; font-size: 1rem; }
+.path-sigil.ember, .path-panel.ember .path-sigil {
+  background: radial-gradient(circle at 50% 65%, rgba(111, 200, 255, .55), #0d1a28 70%);
+  box-shadow: 0 0 0 1px rgba(111, 200, 255, .6), 0 0 14px rgba(111, 200, 255, .45);
+  animation: sigil-glow 2.2s ease-in-out infinite;
+}
+.path-sigil.ember::before, .path-panel.ember .path-sigil::before {
+  content: ""; width: 42%; height: 42%; margin-top: 12%; border-radius: 50% 0 50% 50%; transform: rotate(-45deg);
+  background: radial-gradient(circle at 60% 40%, #ffffff, var(--spirit) 70%); box-shadow: 0 0 8px var(--spirit);
+}
+.path-sigil.renegade, .path-panel.renegade .path-sigil {
+  background: radial-gradient(circle at 40% 35%, #ff8a6a, #8a110b 55%, #2a0503);
+  box-shadow: 0 0 0 1px rgba(255, 74, 58, .7), 0 0 14px rgba(255, 50, 30, .55);
+}
+.path-sigil.renegade::before, .path-panel.renegade .path-sigil::before { content: "☠"; font-size: 1.05rem; color: #ffe0d8; text-shadow: 0 0 6px #ff3a2a; }
+.path-sigil.sm { width: 1.3rem; height: 1.3rem; animation: none; }
+.path-sigil.sm::before { font-size: .7rem; }
+@keyframes sigil-glow { 50% { box-shadow: 0 0 0 1px rgba(111, 200, 255, .8), 0 0 22px rgba(111, 200, 255, .7); } }
+.stat-tiles.path-tiles { margin-top: .5rem; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.path-tiles .tile { grid-column: span 2; }
+.path-tiles .tile:nth-child(n+4) { grid-column: span 3; }
+.path-tiles .tile small { font-size: .6rem; letter-spacing: 0; }
+.tile-echoes { border-color: rgba(111, 200, 255, .45); background: radial-gradient(circle at 50% 30%, rgba(111, 200, 255, .18), rgba(0, 0, 0, .28)); }
+.tile-echoes .tile-ico, .tile-echoes b { color: #9ad8ff; }
+.tile-echoes.bump b { animation: bump-blue .6s var(--ease-back); }
+.tile-echoes.bump { animation: tile-glow-blue .9s ease-out; }
+@keyframes bump-blue { 40% { transform: scale(1.55); color: #ffffff; text-shadow: 0 0 14px var(--spirit); } }
+@keyframes tile-glow-blue { 0% { box-shadow: 0 0 0 0 rgba(111, 200, 255, .75); } 100% { box-shadow: 0 0 0 14px rgba(111, 200, 255, 0); } }
+.tile-echoes .float-delta { color: #bfe6ff; text-shadow: 0 0 8px rgba(111, 200, 255, .9), 0 1px 0 #000; }
+.tile-saved b { color: #d8b878; }
+.tile-saved .tile-ico { color: #b8975a; }
+.tile-rebirth { border-color: rgba(243, 195, 94, .35); }
+.tile-rebirth b, .tile-rebirth .tile-ico { color: var(--gold); }
+.rebirth-meter {
+  position: relative; height: 18px; margin: .55rem 0 .1rem; border-radius: 999px; overflow: hidden;
+  background: rgba(0, 0, 0, .45); border: 1px solid rgba(111, 200, 255, .3);
+}
+/* Franja de 25% a 85%: lo que puede recuperar una Brasa. */
+.rebirth-meter::before {
+  content: ""; position: absolute; top: 0; bottom: 0; left: 25%; width: 60%;
+  background: repeating-linear-gradient(135deg, rgba(111, 200, 255, .1) 0 4px, transparent 4px 8px);
+}
+.rebirth-fill {
+  position: absolute; inset: 0 auto 0 0; width: 25%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--spirit-lo), var(--spirit) 70%, #ffe08a);
+  box-shadow: 0 0 10px rgba(111, 200, 255, .7), inset 0 1px 0 rgba(255, 255, 255, .4);
+  transition: width .7s var(--ease-out);
+}
+.rebirth-ticks { position: absolute; inset: 0; }
+.rebirth-ticks i { position: absolute; top: 4px; bottom: 4px; width: 1px; background: rgba(255, 255, 255, .28); }
+.rebirth-ticks i.cap { top: 1px; bottom: 1px; width: 2px; background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+.rebirth-label { position: absolute; inset: 0; text-align: center; font-size: .72rem; font-weight: 700; line-height: 16px; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+.path-panel-text { margin: .4rem 0 0; font-size: .82rem; line-height: 1.4; color: #d9cbbd; }
+.path-panel-text b { color: #fff0dc; }
+
+/* Órdenes de la Brasa y del Renegado. */
+.mode { position: relative; }
+.mode-cd {
+  position: absolute; top: -7px; right: -6px; min-width: 1.35rem; height: 1.35rem; padding: 0 .3rem; border-radius: 999px;
+  display: grid; place-items: center; font-size: .7rem; font-weight: 800; color: #1d0e05; background: var(--warn);
+  box-shadow: 0 0 0 2px var(--panel); animation: pop .3s var(--ease-back);
+}
+.mode.cooling .mode-name, .mode.cooling .mode-ico { opacity: .55; }
+.order-note {
+  margin: 0 0 .5rem; padding: .4rem .6rem; border-radius: var(--radius-sm); font-size: .82rem; line-height: 1.38; color: #d9cbbd;
+  background: rgba(0, 0, 0, .25); border: 1px solid var(--line-soft); border-left: 3px solid var(--line); animation: rise-in .2s var(--ease-out);
+}
+.order-note b { color: #fff0dc; }
+.order-note.ember { border-left-color: var(--spirit); color: #d8efff; }
+.order-note.renegade { border-left-color: var(--renegade); color: #ffd6cc; }
+.order-note.wait { border-left-color: var(--warn); color: #ffe6a8; }
+.card-orders[data-path="ember"] { border-color: rgba(111, 200, 255, .45); box-shadow: var(--shadow), 0 0 22px rgba(111, 200, 255, .12); }
+.card-orders[data-path="ember"] .mode.active { color: #04121e; text-shadow: none; background: linear-gradient(180deg, var(--spirit-hi), var(--spirit)); border-color: #b6e4ff; }
+.card-orders[data-path="ember"] .mode.armed { color: #04121e; background: linear-gradient(180deg, #eaf8ff, #8fd0ff); border-color: #ffffff; animation-name: armed-blue; }
+@keyframes armed-blue { 50% { box-shadow: 0 0 0 3px rgba(111, 200, 255, .35), 0 0 22px rgba(111, 200, 255, .6); } }
+.card-orders[data-path="ember"] .dpad.armed .dir[data-dir] { border-color: var(--spirit); box-shadow: 0 0 12px rgba(111, 200, 255, .4); }
+.card-orders[data-path="ember"] .dpad .guard { background: linear-gradient(180deg, #3d3522, #282214); border-color: #8a7a3a; }
+.card-orders[data-path="ember"] .dpad .guard:hover:not(:disabled) { background: linear-gradient(180deg, #4a4029, #30281a); border-color: var(--gold); }
+.card-orders[data-path="renegade"] { border-color: rgba(255, 74, 58, .5); box-shadow: var(--shadow), 0 0 22px rgba(255, 60, 40, .12); }
+.card-orders.inactive .modes, .card-orders.inactive .dpad { opacity: .45; filter: grayscale(.5); pointer-events: none; }
+
+/* Jugadores */
+.players li.ember { --hero-color: var(--spirit); background: rgba(111, 200, 255, .06); }
+.players li.renegade { --hero-color: var(--renegade); background: rgba(255, 74, 58, .07); }
+.players li.choosing { --hero-color: #6a5e54; }
+.players li.ember .avatar { filter: hue-rotate(185deg) saturate(1.3) brightness(1.1); box-shadow: 0 0 0 2px var(--spirit), 0 0 10px rgba(111, 200, 255, .6); }
+.players li.renegade .avatar { box-shadow: 0 0 0 2px var(--renegade), 0 0 10px rgba(255, 60, 40, .6); }
+.players li.choosing .avatar { filter: grayscale(1) brightness(.7); }
+.p-mark {
+  position: absolute; left: -5px; top: -5px; width: 1.15rem; height: 1.15rem; border-radius: 50%;
+  display: grid; place-items: center; font-size: .62rem; line-height: 1; border: 2px solid var(--panel);
+}
+.p-mark.ember { background: radial-gradient(circle at 40% 35%, #f0faff, var(--spirit-lo)); color: #04121e; box-shadow: 0 0 8px rgba(111, 200, 255, .8); }
+.p-mark.renegade { background: radial-gradient(circle at 40% 35%, #ff8a6a, var(--renegade-lo)); color: #ffe0d8; box-shadow: 0 0 8px rgba(255, 60, 40, .8); }
+.p-mark.choosing { background: #2a2420; color: var(--warn); }
+.players li.ember .p-stats, .players li.renegade .p-stats, .players li.choosing .p-stats { flex-wrap: wrap; gap: 0 .5rem; min-width: 0; }
+.players .p-tag { white-space: nowrap; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.p-tag.ember { color: #9ad8ff; }
+.p-tag.renegade { color: #ff8a7a; }
+.p-tag.choosing { color: var(--warn); }
+
+/* Registro de eventos */
+.events li.ev-ember { background: rgba(111, 200, 255, .07); color: #cfeaff; }
+.events li.ev-renegade { background: rgba(255, 74, 58, .08); color: #ffb8ad; }
+
+/* Leyenda del tablero */
+.sw-ember { border-radius: 50%; background: radial-gradient(circle at 50% 60%, #f0faff, var(--spirit) 45%, var(--spirit-lo)); box-shadow: 0 0 6px rgba(111, 200, 255, .8); }
+.sw-renegade { border-radius: 50%; background: radial-gradient(circle, #ff8a6a, #a8160e 65%); box-shadow: 0 0 6px rgba(255, 60, 40, .8); }
+#legend-paths { gap: .25rem .8rem; }
+#legend-paths > span { display: inline-flex; align-items: center; }
+
+/* Fin: «El Umbral reclama» */
+.fin.threshold-claimed {
+  border-color: rgba(255, 74, 58, .45);
+  background: radial-gradient(90% 50% at 50% 0%, rgba(160, 20, 12, .28), transparent 70%), var(--panel);
+}
+.fin-banner.threshold .fin-emblem {
+  background: radial-gradient(circle at 40% 35%, #ff9a7a, #a8160e 45%, #2a0503 80%); color: #ffe0d8;
+  box-shadow: 0 0 0 3px #2a0503, 0 0 44px rgba(255, 40, 20, .7);
+  animation: emblem-in .8s var(--ease-back) both, threshold-pulse 2.6s 1s ease-in-out infinite;
+}
+.fin-banner.threshold h2 { color: #ff9a8c; text-shadow: 0 0 26px rgba(255, 50, 30, .65), 0 2px 0 #000; }
+@keyframes threshold-pulse { 50% { box-shadow: 0 0 0 3px #2a0503, 0 0 74px rgba(255, 40, 20, .95); } }
+.standings li.ember .s-who small { color: #9ad8ff; }
+.standings li.renegade .s-who small { color: #ff8a7a; }
+.standings li.renegade { border-color: rgba(255, 74, 58, .35); }
+.podium li.renegade .avatar { box-shadow: 0 0 0 2px var(--renegade), 0 0 20px rgba(255, 60, 40, .65); }
+.podium li.ember .avatar { filter: hue-rotate(185deg) saturate(1.3); box-shadow: 0 0 0 2px var(--spirit), 0 0 20px rgba(111, 200, 255, .55); }
+
+/* Guía: página de los caminos */
+.howto-paths { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .8rem; margin-top: .4rem; }
+.howto-path { padding: .7rem .8rem; border-radius: var(--radius-sm); background: rgba(0, 0, 0, .25); border: 1px solid var(--line-soft); }
+.howto-path.friendship { border-color: rgba(111, 200, 255, .4); background: radial-gradient(120% 60% at 0% 0%, rgba(111, 200, 255, .1), transparent 60%), rgba(0, 0, 0, .25); }
+.howto-path.vengeance { border-color: rgba(255, 74, 58, .45); background: radial-gradient(120% 60% at 0% 0%, rgba(255, 74, 58, .1), transparent 60%), rgba(0, 0, 0, .25); }
+.howto-path h4 { display: flex; align-items: center; gap: .45rem; margin: 0 0 .3rem; font: 700 1rem var(--font-display); text-transform: none; letter-spacing: 0; }
+.howto-path.friendship h4 { color: var(--spirit-hi); }
+.howto-path.vengeance h4 { color: #ffb4a8; }
+.howto-path p { margin: .25rem 0; font-size: .88rem; }
+.howto-path ul { font-size: .86rem; }
+.table.compact td { padding: .22rem .35rem; font-size: .82rem; vertical-align: top; }
+.table.compact td:first-child { color: var(--muted); white-space: nowrap; }
+.demo-paths { margin-top: .4rem; }
+
+@media (max-width: 640px) {
+  .path-dialog h2 { font-size: 1.45rem; }
+  .path-cards { grid-template-columns: 1fr; gap: .6rem; }
+  button.path-card { min-height: 0; grid-template-columns: auto minmax(0, 1fr); justify-items: start; text-align: left; padding: .9rem .8rem; gap: .25rem .7rem; }
+  button.path-card .path-emblem { grid-row: span 4; width: 3.6rem; height: 3.6rem; }
+  button.path-card .flame-css { transform: scale(.7); }
+  button.path-card .path-skull { font-size: 1.5rem; }
+  button.path-card .path-stat, button.path-card .path-text { grid-column: 1 / -1; }
+  button.path-card .path-cta { display: none; }
+  .path-default { top: .45rem; right: .45rem; font-size: .58rem; }
+  button.path-card .path-kicker { letter-spacing: .05em; font-size: .64rem; }
+  .howto-paths { grid-template-columns: 1fr; }
+}
+
 /* ───────── Depuración ───────── */
 .debug { border-top: 1px solid var(--line); background: rgba(20, 15, 12, .9); padding: .4rem 1rem; }
 .debug summary { cursor: pointer; color: var(--faint); font-size: .85rem; min-height: 32px; display: flex; align-items: center; }

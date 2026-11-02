@@ -9,6 +9,9 @@
 // Solo se dibuja lo que vino en la vista: una casilla que el servidor nunca envió queda en niebla; una
 // recordada pero fuera de la visión actual se ve desaturada. Lo táctico (ataques anunciados, vida, quién
 // es quién) se dibuja encima de la iluminación y de la niebla para que se lea de un vistazo.
+//
+// Caminos tras la extinción: la Brasa errante es una llama azul translúcida sin barra de vida (drawSpirit), el
+// Renegado lleva aura roja y marca de enemigo (drawEntity), y los Faros iluminan su zona hasta la resolución siguiente.
 import { on } from './bus.js';
 import { getSettings } from './settings.js';
 import { HERO_COLORS, dangerIcon, glow, grayCopy, makeCanvas, paintTile, sprite } from './sprites.js';
@@ -23,24 +26,35 @@ const MODE_COLORS = { MOVE: '#8fd0ff', ATTACK: '#ff6a5a', ABILITY: '#e8c15a', IN
 const STOPS_SHOTS = new Set(['WALL', 'BRAZIER']);
 const OBJECTS = new Set(['CHEST', 'CHEST_OPENED', 'BRAZIER', 'ALTAR']);
 const LIGHTS = new Set(['BRAZIER', 'FIRE']);
-const ACTIONS = new Set(['ATTACKED', 'ABILITY_USED', 'GUARDED', 'DEFAULT_GUARD_APPLIED', 'CHEST_OPENED', 'BLESSING_GAINED', 'REVIVED']);
+const ACTIONS = new Set(['ATTACKED', 'ABILITY_USED', 'GUARDED', 'DEFAULT_GUARD_APPLIED', 'CHEST_OPENED', 'BLESSING_GAINED', 'REVIVED',
+  'SHIELD_KINDLED', 'ATTACK_HINDERED', 'BEACON_LIT']);
+/** Sucesos de los caminos que se ven al final de la ronda (pasivas, ecos, apariciones). */
+const LATE_PATH = new Set(['WARMTH_HEALED', 'ECHO_GAINED', 'EMBER_REBORN', 'RENEGADE_SPAWNED']);
 const DASH = [6, 5];
 const NO_DASH = [];
 const EMBER_COLORS = ['#ff9a3a', '#ffcf6a', '#ff6a2a'];
+const SPIRIT_COLORS = ['#6fc8ff', '#c8ecff', '#3f9ae8'];
+const BLOOD_COLORS = ['#ff4a3a', '#a8160e', '#ff8a6a'];
+const BEACON_RADIUS = 2;
 
-/** Radio de visión (Manhattan): 3, +1 con Lámpara. */
+/** Radio de visión (Manhattan): 3 (4 la Brasa errante), +1 con Lámpara. */
 export function visionRadius(me) {
-  return 3 + (me?.blessings?.includes('LAMPARA') ? 1 : 0);
+  return (me?.state === 'EMBER_SPIRIT' ? 4 : 3) + (me?.blessings?.includes('LAMPARA') ? 1 : 0);
 }
 
 const inBounds = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
 const tileKey = (x, y) => `${x},${y}`;
 const isHeroId = (id) => Boolean(id) && !id.startsWith('enemy:');
+const isSpirit = (d) => d?.state === 'EMBER_SPIRIT';
+const isRenegade = (d) => d?.state === 'RENEGADE';
+/** El Renegado propio que todavía no apareció no tiene casilla (su `position` es la vieja). */
+const offBoard = (d) => isRenegade(d) && Boolean(d.path?.awaitingSpawn);
+const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
 function entityMap(snap) {
   const map = new Map();
   if (!snap) return map;
-  if (snap.me) map.set(snap.me.playerId, { type: 'hero', d: snap.me, isMe: true });
+  if (snap.me) map.set(snap.me.playerId, { type: 'hero', d: offBoard(snap.me) ? { ...snap.me, position: null } : snap.me, isMe: true });
   for (const a of snap.allies ?? []) map.set(a.playerId, { type: 'hero', d: a, isMe: false });
   for (const e of snap.enemies ?? []) map.set(`enemy:${e.enemyId}`, { type: 'enemy', d: e, isMe: false });
   return map;
@@ -88,6 +102,7 @@ export class BoardRenderer {
     this.flashColor = '#ffffff';
     this.fade = 0;
     this.banner = null;
+    this.beacons = []; // Faros encendidos en la última resolución: zona iluminada hasta la siguiente
     this.pending = null;
     this.pendingFloor = null;
     this.hoverDir = null;
@@ -263,7 +278,7 @@ export class BoardRenderer {
   syncEntities() {
     const { me, allies, enemies } = this.state;
     for (const v of this.ents.values()) v.seen = false;
-    if (me?.position) this.upsert(me.playerId, 'hero', me, true);
+    if (me?.position && !offBoard(me)) this.upsert(me.playerId, 'hero', me, true);
     for (const a of allies ?? []) if (a.position) this.upsert(a.playerId, 'hero', a, false);
     for (const e of enemies?.values() ?? []) if (e.position) this.upsert(`enemy:${e.enemyId}`, 'enemy', e, false);
     for (const v of this.ents.values()) {
@@ -292,8 +307,9 @@ export class BoardRenderer {
   affected(type, dir, out) {
     out.length = 0;
     const me = this.state.me;
-    if (!me?.position || me.state !== 'ALIVE') return out;
+    if (!me?.position || !(me.state === 'ALIVE' || isSpirit(me) || (isRenegade(me) && !offBoard(me)))) return out;
     const { x, y } = me.position;
+    if (isSpirit(me)) return this.spiritAffected(type, dir, x, y, out);
     const blocked = (px, py) => !inBounds(px, py) || STOPS_SHOTS.has(this.tiles.get(tileKey(px, py)));
     const ray = (d, len) => {
       const [dx, dy] = DIRS[d];
@@ -324,6 +340,25 @@ export class BoardRenderer {
     return out;
   }
 
+  /** Brasa errante: nada la detiene (Deriva, Avivar y Estorbo atraviesan muros); el Faro ilumina un radio de 2. */
+  spiritAffected(type, dir, x, y, out) {
+    if (type === 'GUARD') {
+      for (let dy = -BEACON_RADIUS; dy <= BEACON_RADIUS; dy++) {
+        for (let dx = -BEACON_RADIUS; dx <= BEACON_RADIUS; dx++) {
+          if (Math.abs(dx) + Math.abs(dy) <= BEACON_RADIUS && inBounds(x + dx, y + dy)) out.push({ x: x + dx, y: y + dy });
+        }
+      }
+      return out;
+    }
+    const v = DIRS[dir];
+    if (!v) return out;
+    const reach = type === 'INTERACT' ? 1 : 2;
+    for (let i = 1; i <= reach; i++) {
+      if (inBounds(x + v[0] * i, y + v[1] * i)) out.push({ x: x + v[0] * i, y: y + v[1] * i });
+    }
+    return out;
+  }
+
   updatePreview() {
     const s = this.state;
     this.preview.length = 0;
@@ -349,16 +384,18 @@ export class BoardRenderer {
     const detail = this.pending;
     this.pending = null;
     this.timeline.finish();
+    // Los Faros duran hasta la resolución siguiente.
+    this.beacons = [];
     if (this.pendingFloor !== null) {
       const floor = this.pendingFloor;
       this.pendingFloor = null;
-      this.floorTransition(floor);
+      this.floorTransition(floor, detail);
       return;
     }
     this.playResolution(detail, tileChanges);
   }
 
-  floorTransition(floor) {
+  floorTransition(floor, detail) {
     this.fade = 1;
     this.ents.clear();
     this.effects.length = 0;
@@ -368,9 +405,28 @@ export class BoardRenderer {
     this.known.fill(0);
     this.vision.fill(0);
     this.teleAlpha = 0;
-    this.banner = { text: `Piso ${floor}`, sub: floor >= 5 ? 'La sala del Celador' : 'Las brasas os guían más abajo', start: this.now, dur: 2600 };
+    let sub = floor >= 5 ? 'La sala del Celador' : 'Las brasas os guían más abajo';
+    // Al bajar renacen las Brasas (en la escalera) y aparecen los Renegados (lejos del grupo).
+    const events = (detail?.events ?? []).filter((ev) => ev.type === 'EMBER_REBORN' || ev.type === 'RENEGADE_SPAWNED');
+    const mine = events.find((ev) => ev.actorId === this.state.me?.playerId);
+    if (mine?.type === 'EMBER_REBORN') sub = `Renaces en la escalera con ${mine.amount ?? '?'} de vida`;
+    else if (mine?.type === 'RENEGADE_SPAWNED') sub = 'Vuelves como Renegado, lejos de los héroes';
+    this.banner = { text: `Piso ${floor}`, sub, start: this.now, dur: 2600, color: mine?.type === 'RENEGADE_SPAWNED' ? '#ff8a7a' : undefined };
     this.syncEntities();
     for (const v of this.ents.values()) { v.x = v.tx; v.y = v.ty; }
+    if (!events.length) return;
+    const tl = this.timeline;
+    events.forEach((ev, i) => {
+      const v = this.ents.get(ev.actorId);
+      if (v) { v.alpha = 0; v.alphaTarget = 0; v.locked = true; } // aparece con su efecto
+      tl.at(900 + i * 450, () => this.applyEvent(ev, null, true));
+    });
+    tl.at(900 + events.length * 450 + 300, () => {
+      for (const v of this.ents.values()) v.locked = false;
+      this.syncEntities();
+      this.syncTelegraphs(true);
+    });
+    tl.start(this.now);
   }
 
   playResolution(detail, tileChanges) {
@@ -399,6 +455,8 @@ export class BoardRenderer {
       v.isMe = src.isMe;
       v.frozen = false;
       v.d = a?.d.position ? a.d : (b?.d ?? v.d);
+      // El extinto que eligió Amistad sigue tendido hasta que se revela su camino (PATH_CHOSEN).
+      if (b?.d.state === 'EXTINCT' && b.d.position && isSpirit(a?.d)) { v.d = b.d; v.revealTo = a.d; }
       if (b?.d.position) {
         v.x = b.d.position.x; v.y = b.d.position.y;
         v.hp = b.d.hp; v.maxHp = b.d.maxHp; v.trail = Math.max(v.trail, v.hp);
@@ -417,13 +475,15 @@ export class BoardRenderer {
     // Casillas que cambian: se ve lo de antes hasta su momento (cofre que se abre, fuego que prende…).
     for (const c of tileChanges) if (c.from !== undefined) this.tileShown.set(c.key, c.from);
 
-    // Ataques anunciados de la ronda que se resuelve: siguen a la vista hasta que golpean.
+    // Ataques anunciados de la ronda que se resuelve: siguen a la vista hasta que golpean. Un enemigo
+    // estorbado por una Brasa conserva el anuncio pero no golpea esta ronda.
+    const hinderedIds = new Set(events.filter((ev) => ev.type === 'ATTACK_HINDERED' && ev.targetId).map((ev) => ev.targetId));
     const strikes = [];
     const oldTele = [];
     const oldSet = new Set();
     for (const [id, b] of B) {
       if (b.type !== 'enemy' || !b.d.telegraph?.length) continue;
-      strikes.push({ id, d: b.d });
+      if (!hinderedIds.has(id)) strikes.push({ id, d: b.d });
       for (const p of b.d.telegraph) {
         const k = tileKey(p.x, p.y);
         if (!oldSet.has(k)) { oldSet.add(k); oldTele.push(p); }
@@ -437,20 +497,26 @@ export class BoardRenderer {
     const groups = new Map();
     const envEvents = [];
     const lateEvents = [];
+    const pathEvents = [];
     const bounces = [];
     const addTo = (id, ev) => { if (!groups.has(id)) groups.set(id, []); groups.get(id).push(ev); };
     const heroKind = (id) => (A.get(id) ?? B.get(id))?.d.hero;
+    const warmed = new Set(events.filter((ev) => ev.type === 'WARMTH_HEALED').map((ev) => ev.targetId));
+    // Quien renace o aparece como Renegado se hace visible con su propio efecto, al final.
+    const appearsLate = new Set(events.filter((ev) => ev.type === 'EMBER_REBORN' || ev.type === 'RENEGADE_SPAWNED').map((ev) => ev.actorId));
     for (const ev of events) {
       switch (ev.type) {
         case 'MOVED': break;
         case 'BOUNCED': bounces.push(ev); break;
-        case 'DAMAGED': case 'BLOCKED': case 'ENEMY_KILLED':
+        case 'DAMAGED': case 'BLOCKED': case 'ENEMY_KILLED': case 'RENEGADE_DEFEATED':
           if (isHeroId(ev.actorId)) addTo(ev.actorId, ev); else envEvents.push(ev);
           break;
         case 'EMBERS_GAINED':
           if (groups.has(ev.actorId)) addTo(ev.actorId, ev); else lateEvents.push(ev);
           break;
         case 'HEALED': {
+          // La Calidez de una Brasa cura al final de la ronda, junto a su propio suceso.
+          if (warmed.has(ev.targetId)) { lateEvents.push(ev); break; }
           const healer = [...groups.keys()].find((id) => heroKind(id) === 'RAIZ' && groups.get(id).some((e) => e.type === 'ABILITY_USED'));
           if (healer) addTo(healer, ev); else envEvents.push(ev);
           break;
@@ -458,12 +524,21 @@ export class BoardRenderer {
         case 'BOSS_PHASE_CHANGED': case 'EMBERS_STOLEN': case 'FLOOR_ENTERED':
           lateEvents.push(ev);
           break;
+        case 'PATH_CHOSEN':
+          pathEvents.push(ev);
+          break;
         default:
-          if (ACTIONS.has(ev.type) && isHeroId(ev.actorId)) addTo(ev.actorId, ev); else envEvents.push(ev);
+          if (LATE_PATH.has(ev.type)) lateEvents.push(ev);
+          else if (ACTIONS.has(ev.type) && isHeroId(ev.actorId)) addTo(ev.actorId, ev);
+          else envEvents.push(ev);
       }
     }
 
-    // 3) Movimientos de héroes.
+    // 2b) Al inicio de la resolución se revelan los caminos elegidos.
+    pathEvents.forEach((ev, i) => tl.at(i * 260 * S, () => this.applyEvent(ev)));
+    const t0 = pathEvents.length ? (520 + (pathEvents.length - 1) * 260) * S : 0;
+
+    // 3) Movimientos de héroes (la Brasa deriva atravesando todo).
     let moved = false;
     for (const id of ids) {
       const b = B.get(id);
@@ -473,17 +548,18 @@ export class BoardRenderer {
       const shadow = heroKind(id) === 'CUERVO' && groups.get(id)?.some((e) => e.type === 'ABILITY_USED');
       if (b?.d.position && a?.d.position && (b.d.position.x !== a.d.position.x || b.d.position.y !== a.d.position.y)) {
         moved = true;
-        if (shadow) this.shadowStep(v, b.d.position, a.d.position, 0, S, a.isMe);
-        else this.moveTween(v, b.d.position, a.d.position, 0, 340 * S, rm ? 0 : 0.28);
+        if (shadow) this.shadowStep(v, b.d.position, a.d.position, t0, S, a.isMe);
+        else if (isSpirit(a.d) && isSpirit(b.d)) this.driftTween(v, b.d.position, a.d.position, t0, 420 * S);
+        else this.moveTween(v, b.d.position, a.d.position, t0, 340 * S, rm ? 0 : 0.28);
       } else if (b?.d.position && !a?.d.position) {
-        // Se volvió invisible (sigilo) o dejó de verse.
-        tl.at(0, () => {
+        // Se volvió invisible (sigilo), dejó de verse o se fue como Renegado.
+        tl.at(t0, () => {
           if (shadow) this.smoke(v.x + 0.5, v.y + 0.5);
           v.alphaTarget = 0; v.leaving = true;
         });
         moved = true;
-      } else if (!b?.d.position && a?.d.position) {
-        tl.at(120 * S, () => { v.alphaTarget = 1; if (shadow) this.smoke(v.x + 0.5, v.y + 0.5); });
+      } else if (!b?.d.position && a?.d.position && !appearsLate.has(id)) {
+        tl.at(t0 + 120 * S, () => { v.alphaTarget = 1; if (shadow) this.smoke(v.x + 0.5, v.y + 0.5); });
       }
     }
     for (const ev of bounces) {
@@ -493,18 +569,18 @@ export class BoardRenderer {
       const after = A.get(ev.actorId)?.d;
       let dir = DIRS[after?.facing] ?? [0, 0];
       if (ev.position && (ev.position.x !== v.x || ev.position.y !== v.y)) dir = [Math.sign(ev.position.x - v.x), Math.sign(ev.position.y - v.y)];
-      if (after?.facing) tl.at(0, () => { v.facing = after.facing; });
-      tl.tween(0, 300 * S, (p) => {
+      if (after?.facing) tl.at(t0, () => { v.facing = after.facing; });
+      tl.tween(t0, 300 * S, (p) => {
         const k = (p < 0.4 ? ease.outCubic(p / 0.4) : 1 - ease.inOutQuad((p - 0.4) / 0.6)) * 0.3;
         v.ox = dir[0] * k; v.oy = dir[1] * k;
       }, () => { v.ox = 0; v.oy = 0; });
-      tl.at(120 * S, () => {
+      tl.at(t0 + 120 * S, () => {
         this.particles.burst(v.x + 0.5 + dir[0] * 0.45, v.y + 0.5 + dir[1] * 0.45, 8, { speed: 1.6, life: 0.4, size: 0.05, colors: ['#d8ccb8', '#8a8070'], drag: 4 });
         this.floaters.add('¡bonk!', v.x + 0.5, v.y + 0.05, { color: '#d8ccb8', size: 0.2, life: 0.8 });
         this.shake(0.12);
       });
     }
-    const tActions = moved ? 380 * S : 0;
+    const tActions = t0 + (moved ? 380 * S : 0);
 
     // 4) Acciones de héroes (y sus consecuencias, al momento del impacto).
     let cursor = tActions;
@@ -569,6 +645,41 @@ export class BoardRenderer {
       if (!this.rm && v.d.kind !== 'POLILLA') {
         this.particles.burst(to.x + 0.5, to.y + 0.86, hop > 0.3 ? 10 : 5, { speed: 1.1, life: 0.45, size: 0.05, colors: ['#6a5e50', '#4a4036'], drag: 5, up: 0.4 });
       }
+    });
+  }
+
+  /** Deriva de la Brasa: flota en línea recta, atravesando lo que haya, y deja una estela azul. */
+  driftTween(v, from, to, t, dur) {
+    this.timeline.tween(t, dur, (p) => {
+      const k = ease.inOutQuad(p);
+      v.x = from.x + (to.x - from.x) * k;
+      v.y = from.y + (to.y - from.y) * k;
+      v.hop = 0.12 * ease.pulse(p);
+      if (!this.rm && Math.random() < 0.8) {
+        this.particles.spawn(v.x + 0.35 + Math.random() * 0.3, v.y + 0.35 + Math.random() * 0.35, (Math.random() - 0.5) * 0.3, -0.4 - Math.random() * 0.4,
+          0.7, 0.06, SPIRIT_COLORS[Math.floor(Math.random() * 3)], 0, 1.2, true);
+      }
+    }, () => { v.x = to.x; v.y = to.y; v.hop = 0; });
+  }
+
+  /** Brizna de luz de la Brasa hacia su objetivo (Avivar, Estorbo, Reavivar). */
+  wisp(from, to, dur, colors = SPIRIT_COLORS) {
+    const fx = from.x + 0.5;
+    const fy = from.y + 0.35;
+    const tx = to.x + 0.5;
+    const ty = to.y + 0.45;
+    this.addFx(dur, (g, p, cell) => {
+      const k = ease.inOutQuad(p);
+      const x = fx + (tx - fx) * k + Math.sin(p * Math.PI * 3) * 0.08;
+      const y = fy + (ty - fy) * k - Math.sin(Math.PI * p) * 0.35;
+      if (!this.rm) this.particles.spawn(x, y, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, 0.45, 0.07, colors[Math.floor(Math.random() * colors.length)], 0, 2, true);
+      g.globalCompositeOperation = 'lighter';
+      const r = cell * 0.36;
+      g.drawImage(glow(colors[0]), x * cell - r, y * cell - r, r * 2, r * 2);
+      g.globalCompositeOperation = 'source-over';
+      g.fillStyle = '#ffffff';
+      const s = cell * 0.08;
+      g.fillRect(x * cell - s / 2, y * cell - s / 2, s, s);
     });
   }
 
@@ -650,11 +761,38 @@ export class BoardRenderer {
         tl.at(t0 + 110 * S, () => this.applyEvent(action, actor));
         impact = t0 + 260 * S;
         break;
+      case 'SHIELD_KINDLED':
+      case 'ATTACK_HINDERED': {
+        // La Brasa lanza una brizna hasta 2 casillas; sin objetivo se apaga al final del tramo.
+        const target = action.targetId ? this.ents.get(action.targetId) : null;
+        const reach = { x: Math.max(0, Math.min(SIZE - 1, pos.x + dir[0] * 2)), y: Math.max(0, Math.min(SIZE - 1, pos.y + dir[1] * 2)) };
+        const end = target ? { x: target.x, y: target.y } : reach;
+        const dur = (140 + manhattan(pos, end) * 90) * S;
+        const colors = action.type === 'ATTACK_HINDERED' ? ['#b89aff', '#e6dcff', '#6fc8ff'] : SPIRIT_COLORS;
+        tl.at(t0, () => this.wisp(pos, end, dur, colors));
+        tl.at(t0 + dur, () => this.applyEvent(action, actor, false, end));
+        impact = t0 + dur + 60 * S;
+        break;
+      }
+      case 'BEACON_LIT':
+        tl.at(t0, () => this.applyEvent(action, actor));
+        impact = t0 + 320 * S;
+        break;
       case 'REVIVED':
-      case 'BLESSING_GAINED':
+      case 'BLESSING_GAINED': {
+        const target = action.type === 'REVIVED' && isSpirit(actor) && action.targetId ? this.ents.get(action.targetId) : null;
+        if (target) {
+          // Reavivar: la Brasa le sopla su luz al caído.
+          const dur = 280 * S;
+          tl.at(t0, () => this.wisp(pos, { x: target.x, y: target.y }, dur, ['#ffe9a0', '#6fc8ff', '#ffffff']));
+          tl.at(t0 + dur, () => this.applyEvent(action, actor));
+          impact = t0 + dur + 300 * S;
+          break;
+        }
         tl.at(t0, () => this.applyEvent(action, actor));
         impact = t0 + 300 * S;
         break;
+      }
       default:
         break;
     }
@@ -710,10 +848,12 @@ export class BoardRenderer {
 
   // ───────────── sucesos ─────────────
 
-  applyEvent(ev, actorData = null) {
+  /** `fromFloor`: llega tras bajar de piso (renacer o aparición); `aim`: adónde apuntó la Brasa si no hubo objetivo. */
+  applyEvent(ev, actorData = null, fromFloor = false, aim = null) {
     const target = ev.targetId ? this.ents.get(ev.targetId) : null;
     const actor = ev.actorId ? this.ents.get(ev.actorId) : null;
     const rm = this.rm;
+    if (this.applyPathEvent(ev, target, actor, fromFloor, aim)) return;
     switch (ev.type) {
       case 'DAMAGED': {
         if (!target) return;
@@ -891,6 +1031,195 @@ export class BoardRenderer {
       }
       default:
         break;
+    }
+  }
+
+  /** Sucesos de los caminos tras la extinción; devuelve true si lo manejó. */
+  applyPathEvent(ev, target, actor, fromFloor, aim) {
+    const rm = this.rm;
+    const me = this.state.me;
+    const nameOf = (id) => (id === me?.playerId ? null : this.state.allies?.find((a) => a.playerId === id)?.displayName ?? 'Un portador');
+    switch (ev.type) {
+      case 'PATH_CHOSEN': {
+        const friendship = ev.detail !== 'VENGEANCE';
+        const mine = ev.actorId === me?.playerId;
+        if (actor) {
+          const [cx, cy] = this.center(actor);
+          if (friendship) {
+            // El cuerpo tendido se vuelve llama azul.
+            if (actor.revealTo) { actor.d = actor.revealTo; actor.revealTo = null; }
+            actor.downT = 0; actor.downTarget = 0; actor.alphaTarget = 1;
+            this.pillar(cx, cy, '#6fc8ff');
+            this.particles.vortex(cx, cy, rm ? 8 : 26, { radius: 0.9, life: 0.8, colors: SPIRIT_COLORS, inward: true });
+            this.floaters.add('Amistad', cx, cy - 0.45, { color: '#c8ecff', size: 0.22, life: 1.4 });
+          } else {
+            // Se hunde en humo rojo: volverá del lado de la mazmorra.
+            this.particles.vortex(cx, cy + 0.1, rm ? 8 : 28, { radius: 0.2, life: 1, colors: ['#3a0604', '#a8160e', '#ff4a3a'], inward: false, glow: false });
+            this.ring(cx, cy + 0.3, '#ff4a3a', 0.9, 600);
+            this.floaters.add('Venganza', cx, cy - 0.45, { color: '#ff9a8c', size: 0.22, life: 1.4 });
+          }
+        }
+        const who = nameOf(ev.actorId);
+        this.banner = mine
+          ? { text: friendship ? 'Camino de la Amistad' : 'Camino de la Venganza', sub: friendship ? 'Eres una Brasa errante: ayuda al grupo y gana ecos' : 'Volverás como Renegado, del lado de la mazmorra', start: this.now, dur: 2600, color: friendship ? '#9ad8ff' : '#ff8a7a' }
+          : { text: friendship ? `${who}: Amistad` : `${who}: Venganza`, sub: friendship ? 'Vaga como Brasa errante y ayuda al grupo' : 'Volverá como Renegado', start: this.now, dur: 2000, color: friendship ? '#9ad8ff' : '#ff8a7a' };
+        if (mine) this.screenFlash(friendship ? '#6fc8ff' : '#a8160e', 0.6);
+        return true;
+      }
+      case 'SHIELD_KINDLED': {
+        if (!target) {
+          const at = aim ?? (actor ? { x: actor.x, y: actor.y } : null);
+          if (at) this.particles.burst(at.x + 0.5, at.y + 0.5, rm ? 3 : 10, { speed: 1, life: 0.5, size: 0.05, colors: SPIRIT_COLORS, drag: 3, glow: true });
+          return true;
+        }
+        const [cx, cy] = this.center(target);
+        this.guardBubble(target, false, '#6fc8ff');
+        this.particles.vortex(cx, cy, rm ? 6 : 18, { radius: 0.55, life: 0.6, colors: SPIRIT_COLORS, inward: true });
+        this.floaters.add('+1 ⛨', cx, cy - 0.38, { color: '#9ad8ff', size: 0.26 });
+        return true;
+      }
+      case 'ATTACK_HINDERED': {
+        if (!target) {
+          const at = aim ?? (actor ? { x: actor.x, y: actor.y } : null);
+          if (at) {
+            this.particles.burst(at.x + 0.5, at.y + 0.5, rm ? 3 : 10, { speed: 1, life: 0.5, size: 0.05, colors: ['#b89aff', '#e6dcff'], drag: 3, glow: true });
+            this.floaters.add('sin efecto', at.x + 0.5, at.y + 0.2, { color: '#c8c0d8', size: 0.18 });
+          }
+          return true;
+        }
+        const [cx, cy] = this.center(target);
+        // Cadenas de luz que giran alrededor del enemigo y un reloj de arena.
+        this.addFx(900, (g, p, cell) => {
+          g.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < 8; i++) {
+            const a = p * 9 + (i * Math.PI) / 4;
+            const r = cell * (0.55 - p * 0.15);
+            g.globalAlpha = (1 - p) * 0.9;
+            g.fillStyle = i % 2 ? '#b89aff' : '#e6dcff';
+            const s = cell * 0.07;
+            g.fillRect(cx * cell + Math.cos(a) * r - s / 2, cy * cell + Math.sin(a) * r * 0.6 - s / 2, s, s);
+          }
+          g.globalCompositeOperation = 'source-over';
+          g.globalAlpha = 1;
+        });
+        target.frozen = false;
+        target.jolt = rm ? 0 : 0.2;
+        this.floaters.add('⧖ ¡estorbado!', cx, cy - 0.42, { color: '#d8c8ff', size: 0.22, life: 1.3 });
+        return true;
+      }
+      case 'BEACON_LIT': {
+        const at = ev.position ?? (actor ? { x: Math.round(actor.x), y: Math.round(actor.y) } : null);
+        if (!at) return true;
+        this.beacons.push({ x: at.x, y: at.y, start: this.now });
+        const cx = at.x + 0.5;
+        const cy = at.y + 0.5;
+        this.ring(cx, cy, '#ffe9a0', BEACON_RADIUS + 0.5, 700);
+        this.ring(cx, cy, '#6fc8ff', BEACON_RADIUS, 600);
+        this.particles.burst(cx, cy - 0.2, rm ? 5 : 18, { speed: 2, life: 0.8, size: 0.05, colors: ['#ffe9a0', '#c8ecff', '#6fc8ff'], drag: 2, glow: true, up: 0.6 });
+        return true;
+      }
+      case 'WARMTH_HEALED': {
+        if (!actor || !target) return true;
+        const [ax, ay] = this.center(actor);
+        const [tx, ty] = this.center(target);
+        this.particles.stream(ax, ay, tx, ty, rm ? 6 : 22, { colors: ['#ffcf6a', '#6fc8ff', '#ffe9a0'], life: 0.9, size: 0.06 });
+        this.floaters.add('♨ calidez', tx, ty - 0.5, { color: '#ffd9a0', size: 0.2, delay: 0.15 });
+        return true;
+      }
+      case 'ECHO_GAINED': {
+        const who = actor ?? (me ? this.ents.get(me.playerId) : null);
+        if (!who) return true;
+        const [cx, cy] = this.center(who);
+        const n = ev.amount ?? 1;
+        this.floaters.add(`+${n} eco${n === 1 ? '' : 's'}`, cx, cy - 0.5, { color: '#9ad8ff', size: 0.24, life: 1.4 });
+        this.particles.vortex(cx, cy, rm ? 5 : 14, { radius: 0.5, life: 0.6, size: 0.05, colors: SPIRIT_COLORS, inward: true });
+        return true;
+      }
+      case 'EMBER_REBORN': {
+        const v = actor;
+        const at = ev.position ?? (v ? { x: v.x, y: v.y } : null);
+        if (v) { v.locked = false; v.alpha = 0; v.alphaTarget = 1; v.downT = 0; v.downTarget = 0; }
+        if (!at) return true;
+        const cx = at.x + 0.5;
+        const cy = at.y + 0.5;
+        this.pillar(cx, cy, '#6fc8ff');
+        this.pillar(cx, cy, '#ffcf6a');
+        this.ring(cx, cy + 0.2, '#ffe9a0', 1.2, 800);
+        this.particles.vortex(cx, cy, rm ? 8 : 30, { radius: 1.1, life: 0.9, colors: [...SPIRIT_COLORS, '#ffcf6a'], inward: true });
+        this.particles.burst(cx, cy, rm ? 6 : 24, { speed: 2.4, life: 1, size: 0.06, colors: ['#ffe9a0', '#ffcf6a', '#ff9a3a'], drag: 2, glow: true, up: 0.8 });
+        this.floaters.add('¡renace!', cx, cy - 0.5, { color: '#ffe9a0', size: 0.26, life: 1.5 });
+        if (ev.actorId === me?.playerId) { this.screenFlash('#ffe9a0', 0.7); this.shake(0.25); }
+        if (!fromFloor && ev.actorId !== me?.playerId) {
+          this.banner = { text: `${nameOf(ev.actorId)} renace`, sub: 'La Brasa vuelve como héroe', start: this.now, dur: 1800, color: '#ffe9a0' };
+        }
+        return true;
+      }
+      case 'RENEGADE_SPAWNED': {
+        const v = actor;
+        const at = ev.position ?? (v ? { x: v.x, y: v.y } : null);
+        if (v) { v.locked = false; v.alpha = 0; v.alphaTarget = 1; }
+        const mine = ev.actorId === me?.playerId;
+        if (at) {
+          const cx = at.x + 0.5;
+          const cy = at.y + 0.6;
+          this.addFx(1100, (g, p, cell) => {
+            // Portal: un óvalo rojo oscuro que se abre y se cierra.
+            const k = ease.pulse(Math.min(1, p * 1.2));
+            g.globalAlpha = k * 0.85;
+            g.fillStyle = '#1a0302';
+            g.beginPath();
+            g.ellipse(cx * cell, cy * cell, cell * 0.5 * k, cell * 0.2 * k, 0, 0, Math.PI * 2);
+            g.fill();
+            g.globalCompositeOperation = 'lighter';
+            g.globalAlpha = k * 0.7;
+            g.drawImage(glow('#ff2a1a'), (cx - 0.9) * cell, (cy - 0.9) * cell, cell * 1.8, cell * 1.8);
+            g.globalCompositeOperation = 'source-over';
+            g.globalAlpha = 1;
+          });
+          this.particles.vortex(cx, cy, rm ? 8 : 30, { radius: 0.2, life: 1.1, size: 0.07, colors: BLOOD_COLORS, inward: false });
+          this.ring(cx, cy, '#ff4a3a', 1.1, 700);
+          this.floaters.add('¡Renegado!', cx, cy - 0.7, { color: '#ff8a7a', size: 0.26, life: 1.5 });
+        }
+        this.shake(0.3);
+        this.screenFlash('#a8160e', mine ? 0.7 : 0.4);
+        // Cada héroe activo gana +1 de escudo al aparecer un Renegado.
+        const meV = me ? this.ents.get(me.playerId) : null;
+        if (!mine && me?.state === 'ALIVE' && meV) {
+          this.guardBubble(meV, false, '#8fd0ff');
+          const [mx, my] = this.center(meV);
+          this.floaters.add('+1 ⛨', mx, my - 0.4, { color: '#9ad8ff', size: 0.24, delay: 0.3 });
+        }
+        if (!fromFloor) {
+          this.banner = mine
+            ? { text: 'Vuelves como Renegado', sub: 'Del lado de la mazmorra: los monstruos no te atacan', start: this.now, dur: 2400, color: '#ff8a7a' }
+            : { text: '¡Un Renegado aparece!', sub: `${nameOf(ev.actorId)} vuelve del lado de la mazmorra`, start: this.now, dur: 2200, color: '#ff8a7a' };
+        }
+        return true;
+      }
+      case 'RENEGADE_DEFEATED': {
+        if (!target) return true;
+        const [cx, cy] = this.center(target);
+        this.ring(cx, cy, '#ff4a3a', 1.2, 600);
+        this.particles.burst(cx, cy, rm ? 8 : 30, { speed: 3, life: 0.9, size: 0.07, colors: [...BLOOD_COLORS, '#2a0503'], drag: 2, glow: true });
+        this.floaters.add('¡Renegado derrotado!', cx, cy - 0.5, { color: '#ffd08a', size: 0.22, life: 1.5 });
+        target.downTarget = 1;
+        target.alphaTarget = 0.35;
+        this.shake(0.4);
+        if (target.isMe) this.screenFlash('#000000', 0.9);
+        return true;
+      }
+      case 'BLOCKED': {
+        if (ev.detail !== 'WARNING_SHIELD' || !target) return false;
+        // Escudo de aviso: el primer golpe del Renegado se quiebra contra un escudo rojo.
+        const [cx, cy] = this.center(target);
+        this.guardBubble(target, false, '#ff8a7a');
+        this.particles.burst(cx, cy - 0.1, rm ? 5 : 16, { speed: 2.4, life: 0.45, size: 0.05, colors: ['#ffe0d8', '#ff8a7a', '#ffffff'], drag: 4, glow: true });
+        this.floaters.add('escudo de aviso', cx, cy - 0.4, { color: '#ffb0a0', size: 0.2, life: 1.3 });
+        this.shake(0.15);
+        return true;
+      }
+      default:
+        return false;
     }
   }
 
@@ -1155,19 +1484,31 @@ export class BoardRenderer {
       v.jolt = Math.max(0, v.jolt - dt);
       if (v.trail > v.hp) v.trail = Math.max(v.hp, v.trail - dt * Math.max(1.5, v.maxHp * 0.7)); else v.trail = v.hp;
       if (v.leaving && !v.locked && v.alpha < 0.02) this.ents.delete(id);
+      // La Brasa suelta briznas azules; el Renegado, brasas rojas que suben.
+      if (v.type === 'hero' && v.alpha > 0.3) {
+        if (isSpirit(v.d) && Math.random() < dt * (rm ? 1.5 : 7)) {
+          this.particles.spawn(v.x + 0.3 + Math.random() * 0.4, v.y + 0.25 + Math.random() * 0.35, (Math.random() - 0.5) * 0.2, -0.5 - Math.random() * 0.5,
+            0.8 + Math.random() * 0.5, 0.045, SPIRIT_COLORS[Math.floor(Math.random() * 3)], 0, 0.6, true);
+        } else if (isRenegade(v.d) && Math.random() < dt * (rm ? 1 : 5)) {
+          this.particles.spawn(v.x + 0.25 + Math.random() * 0.5, v.y + 0.75, (Math.random() - 0.5) * 0.25, -0.4 - Math.random() * 0.5,
+            0.9 + Math.random() * 0.5, 0.045, BLOOD_COLORS[Math.floor(Math.random() * 3)], 0, 0.5, Math.random() < 0.6);
+        }
+      }
     }
 
-    // Visión (color) y casillas conocidas (niebla), con transición suave.
+    // Visión (color) y casillas conocidas (niebla), con transición suave. Los Faros del grupo también dan visión.
     const meV = this.state.me ? this.ents.get(this.state.me.playerId) : null;
     const mx = meV ? Math.round(meV.x) : this.state.me?.position?.x;
     const my = meV ? Math.round(meV.y) : this.state.me?.position?.y;
     const radius = visionRadius(this.state.me);
+    const beacons = isRenegade(this.state.me) ? [] : this.beacons;
     const kv = Math.min(1, dt * 5);
     for (let y = 0; y < SIZE; y++) {
       for (let x = 0; x < SIZE; x++) {
         const i = y * SIZE + x;
         const isKnown = this.tiles.has(tileKey(x, y));
-        const target = isKnown && mx !== undefined && Math.abs(x - mx) + Math.abs(y - my) <= radius ? 1 : 0;
+        const lit = beacons.some((b) => Math.abs(x - b.x) + Math.abs(y - b.y) <= BEACON_RADIUS);
+        const target = isKnown && ((mx !== undefined && Math.abs(x - mx) + Math.abs(y - my) <= radius) || lit) ? 1 : 0;
         this.vision[i] += (target - this.vision[i]) * kv;
         const kt = isKnown ? 1 : 0;
         if (this.known[i] !== kt) {
@@ -1225,6 +1566,7 @@ export class BoardRenderer {
     this.drawObjects(g, cell);
     this.drawLighting(g, cell);
     this.drawFog(g);
+    this.drawBeacons(g, cell);
     this.drawTelegraphs(g, cell);
     this.drawPreview(g, cell);
     this.drawOrder(g, cell);
@@ -1357,21 +1699,39 @@ export class BoardRenderer {
     }
     for (const v of this.ents.values()) {
       if (v.type !== 'hero' || v.isMe || v.alpha < 0.1) continue;
-      const r = cell * 1.1;
+      const r = cell * (isSpirit(v.d) ? 1.4 : 1.1);
       l.globalAlpha = 0.6 * v.alpha;
       l.drawImage(white, (v.x + 0.5) * cell - r, (v.y + 0.5) * cell - r, r * 2, r * 2);
+    }
+    const beacons = isRenegade(this.state.me) ? [] : this.beacons;
+    for (const b of beacons) {
+      const r = (BEACON_RADIUS + 1.2) * cell * flick;
+      l.globalAlpha = 0.9;
+      l.drawImage(white, (b.x + 0.5) * cell - r, (b.y + 0.5) * cell - r, r * 2, r * 2);
     }
     l.globalAlpha = 1;
     g.drawImage(this.light, 0, 0);
 
-    // Calor: un toque aditivo anaranjado.
+    // Calor: un toque aditivo anaranjado (azul para la Brasa, rojo para el Renegado).
     g.globalCompositeOperation = 'lighter';
     const warm = glow('#ff8a3a');
     if (meV) {
       const r = (visionRadius(this.state.me) + 0.5) * cell * flick;
       const [cx, cy] = this.center(meV);
       g.globalAlpha = 0.13;
-      g.drawImage(warm, cx * cell - r, cy * cell - r, r * 2, r * 2);
+      g.drawImage(isSpirit(meV.d) ? glow('#4aa8ff') : isRenegade(meV.d) ? glow('#ff3a2a') : warm, cx * cell - r, cy * cell - r, r * 2, r * 2);
+    }
+    for (const v of this.ents.values()) {
+      if (v.type !== 'hero' || v.alpha < 0.1 || !(isSpirit(v.d) || isRenegade(v.d))) continue;
+      const r = cell * (isSpirit(v.d) ? 1.5 : 1.2) * flick;
+      const [cx, cy] = this.center(v);
+      g.globalAlpha = (isSpirit(v.d) ? 0.28 : 0.22) * v.alpha;
+      g.drawImage(glow(isSpirit(v.d) ? '#4aa8ff' : '#ff2a1a'), cx * cell - r, cy * cell - r, r * 2, r * 2);
+    }
+    for (const b of beacons) {
+      const r = (BEACON_RADIUS + 0.8) * cell * flick;
+      g.globalAlpha = 0.16;
+      g.drawImage(glow('#ffe9a0'), (b.x + 0.5) * cell - r, (b.y + 0.5) * cell - r, r * 2, r * 2);
     }
     for (const lt of this.lightTiles) {
       const r = cell * 1.3 * flick;
@@ -1400,6 +1760,36 @@ export class BoardRenderer {
     g.imageSmoothingEnabled = true;
     g.drawImage(this.fog, 0, 0, this.W, this.W);
     g.imageSmoothingEnabled = false;
+  }
+
+  /** Zona del Faro: casillas a distancia ≤2 con un brillo dorado y un borde que respira. */
+  drawBeacons(g, cell) {
+    if (!this.beacons.length || isRenegade(this.state.me)) return;
+    const pulse = this.rm ? 0.5 : 0.5 + 0.5 * Math.sin(this.t * 2.6);
+    for (const b of this.beacons) {
+      const appear = Math.min(1, (this.now - b.start) / 400);
+      for (let dy = -BEACON_RADIUS; dy <= BEACON_RADIUS; dy++) {
+        for (let dx = -BEACON_RADIUS; dx <= BEACON_RADIUS; dx++) {
+          const d = Math.abs(dx) + Math.abs(dy);
+          const x = b.x + dx;
+          const y = b.y + dy;
+          if (d > BEACON_RADIUS || !inBounds(x, y)) continue;
+          g.globalAlpha = appear * (0.07 + pulse * 0.05) * (1 - d * 0.18);
+          g.fillStyle = '#ffe9a0';
+          g.fillRect(x * cell, y * cell, cell, cell);
+          if (d === BEACON_RADIUS) {
+            g.globalAlpha = appear * (0.3 + pulse * 0.25);
+            g.strokeStyle = '#ffe9a0';
+            g.lineWidth = Math.max(1, cell * 0.025);
+            g.setLineDash([cell * 0.1, cell * 0.08]);
+            g.lineDashOffset = this.rm ? 0 : -this.t * cell * 0.2;
+            g.strokeRect(x * cell + cell * 0.08, y * cell + cell * 0.08, cell * 0.84, cell * 0.84);
+            g.setLineDash(NO_DASH);
+          }
+        }
+      }
+    }
+    g.globalAlpha = 1;
   }
 
   drawTelegraphs(g, cell) {
@@ -1478,8 +1868,15 @@ export class BoardRenderer {
     const [cx, cy] = this.center(meV);
     const color = MODE_COLORS[order.type] ?? '#ffffff';
     const pulse = this.rm ? 0.5 : 0.5 + 0.5 * Math.sin(this.t * 6);
+    if (order.type === 'GUARD' && isSpirit(s.me)) {
+      // Faro pendiente: la zona que se iluminará.
+      g.fillStyle = '#ffe9a0';
+      g.globalAlpha = 0.08 + pulse * 0.05;
+      for (const p of this.affected('GUARD', null, [])) g.fillRect(p.x * cell + 2, p.y * cell + 2, cell - 4, cell - 4);
+      g.globalAlpha = 1;
+    }
     if (order.type === 'GUARD') {
-      g.strokeStyle = color;
+      g.strokeStyle = isSpirit(s.me) ? '#ffe9a0' : color;
       g.lineWidth = cell * 0.05;
       g.setLineDash([cell * 0.16, cell * 0.1]);
       g.lineDashOffset = this.rm ? 0 : -this.t * cell * 0.3;
@@ -1529,8 +1926,110 @@ export class BoardRenderer {
     const list = this.order;
     list.length = 0;
     for (const v of this.ents.values()) if (v.alpha > 0.01) list.push(v);
-    list.sort((a, b) => a.y - b.y || (a.isMe ? 1 : 0) - (b.isMe ? 1 : 0));
-    for (const v of list) this.drawEntity(g, cell, v);
+    // La Brasa flota por encima de quien comparta su casilla.
+    list.sort((a, b) => a.y + (isSpirit(a.d) ? 0.5 : 0) - b.y - (isSpirit(b.d) ? 0.5 : 0) || (a.isMe ? 1 : 0) - (b.isMe ? 1 : 0));
+    for (const v of list) {
+      if (v.type === 'hero' && isSpirit(v.d)) this.drawSpirit(g, cell, v);
+      else this.drawEntity(g, cell, v);
+    }
+  }
+
+  /** Brasa errante: llama azul translúcida que flota y titila, sin sombra sólida ni barra de vida. */
+  drawSpirit(g, cell, v) {
+    const rm = this.rm;
+    const t = this.t;
+    const d = v.d;
+    const alpha = v.alpha;
+    const cx = (v.x + 0.5 + v.ox) * cell;
+    const bob = rm ? 0 : Math.sin(t * 2.3 + v.seed) * 0.05;
+    const lift = (0.2 + bob + v.hop) * cell;
+    const feet = (v.y + 0.5 + v.oy) * cell + cell * 0.36;
+    const flick = rm ? 1 : 0.85 + 0.15 * Math.sin(t * 11 + v.seed) + 0.06 * Math.sin(t * 27);
+
+    // Reflejo azul en el suelo en lugar de sombra.
+    g.globalAlpha = alpha * 0.3;
+    g.fillStyle = '#2a6fd0';
+    g.beginPath();
+    g.ellipse(cx, feet, cell * 0.26, cell * 0.08, 0, 0, Math.PI * 2);
+    g.fill();
+    g.globalAlpha = alpha * (v.isMe ? 0.75 : 0.5);
+    g.strokeStyle = v.isMe ? '#ffd36a' : '#6fc8ff';
+    g.lineWidth = Math.max(1.5, cell * (v.isMe ? 0.04 : 0.025));
+    g.setLineDash([cell * 0.08, cell * 0.06]);
+    g.lineDashOffset = rm ? 0 : -t * cell * 0.15;
+    g.beginPath();
+    g.ellipse(cx, feet, cell * 0.34, cell * 0.12, 0, 0, Math.PI * 2);
+    g.stroke();
+    g.setLineDash(NO_DASH);
+
+    // Halo, llama (tres cuadros) y un segundo pase aditivo que la hace brillar.
+    const cy = feet - lift - cell * 0.32;
+    g.globalCompositeOperation = 'lighter';
+    g.globalAlpha = alpha * 0.55 * flick;
+    const halo = cell * 0.8;
+    g.drawImage(glow('#3f9ae8'), cx - halo, cy - halo, halo * 2, halo * 2);
+    g.globalCompositeOperation = 'source-over';
+    const frame = rm ? 0 : Math.floor(t * 7 + v.seed) % 3;
+    const sp = sprite(`EMBER_SPIRIT_${frame}`);
+    if (sp) {
+      const scale = this.spriteScale;
+      const size = 18 * scale;
+      const stretch = rm ? 1 : 1 + 0.05 * Math.sin(t * 9 + v.seed);
+      g.save();
+      g.translate(Math.round(cx), Math.round(feet - lift));
+      g.scale(1 / stretch, stretch);
+      g.globalAlpha = alpha * 0.78;
+      g.drawImage(sp.base, -size / 2, -size + scale, size, size);
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = alpha * 0.3 * flick;
+      g.drawImage(sp.base, -size / 2, -size + scale, size, size);
+      if (v.flash > 0) { g.globalAlpha = alpha * Math.min(1, v.flash); g.drawImage(sp.white, -size / 2, -size + scale, size, size); }
+      g.restore();
+      g.globalCompositeOperation = 'source-over';
+    }
+    g.globalAlpha = 1;
+    if (alpha < 0.15) return;
+
+    // Quién es: marca dorada si es la propia; si no, la inicial en un círculo azul.
+    const headY = feet - lift - cell * 0.9;
+    if (v.isMe) {
+      const s = cell * 0.09;
+      const b = rm ? 0 : Math.sin(t * 4) * cell * 0.03;
+      g.globalAlpha = alpha;
+      g.fillStyle = '#ffd36a';
+      g.strokeStyle = '#120806';
+      g.lineWidth = Math.max(1, cell * 0.02);
+      g.beginPath();
+      g.moveTo(cx - s, headY - s * 1.6 + b);
+      g.lineTo(cx + s, headY - s * 1.6 + b);
+      g.lineTo(cx, headY + b);
+      g.closePath();
+      g.fill();
+      g.stroke();
+    } else if (d.displayName) {
+      this.drawBadge(g, cell, cx - cell * 0.36, feet - cell * 0.7, d.displayName.slice(0, 1).toUpperCase(), '#6fc8ff', alpha);
+    }
+    g.globalAlpha = 1;
+  }
+
+  /** Insignia redonda con una letra o un símbolo en la esquina de la casilla. */
+  drawBadge(g, cell, bx, by, text, color, alpha, ink = '#120806') {
+    const r = cell * 0.12;
+    g.globalAlpha = alpha * 0.95;
+    g.fillStyle = '#120806';
+    g.beginPath();
+    g.arc(bx, by, r + Math.max(1, cell * 0.02), 0, Math.PI * 2);
+    g.fill();
+    g.fillStyle = color;
+    g.beginPath();
+    g.arc(bx, by, r, 0, Math.PI * 2);
+    g.fill();
+    g.font = `900 ${Math.round(cell * 0.16)}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillStyle = ink;
+    g.fillText(text, bx, by + cell * 0.01);
+    g.globalAlpha = 1;
   }
 
   drawEntity(g, cell, v) {
@@ -1538,6 +2037,7 @@ export class BoardRenderer {
     const t = this.t;
     const d = v.d;
     const kind = v.type === 'hero' ? d.hero : d.kind;
+    const renegade = v.type === 'hero' && isRenegade(d);
     const sp = sprite(kind);
     const boss = kind === 'CELADOR';
     const stealth = v.isMe && d.stealthRoundsLeft > 0;
@@ -1556,7 +2056,28 @@ export class BoardRenderer {
     g.beginPath();
     g.ellipse(cx, feet, cell * (boss ? 0.42 : 0.3), cell * 0.1, 0, 0, Math.PI * 2);
     g.fill();
-    if (v.type === 'hero' && v.downT < 0.5) {
+    if (renegade && v.downT < 0.5) {
+      // Renegado: aura roja que late y anillo de enemigo (también para sí mismo).
+      const pulse = rm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3.4 + v.seed);
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = alpha * (0.3 + pulse * 0.25);
+      g.drawImage(glow('#ff2a1a'), cx - cell * 0.75, cy - cell * 0.85, cell * 1.5, cell * 1.5);
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = alpha * (0.6 + pulse * 0.35);
+      g.strokeStyle = '#ff4a3a';
+      g.lineWidth = Math.max(1.5, cell * 0.045);
+      g.beginPath();
+      g.ellipse(cx, feet, cell * (0.36 + pulse * 0.03), cell * 0.13, 0, 0, Math.PI * 2);
+      g.stroke();
+      if (v.isMe) {
+        g.globalAlpha = alpha * 0.8;
+        g.strokeStyle = '#ffd36a';
+        g.lineWidth = Math.max(1, cell * 0.02);
+        g.beginPath();
+        g.ellipse(cx, feet, cell * 0.42, cell * 0.16, 0, 0, Math.PI * 2);
+        g.stroke();
+      }
+    } else if (v.type === 'hero' && v.downT < 0.5) {
       const color = v.isMe ? '#ffd36a' : HERO_COLORS[kind] ?? '#cccccc';
       const pulse = v.isMe && !rm ? 0.5 + 0.5 * Math.sin(t * 3.2) : 0.5;
       g.globalAlpha = alpha * (v.isMe ? 0.55 + pulse * 0.4 : 0.55);
@@ -1598,6 +2119,10 @@ export class BoardRenderer {
       const down = v.downT;
       g.globalAlpha = alpha * (1 - down);
       if (down < 0.99) g.drawImage(sp.base, ox, oy, size, size);
+      if (renegade && down < 0.99) {
+        g.globalAlpha = alpha * (1 - down) * (rm ? 0.45 : 0.38 + 0.14 * Math.sin(t * 3.4 + v.seed));
+        g.drawImage(sp.blood, ox, oy, size, size);
+      }
       if (down > 0.01) { g.globalAlpha = alpha * down; g.drawImage(sp.gray, ox, oy, size, size); }
       if (v.frozen) { g.globalAlpha = alpha * 0.6; g.drawImage(sp.ice, ox, oy, size, size); }
       if (v.flash > 0) { g.globalAlpha = alpha * Math.min(1, v.flash); g.drawImage(sp.white, ox, oy, size, size); }
@@ -1613,7 +2138,7 @@ export class BoardRenderer {
     // Mirada: un chevrón en el borde de la casilla.
     const dir = DIRS[v.facing];
     if (dir && v.downT < 0.5) {
-      const color = v.type === 'enemy' ? '#ff8a7a' : v.isMe ? '#ffffff' : HERO_COLORS[kind] ?? '#dddddd';
+      const color = v.type === 'enemy' || (renegade && !v.isMe) ? '#ff8a7a' : v.isMe ? '#ffffff' : HERO_COLORS[kind] ?? '#dddddd';
       const fx = cx + dir[0] * cell * 0.47;
       const fy = cy + dir[1] * cell * 0.47;
       const s = cell * 0.085;
@@ -1633,8 +2158,16 @@ export class BoardRenderer {
 
     this.drawHp(g, cell, v, cx, feet, boss, alpha);
 
-    // Quién es quién: marca dorada sobre el propio; nombre sobre los aliados.
+    // Quién es quién: marca dorada sobre el propio; nombre sobre los aliados. El Renegado lleva además una
+    // calavera roja de enemigo (la ve también él mismo).
     const headY = feet - lift - (boss ? 1.25 : 0.86) * cell;
+    if (renegade && v.downT < 0.5) {
+      this.drawBadge(g, cell, cx + cell * 0.36, cy - cell * 0.34, '☠', '#ff4a3a', alpha, '#1a0302');
+      if (!v.isMe) {
+        this.drawBadge(g, cell, cx - cell * 0.36, cy - cell * 0.34, (d.displayName ?? '?').slice(0, 1).toUpperCase(), '#ff8a7a', alpha);
+        return this.drawDownMark(g, cell, v, cx, cy, alpha);
+      }
+    }
     if (v.isMe) {
       if (v.downT >= 0.5) return this.drawDownMark(g, cell, v, cx, cy, alpha);
       const bob = rm ? 0 : Math.sin(t * 4) * cell * 0.03;
@@ -1709,7 +2242,8 @@ export class BoardRenderer {
     g.fillStyle = '#3a1612';
     g.fillRect(x0, y0, w, h);
     if (trail > ratio) { g.fillStyle = '#fff3d0'; g.fillRect(x0, y0, w * trail, h); }
-    g.fillStyle = v.type === 'enemy' ? '#e2574a' : ratio > 0.5 ? '#6cd38a' : ratio > 0.25 ? '#e8c15a' : '#e2675a';
+    const hostile = v.type === 'enemy' || (isRenegade(v.d) && !v.isMe);
+    g.fillStyle = hostile ? '#e2574a' : ratio > 0.5 ? '#6cd38a' : ratio > 0.25 ? '#e8c15a' : '#e2675a';
     g.fillRect(x0, y0, w * ratio, h);
     g.fillStyle = 'rgba(255,255,255,0.25)';
     g.fillRect(x0, y0, w * ratio, Math.max(1, h * 0.3));
