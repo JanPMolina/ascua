@@ -27,6 +27,14 @@ internal static class EnemyTurn
                 continue;
             }
 
+            if (enemy.Delayed)
+            {
+                // Estorbo de una Brasa: el anuncio se conserva y se ejecuta la ronda siguiente.
+                ctx.Update(enemy with { Delayed = false });
+                ctx.SkippingEnemies.Add(id);
+                continue;
+            }
+
             if (enemy.Telegraph.IsEmpty)
             {
                 continue;
@@ -74,7 +82,10 @@ internal static class EnemyTurn
         }
     }
 
-    /// <summary>Objetivo: el héroe activo y visible (no en sigilo) más cercano; en empate, menor asiento.</summary>
+    /// <summary>
+    /// Objetivo: el héroe activo y visible (no en sigilo) más cercano; en empate, menor asiento. Los Renegados
+    /// y las Brasas no son objetivo: los monstruos no los atacan.
+    /// </summary>
     private static Hero? FindTarget(RoundContext ctx, Enemy enemy) =>
         ctx.Heroes
             .Where(h => h.IsActive && !h.IsStealthed)

@@ -63,6 +63,10 @@ public sealed record Enemy
     public ImmutableList<Position> Telegraph { get; init; } = [];
 
     public bool Frozen { get; init; }
+
+    /// <summary>Estorbo de una Brasa: su ataque anunciado se ejecuta una ronda más tarde.</summary>
+    public bool Delayed { get; init; }
+
     public int BurnRounds { get; init; }
     public int BurnDamage { get; init; }
 

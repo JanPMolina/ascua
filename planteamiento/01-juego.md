@@ -56,7 +56,7 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 
 - **Vida a 0 → *Caído*.** El héroe no actúa y conserva sus ascuas.
 - **Levantar:** un aliado adyacente usa `INTERACTUAR` para levantarlo con 2 de vida y gana **+2 ascuas**. Esto incentiva cooperar.
-- **3 rondas caído sin que nadie lo levante → *Extinto*.** Queda fuera de la partida y **pierde la mitad de sus ascuas**.
+- **3 rondas caído sin que nadie lo levante → *Extinto*.** Sus ascuas pasan a ser **ascuas guardadas** y elige camino: **Amistad** (Brasa errante que ayuda al grupo y renace al bajar de piso) o **Venganza** (Renegado del lado de la mazmorra). Cada extinción vuelve a abrir la elección. Reglas completas en [04-caminos-tras-morir.md](04-caminos-tras-morir.md).
 - **Desconexión:** periodo de gracia de **60 s** (configurable). Durante la gracia, el servidor aplica `GUARDAR` en cada ronda.
 - **Abandono:** si la gracia vence, el héroe se retira y pierde todas sus ascuas. Si quedan menos de 1 humano activo, la partida termina como *abandonada*.
 
@@ -70,11 +70,15 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 | Golpe final al Celador | +5 |
 | Pacto secreto cumplido (se revela al final) | +4 |
 | Golpear a un aliado | +1 robada al aliado |
+| Renacer como Brasa errante | ⌈guardadas × (25% + 8% × ecos)⌉, tope 85% ([04](04-caminos-tras-morir.md)) |
+| Volver como Renegado | ⌈guardadas / 2⌉; +1 robada por golpe a un héroe, +2 por dejarlo caído |
+| Derrotar a un Renegado | +2 |
 
 ## 7. Fin de partida
 
-- **El Celador cae:** gana quien tenga **más ascuas** entre los no extintos. Si hay empate en el máximo, la partida termina en **empate** entre ellos.
-- **Todos caídos o extintos, o el límite de rondas se agota:** **derrota colectiva**. Se registra como empate de tipo "el Umbral se apagó".
+- **El Celador cae:** gana quien tenga **más ascuas** entre los no extintos, las Brasas errantes y los Renegados en pie. Si hay empate en el máximo, la partida termina en **empate** entre ellos.
+- **Todos los héroes caídos o extintos con algún Renegado en pie:** **«El Umbral reclama»** (`THRESHOLD_CLAIMED`): ganan los Renegados en pie, el de más ascuas (ver [04-caminos-tras-morir.md](04-caminos-tras-morir.md)).
+- **Todos caídos o extintos sin Renegados en pie, o el límite de rondas se agota:** **derrota colectiva**. Se registra como empate de tipo "el Umbral se apagó".
 - El resultado es **inmutable** y la partida se puede **reproducir ronda a ronda** desde el log de eventos.
 
 ## 8. Información oculta (requisito de seguridad)
@@ -84,6 +88,7 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 | Orden de la ronda en curso | Solo su autor, hasta la resolución |
 | **Pacto secreto**, uno por jugador, asignado al azar | Solo su dueño; se revela al final |
 | Opciones del draft de bendiciones (1 entre 2) | Solo el que elige |
+| Elección de camino, ecos y ascuas guardadas ([04](04-caminos-tras-morir.md)) | Solo su dueño (el camino se revela al resolver la ronda) |
 | Bendiciones obtenidas | Su dueño; los demás ven solo cuántas tiene |
 | Contenido de un cofre | Solo quien lo abre |
 | Casillas fuera de tu visión | Nadie las recibe, ni siquiera "ocultas" en el JSON |
@@ -186,7 +191,7 @@ Decisiones tomadas al implementar el motor (`src/Ascua.Domain`) donde el texto e
 - Tótem: invoca un carroñero en las rondas 3, 6 y 9 desde que está activo y después desaparece.
 
 **Ascuas, caídas y fin**
-- Extinguirse (3 rondas completas caído, o grieta) quita `ascuas / 2` (redondeo hacia abajo).
+- Extinguirse (3 rondas completas caído, o grieta) ya no quita ascuas: pasan a ser ascuas guardadas y se elige camino (detalles e implementación en [04-caminos-tras-morir.md](04-caminos-tras-morir.md)).
 - El robo por fuego amigo solo ocurre si el golpe conecta y la víctima tiene ascuas.
 - Pacto "golpear a un aliado 2 veces sin que te descubran": cuenta los golpes a un aliado **por la espalda**.
 - Los pactos se revelan siempre al terminar; el +4 solo decide el ganador cuando cae el Celador. Si el Celador cae, gana el máximo de `ascuas + pacto` entre los héroes no extintos ni retirados.
@@ -195,7 +200,7 @@ Decisiones tomadas al implementar el motor (`src/Ascua.Domain`) donde el texto e
 
 **Draft y validación**
 - El draft inicial (2 opciones privadas por jugador) y el de los altares se resuelven con `MatchRules.ChooseBlessing`; `AutoChooseBlessings` elige la primera opción si vence el plazo. La partida pasa a `InProgress` cuando todos eligieron.
-- Una orden inválida que llegue al resolver se trata como `GUARDAR`. Códigos de error estables: `INVALID_ORDER`, `NOT_A_PARTICIPANT`, `PLAYER_DOWN`, `PLAYER_OUT`, `STALE_ROUND`, `MATCH_NOT_IN_PROGRESS`, `SKILL_ON_COOLDOWN`, `INVALID_DRAFT_CHOICE`.
+- Una orden inválida que llegue al resolver se trata como `GUARDAR`. Códigos de error estables: `INVALID_ORDER`, `NOT_A_PARTICIPANT`, `PLAYER_DOWN`, `PLAYER_OUT`, `STALE_ROUND`, `MATCH_NOT_IN_PROGRESS`, `SKILL_ON_COOLDOWN`, `INVALID_DRAFT_CHOICE`, `NO_PATH_OFFER`, `INVALID_PATH_CHOICE`.
 
 **Información oculta**
 - Cada evento lleva su audiencia (todos, un jugador o quien vea la casilla). `PlayerViewProjector.VisibleEvents` filtra con la visión del estado ya resuelto, recorta los anuncios a las casillas visibles y oculta al autor de un golpe si está en sigilo.

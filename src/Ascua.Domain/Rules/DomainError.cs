@@ -13,6 +13,11 @@ public enum ErrorCode
     MatchNotInProgress,
     SkillOnCooldown,
     InvalidDraftChoice,
+
+    /// <summary>No hay una elección de camino abierta (no está extinto, ya eligió o ya se reveló).</summary>
+    NoPathOffer,
+
+    InvalidPathChoice,
 }
 
 /// <summary>Error de dominio tipado. <see cref="Code"/> es estable y es lo que viaja al cliente.</summary>
@@ -28,6 +33,8 @@ public sealed record DomainError(ErrorCode Kind, string Message)
         ErrorCode.MatchNotInProgress => "MATCH_NOT_IN_PROGRESS",
         ErrorCode.SkillOnCooldown => "SKILL_ON_COOLDOWN",
         ErrorCode.InvalidDraftChoice => "INVALID_DRAFT_CHOICE",
+        ErrorCode.NoPathOffer => "NO_PATH_OFFER",
+        ErrorCode.InvalidPathChoice => "INVALID_PATH_CHOICE",
         _ => "UNKNOWN",
     };
 }

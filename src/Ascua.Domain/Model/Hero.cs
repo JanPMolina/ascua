@@ -25,11 +25,17 @@ public enum HeroStatus
     /// <summary>Caído: vida 0, no actúa; puede ser levantado.</summary>
     Down,
 
-    /// <summary>Extinto: fuera de la partida.</summary>
+    /// <summary>Extinto: fuera del tablero; elige camino (planteamiento/04-caminos-tras-morir.md).</summary>
     Extinct,
 
     /// <summary>Retirado por abandono (venció la gracia de desconexión).</summary>
     Retired,
+
+    /// <summary>Brasa errante (Camino de la Amistad): espíritu intangible que ayuda al grupo y gana ecos.</summary>
+    EmberSpirit,
+
+    /// <summary>Renegado (Camino de la Venganza): vuelve con su héroe del lado de la mazmorra.</summary>
+    Renegade,
 }
 
 public sealed record HeroStats(int MaxHp, int Range, int Damage, int Initiative, int SkillCooldown, int BlockPercent);
@@ -76,14 +82,86 @@ public sealed record Hero
     public PactKind Pact { get; init; }
     public PactProgress Progress { get; init; } = new();
 
+    /// <summary>Ascuas apartadas al extinguirse; cada camino decide cuántas recupera (privado).</summary>
+    public int SavedEmbers { get; init; }
+
+    /// <summary>Ecos ganados como Brasa errante (privado). Suben el porcentaje de ascuas al renacer.</summary>
+    public int Echoes { get; init; }
+
+    /// <summary>Veces que se extinguió; identifica cada oferta de camino.</summary>
+    public int Extinctions { get; init; }
+
+    /// <summary>Extinto con una elección de camino abierta (se revela al resolver la ronda siguiente).</summary>
+    public bool PathOfferPending { get; init; }
+
+    /// <summary>Camino elegido y aún no revelado (privado hasta que se resuelve la ronda).</summary>
+    public PathKind? PathChoice { get; init; }
+
+    /// <summary>Brasa: enfriamiento de Estorbo (el de Avivar es <see cref="SkillCooldown"/>).</summary>
+    public int HinderCooldown { get; init; }
+
+    /// <summary>Rondas que faltan para que la Calidez de una Brasa pueda volver a curar a este héroe.</summary>
+    public int WarmthCooldown { get; init; }
+
+    /// <summary>Brasas que dieron cada punto de escudo de Avivar (uno por punto; se consumen primero).</summary>
+    public ImmutableList<PlayerId> EmberShieldBy { get; init; } = [];
+
+    /// <summary>Brasa: usó Faro esta ronda (ilumina un radio de 2 para el grupo hasta la próxima resolución).</summary>
+    public bool BeaconActive { get; init; }
+
+    /// <summary>Renegado que todavía no reapareció (espera la sala siguiente o su ronda en la del Celador).</summary>
+    public bool AwaitingSpawn { get; init; }
+
+    /// <summary>Renegado en la sala del Celador: ronda en la que reaparece (0 = al entrar a la sala siguiente).</summary>
+    public int SpawnRound { get; init; }
+
+    /// <summary>Héroes a los que este Renegado ya dio su primer golpe (lo absorbió el escudo de aviso).</summary>
+    public ImmutableList<PlayerId> WarnedHeroes { get; init; } = [];
+
     public HeroStats Stats => HeroCatalog.For(Class);
     public int MaxHp => Stats.MaxHp + (Has(Blessing.DoubleHeart) ? 2 : 0) - (Has(Blessing.StoneFist) ? 1 : 0);
-    public int Damage => Stats.Damage + (Has(Blessing.StoneFist) ? 1 : 0);
+
+    /// <summary>Daño básico. El Renegado hace como máximo 1 por golpe (sin Puño de piedra).</summary>
+    public int Damage => IsRenegade ? PathRules.RenegadeMaxDamage : Stats.Damage + (Has(Blessing.StoneFist) ? 1 : 0);
+
     public int BlockPercent => Math.Max(0, Stats.BlockPercent - (Has(Blessing.DoubleHeart) ? 10 : 0));
-    public int VisionRadius => HeroCatalog.VisionRadius + (Has(Blessing.Lamp) ? 1 : 0);
+
+    public int VisionRadius =>
+        (IsEmber ? PathRules.EmberVisionRadius : HeroCatalog.VisionRadius) + (Has(Blessing.Lamp) ? 1 : 0);
+
+    /// <summary>Enfriamiento que deja la habilidad al usarse (×2 para el Renegado).</summary>
+    public int SkillCooldownOnUse => Stats.SkillCooldown * (IsRenegade ? PathRules.RenegadeCooldownFactor : 1);
+
+    /// <summary>Cargas máximas de Chispa (el Renegado tiene 2).</summary>
+    public int MaxCharges => IsRenegade ? PathRules.RenegadeMaxCharges : HeroCatalog.MaxCharges;
+
     public bool IsActive => Status == HeroStatus.Active;
-    public bool IsOnBoard => Status is HeroStatus.Active or HeroStatus.Down;
+    public bool IsEmber => Status == HeroStatus.EmberSpirit;
+    public bool IsRenegade => Status == HeroStatus.Renegade;
+
+    /// <summary>Renegado ya presente en la sala: tiene cuerpo, bloquea, ataca y puede ser derrotado.</summary>
+    public bool IsPresentRenegade => IsRenegade && !AwaitingSpawn;
+
+    /// <summary>Tiene cuerpo en el tablero: héroes activos o caídos y Renegados presentes (la Brasa es intangible).</summary>
+    public bool IsOnBoard => Status is HeroStatus.Active or HeroStatus.Down || IsPresentRenegade;
+
+    /// <summary>Da órdenes en la ronda: héroe activo, Brasa errante o Renegado presente.</summary>
+    public bool CanAct => IsActive || IsEmber || IsPresentRenegade;
+
+    /// <summary>Puede recibir daño y curación: héroe activo o Renegado presente.</summary>
+    public bool IsVulnerable => IsActive || IsPresentRenegade;
+
+    /// <summary>Extinto con la elección de camino todavía abierta (sin elegir).</summary>
+    public bool IsChoosingPath => PathOfferPending && PathChoice is null;
+
     public bool IsStealthed => StealthRounds > 0;
+
+    /// <summary>Mismo bando: el grupo (héroes, caídos, extintos y Brasas) o la mazmorra (Renegados).</summary>
+    public bool IsSameFaction(Hero other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        return IsRenegade == other.IsRenegade;
+    }
 
     public bool Has(Blessing blessing) => Blessings.Contains(blessing);
 

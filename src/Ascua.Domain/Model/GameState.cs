@@ -23,6 +23,9 @@ public enum OutcomeKind
 
     /// <summary>No queda ningún humano activo.</summary>
     Abandoned,
+
+    /// <summary>"El Umbral reclama": todos los héroes caídos o extintos con Renegados en pie; ganan ellos.</summary>
+    ThresholdClaimed,
 }
 
 public enum DefeatReason

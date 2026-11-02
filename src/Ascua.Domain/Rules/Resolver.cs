@@ -8,7 +8,8 @@ namespace Ascua.Domain.Rules;
 /// Resolución pura y determinista de una ronda: (estado, órdenes, azar) → (estado nuevo, eventos).
 /// Orden fijo: 1) GUARDAR y escudos; 2) movimientos con rebote; 3) ataques y habilidades por
 /// iniciativa; 4) los enemigos ejecutan lo anunciado; 5) los enemigos se mueven y anuncian;
-/// 6) disparadores y limpieza.
+/// 6) disparadores y limpieza. Antes de todo se revelan los caminos elegidos en la ronda
+/// (planteamiento/04-caminos-tras-morir.md); las Brasas y los Renegados dan órdenes como los demás.
 /// </summary>
 public static class Resolver
 {
@@ -26,6 +27,7 @@ public static class Resolver
         }
 
         var ctx = new RoundContext(state, rng);
+        Paths.RevealChoices(ctx);
         var downAtStart = state.Heroes.Where(h => h.Status == HeroStatus.Down).Select(h => h.Player).ToHashSet();
         var plan = PlanOrders(ctx, orders);
 
@@ -40,12 +42,13 @@ public static class Resolver
     }
 
     /// <summary>
-    /// Orden efectiva de cada héroe activo. Faltante o inválida → GUARDAR. Congelado → pierde la acción.
+    /// Orden efectiva de cada héroe que podía actuar al abrir la ronda (activo, Brasa o Renegado presente).
+    /// Faltante o inválida → GUARDAR (Faro, para la Brasa). Congelado → pierde la acción.
     /// </summary>
     private static Dictionary<PlayerId, Order> PlanOrders(RoundContext ctx, IReadOnlyDictionary<PlayerId, Order> orders)
     {
         var plan = new Dictionary<PlayerId, Order>();
-        foreach (var hero in ctx.Heroes.Where(h => h.IsActive).OrderBy(h => h.Seat).ToList())
+        foreach (var hero in ctx.Heroes.Where(h => h.CanAct && ctx.Start.FindHero(h.Player)!.CanAct).OrderBy(h => h.Seat).ToList())
         {
             if (hero.Frozen)
             {
@@ -71,6 +74,16 @@ public static class Resolver
         foreach (var (player, order) in plan)
         {
             var hero = ctx.Hero(player);
+            if (hero.IsEmber)
+            {
+                if (order.Type == OrderType.Guard)
+                {
+                    Paths.Beacon(ctx, hero);
+                }
+
+                continue;
+            }
+
             if (order.Type == OrderType.Guard)
             {
                 ctx.Guarding.Add(player);
@@ -79,7 +92,7 @@ public static class Resolver
             else if (order is { Type: OrderType.Skill, Direction: { } direction } && hero.Class == HeroClass.Yunque)
             {
                 ctx.Ramparts[player] = direction;
-                ctx.Update(hero with { Facing = direction, SkillCooldown = hero.Stats.SkillCooldown });
+                ctx.Update(hero with { Facing = direction, SkillCooldown = hero.SkillCooldownOnUse });
                 ctx.Emit(new SkillUsed(player, hero.Class, direction) { Audience = RoundContext.AudienceOf(hero) });
             }
         }

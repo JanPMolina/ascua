@@ -182,7 +182,9 @@ public static class MatchHistoryEndpoints
             null => null,
             OutcomeKind.Victory when outcome.Winners.Contains(player) => "VICTORY",
             OutcomeKind.Draw when outcome.Winners.Contains(player) => "DRAW",
-            OutcomeKind.Victory or OutcomeKind.Draw => "DEFEAT",
+            OutcomeKind.ThresholdClaimed when outcome.Winners.Count > 1 && outcome.Winners.Contains(player) => "DRAW",
+            OutcomeKind.ThresholdClaimed when outcome.Winners.Contains(player) => "VICTORY",
+            OutcomeKind.Victory or OutcomeKind.Draw or OutcomeKind.ThresholdClaimed => "DEFEAT",
             OutcomeKind.CollectiveDefeat => "COLLECTIVE_DEFEAT",
             _ => "ABANDONED",
         };

@@ -88,7 +88,7 @@ public sealed class MovementTests
     }
 
     [Fact]
-    public void Falling_into_a_crack_extinguishes_the_hero_and_halves_embers()
+    public void Falling_into_a_crack_extinguishes_the_hero_and_saves_its_embers()
     {
         var room = EmptyRoom().WithTerrain(new Position(4, 3), Terrain.Crack);
         var state = State([Hero(A, HeroClass.Yunque, 4, 4, seat: 0) with { Embers = 5 }, Hero(B, HeroClass.Chispa, 0, 0, seat: 1)], room: room);
@@ -96,7 +96,10 @@ public sealed class MovementTests
         var (next, events) = Resolve(state, (A, Move(Direction.North)));
 
         Assert.Equal(HeroStatus.Extinct, next.H(A).Status);
-        Assert.Equal(3, next.H(A).Embers);
-        Assert.Contains(events, e => e is HeroExtinguished { Reason: ExtinctionReason.Chasm, EmbersLost: 2 });
+        Assert.Equal(0, next.H(A).Embers);
+        Assert.Equal(5, next.H(A).SavedEmbers);
+        Assert.True(next.H(A).IsChoosingPath);
+        Assert.Contains(events, e => e is HeroExtinguished { Reason: ExtinctionReason.Chasm, EmbersLost: 0 });
+        Assert.Contains(events, e => e is PathOffered { Extinctions: 1, SavedEmbers: 5 });
     }
 }

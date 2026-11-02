@@ -29,7 +29,7 @@ internal static class Combat
     public static bool HitHero(RoundContext ctx, PlayerId targetId, int baseDamage, Attacker attacker)
     {
         var target = ctx.Hero(targetId);
-        if (!target.IsActive || baseDamage <= 0)
+        if (!target.IsVulnerable || baseDamage <= 0)
         {
             return false;
         }
@@ -52,11 +52,26 @@ internal static class Combat
             return false;
         }
 
-        var friendly = attacker.Hero is { } attackerId && attackerId != targetId;
+        var source = attacker.Hero is { } sourceId && sourceId != targetId ? ctx.Hero(sourceId) : null;
+        var friendly = source is not null && source.IsSameFaction(target);
+        var renegadeStrike = source is { IsRenegade: true } && !target.IsRenegade;
         var damage = baseDamage;
         if (friendly)
         {
             damage = (damage + 1) / 2;
+        }
+
+        if (renegadeStrike)
+        {
+            // El primer golpe del Renegado a cada héroe lo absorbe el escudo de aviso; los demás hacen como máximo 1.
+            if (!source!.WarnedHeroes.Contains(targetId))
+            {
+                ctx.Update(source with { WarnedHeroes = source.WarnedHeroes.Add(targetId) });
+                ctx.Emit(new HitPrevented(targetRef, attacker.Ref, PreventionReason.WarningShield) { Audience = audience });
+                return false;
+            }
+
+            damage = Math.Min(damage, PathRules.RenegadeMaxDamage);
         }
 
         if (ctx.Guarding.Contains(targetId))
@@ -76,19 +91,42 @@ internal static class Combat
         }
 
         var absorbed = Math.Min(target.Shield, damage);
+        var kindled = target.EmberShieldBy.Take(Math.Min(absorbed, target.EmberShieldBy.Count)).ToList();
         var hp = Math.Max(0, target.Hp - (damage - absorbed));
-        target = target with { Shield = target.Shield - absorbed, Hp = hp };
+        target = target with
+        {
+            Shield = target.Shield - absorbed,
+            Hp = hp,
+            EmberShieldBy = target.EmberShieldBy.RemoveRange(0, kindled.Count),
+        };
         ctx.Emit(new EntityDamaged(targetRef, damage, attacker.Ref, hp) { Audience = audience });
-        if (hp == 0)
+        var defeated = hp == 0 && target.IsRenegade;
+        if (hp == 0 && !defeated)
         {
             target = Fall(ctx, target);
         }
 
         ctx.Update(target);
 
+        // Cada punto que absorbió el escudo de Avivar da un eco a la Brasa que lo dio.
+        foreach (var ember in kindled)
+        {
+            ctx.GainEchoes(ember, 1, EchoReason.ShieldAbsorbed);
+        }
+
         if (friendly)
         {
             OnFriendlyFire(ctx, attacker, targetId);
+        }
+        else if (renegadeStrike)
+        {
+            OnRenegadeStrike(ctx, source!.Player, targetId);
+        }
+
+        if (defeated)
+        {
+            DefeatRenegade(ctx, targetId, attacker.Hero);
+            return true;
         }
 
         Reflect(ctx, targetId, attacker);
@@ -129,7 +167,8 @@ internal static class Combat
         {
             ctx.Update(enemy with { Phase = 2, CrossNext = true });
             ctx.Emit(new WardenEnraged(enemy.Id));
-            foreach (var tile in ctx.FreeTilesNear(enemy.Position).Take(2))
+            // Con algún Renegado en la partida, la fase 2 invoca un solo tótem.
+            foreach (var tile in ctx.FreeTilesNear(enemy.Position).Take(ctx.Heroes.Any(h => h.IsRenegade) ? 1 : 2))
             {
                 ctx.Spawn(EnemyKind.Totem, tile);
             }
@@ -149,7 +188,7 @@ internal static class Combat
     public static void Heal(RoundContext ctx, PlayerId player, int amount)
     {
         var hero = ctx.Hero(player);
-        if (!hero.IsActive)
+        if (!hero.IsVulnerable)
         {
             return;
         }
@@ -159,21 +198,41 @@ internal static class Combat
         ctx.Emit(new Healed(EntityRef.ForHero(player), hp - hero.Hp, hp) { Audience = RoundContext.AudienceOf(hero) });
     }
 
+    /// <summary>
+    /// Extinción: ya no se pierde la mitad de las ascuas; pasan a ser ascuas guardadas y se abre la elección
+    /// de camino (privada). Vale para un héroe caído, una grieta o un Renegado derrotado.
+    /// </summary>
     public static void Extinguish(RoundContext ctx, PlayerId player, ExtinctionReason reason)
     {
         var hero = ctx.Hero(player);
-        var lost = hero.Embers / 2;
+        var saved = hero.SavedEmbers + hero.Embers;
+        var extinctions = hero.Extinctions + 1;
         ctx.Update(hero with
         {
             Status = HeroStatus.Extinct,
             Hp = 0,
-            Embers = hero.Embers - lost,
+            Shield = 0,
+            Embers = 0,
+            SavedEmbers = saved,
+            Extinctions = extinctions,
+            PathOfferPending = true,
+            PathChoice = null,
             DownRounds = 0,
             StealthRounds = 0,
             BurnRounds = 0,
             Frozen = false,
+            AwaitingSpawn = false,
+            SpawnRound = 0,
+            EmberShieldBy = [],
+            WarnedHeroes = [],
         });
-        ctx.Emit(new HeroExtinguished(player, reason, lost));
+        ctx.Emit(new HeroExtinguished(player, reason, 0));
+        if (hero.Embers > 0)
+        {
+            ctx.Emit(new EmbersChanged(player, -hero.Embers, EmberReason.Extinction, 0) { Audience = Audience.Only(player) });
+        }
+
+        ctx.Emit(new PathOffered(player, extinctions, saved) { Audience = Audience.Only(player) });
     }
 
     /// <summary>Efectos "al atacar" de las bendiciones del atacante sobre un objetivo alcanzado.</summary>
@@ -242,7 +301,7 @@ internal static class Combat
         foreach (var (yunqueId, direction) in ctx.Ramparts)
         {
             var yunque = ctx.Hero(yunqueId);
-            if (yunqueId != target.Player && yunque.IsActive && yunque.Position.IsInLine(target.Position, direction.Opposite()))
+            if (yunqueId != target.Player && yunque.IsVulnerable && yunque.IsSameFaction(target) && yunque.Position.IsInLine(target.Position, direction.Opposite()))
             {
                 return true;
             }
@@ -266,6 +325,34 @@ internal static class Combat
             GainEmbers(ctx, victimId, -FriendlyFireSteal, EmberReason.StolenByAlly);
             GainEmbers(ctx, attackerId, FriendlyFireSteal, EmberReason.StolenFromAlly);
         }
+    }
+
+    /// <summary>Golpe de un Renegado que conecta: roba 1 ascua (como el fuego amigo) y +2 si dejó caído al héroe.</summary>
+    private static void OnRenegadeStrike(RoundContext ctx, PlayerId renegadeId, PlayerId victimId)
+    {
+        var victim = ctx.Hero(victimId);
+        if (victim.Embers >= FriendlyFireSteal)
+        {
+            GainEmbers(ctx, victimId, -FriendlyFireSteal, EmberReason.StolenByAlly);
+            GainEmbers(ctx, renegadeId, FriendlyFireSteal, EmberReason.StolenFromAlly);
+        }
+
+        if (victim.Status == HeroStatus.Down)
+        {
+            GainEmbers(ctx, renegadeId, PathRules.RenegadeDownReward, EmberReason.HeroDowned);
+        }
+    }
+
+    /// <summary>Quien derrota a un Renegado gana +2 ascuas; el Renegado se extingue de nuevo y vuelve a elegir camino.</summary>
+    private static void DefeatRenegade(RoundContext ctx, PlayerId renegadeId, PlayerId? by)
+    {
+        ctx.Emit(new RenegadeDefeated(renegadeId, by));
+        if (by is { } killer && killer != renegadeId)
+        {
+            GainEmbers(ctx, killer, PathRules.RenegadeDefeatReward, EmberReason.RenegadeDefeated);
+        }
+
+        Extinguish(ctx, renegadeId, ExtinctionReason.Defeated);
     }
 
     private static void Reflect(RoundContext ctx, PlayerId targetId, Attacker attacker)
@@ -296,6 +383,11 @@ internal static class Combat
         ctx.Enemies.RemoveAll(e => e.Id == enemy.Id);
         ctx.Emit(new EnemyKilled(enemy.Id, enemy.Kind, killer) { Audience = Audience.At(enemy.Position) });
         var isWarden = enemy.Kind == EnemyKind.Warden;
+        if (killer is not null)
+        {
+            Paths.OnKill(ctx, enemy.Position);
+        }
+
         if (isWarden)
         {
             ctx.WardenSlain = true;

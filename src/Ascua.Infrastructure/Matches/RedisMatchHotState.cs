@@ -80,7 +80,7 @@ public sealed class RedisMatchHotState(IConnectionMultiplexer redis, RealtimeOpt
             [Key(snapshot.MatchId, "snap")],
             [snapshot.Version, MatchJson.Serialize(snapshot), (long)HotTtl.TotalSeconds]);
 
-        if (snapshot.Status.IsActive() && snapshot.Deadline is { } deadline)
+        if (snapshot.Status.IsActive() && snapshot.WakeAt is { } deadline)
         {
             await Db.SortedSetAddAsync(DeadlinesKey, Member(snapshot.MatchId), deadline.ToUnixTimeMilliseconds());
         }
@@ -170,6 +170,18 @@ public sealed class RedisMatchHotState(IConnectionMultiplexer redis, RealtimeOpt
     {
         ArgumentNullException.ThrowIfNull(ack);
         return Db.StringSetAsync(Key(ack.MatchId, $"draft:{userId:N}:{ack.OfferId:N}"), MatchJson.Serialize(ack), HotTtl);
+    }
+
+    public async Task<PathAck?> FindPathAckAsync(Guid matchId, Guid userId, Guid offerId, CancellationToken cancellationToken)
+    {
+        var json = await Db.StringGetAsync(Key(matchId, $"path:{userId:N}:{offerId:N}"));
+        return json.IsNullOrEmpty ? null : MatchJson.Deserialize<PathAck>(json!);
+    }
+
+    public Task SavePathAckAsync(Guid userId, PathAck ack, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(ack);
+        return Db.StringSetAsync(Key(ack.MatchId, $"path:{userId:N}:{ack.OfferId:N}"), MatchJson.Serialize(ack), HotTtl);
     }
 
     public async Task<IReadOnlyList<Guid>> DueDeadlinesAsync(DateTimeOffset now, int limit, CancellationToken cancellationToken)

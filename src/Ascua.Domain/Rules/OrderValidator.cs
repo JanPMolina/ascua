@@ -33,7 +33,7 @@ public static class OrderValidator
             return new DomainError(ErrorCode.PlayerDown, "El héroe está caído y no puede actuar.");
         }
 
-        if (!hero.IsActive)
+        if (!hero.CanAct)
         {
             return new DomainError(ErrorCode.PlayerOut, "El héroe ya no está en la partida.");
         }
@@ -49,6 +49,11 @@ public static class OrderValidator
         if (order.Type == OrderType.Skill && hero.SkillCooldown > 0)
         {
             return new DomainError(ErrorCode.SkillOnCooldown, $"La habilidad estará lista en {hero.SkillCooldown} rondas.");
+        }
+
+        if (hero.IsEmber && order.Type == OrderType.Attack && hero.HinderCooldown > 0)
+        {
+            return new DomainError(ErrorCode.SkillOnCooldown, $"Estorbo estará listo en {hero.HinderCooldown} rondas.");
         }
 
         return null;

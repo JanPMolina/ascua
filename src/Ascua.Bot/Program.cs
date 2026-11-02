@@ -48,6 +48,13 @@ foreach (var player in players)
         Console.WriteLine($"  {player.Username} elige {choice}{reply.Describe()}");
     }));
 
+    connection.On<PathOffer>("PathOffer", offer => _ = Task.Run(async () =>
+    {
+        var choice = offer.Options[Random.Shared.Next(offer.Options.Count)];
+        var reply = await connection.InvokeAsync<Reply>("ChoosePath", new { matchId, offerId = offer.OfferId, path = choice });
+        Console.WriteLine($"  {player.Username} se extinguió y elige {choice}{reply.Describe()}");
+    }));
+
     connection.On<RoundOpened>("RoundOpened", opened => _ = Task.Run(async () =>
     {
         await Task.Delay(Random.Shared.Next(Math.Max(1, maxThinkMs)));
@@ -196,6 +203,8 @@ internal sealed record Reply(ErrorBody? Error, string? Result)
 }
 
 internal sealed record DraftOffer(Guid OfferId, IReadOnlyList<string> Options);
+
+internal sealed record PathOffer(Guid OfferId, IReadOnlyList<string> Options);
 
 internal sealed record RoundOpened(int Round);
 

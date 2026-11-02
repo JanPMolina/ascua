@@ -3434,7 +3434,7 @@
               "null",
               "string"
             ],
-            "description": "Resultado global: WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, ABANDONED, EXPIRED, FAULTED; null si sigue en curso."
+            "description": "Resultado global: WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, THRESHOLD_CLAIMED (ganan los Renegados), ABANDONED, EXPIRED, FAULTED; null si sigue en curso."
           },
           "result": {
             "type": [
@@ -4313,6 +4313,81 @@
               "null",
               "object"
             ]
+          },
+          "path": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SelfPathDto"
+              }
+            ]
+          }
+        }
+      },
+      "SelfPathDto": {
+        "type": "object",
+        "properties": {
+          "offerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "choice": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "savedEmbers": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "echoes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "rebirthEmbers": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "hinderCooldown": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "awaitingSpawn": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "spawnRound": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

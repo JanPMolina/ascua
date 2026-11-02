@@ -6,7 +6,10 @@ namespace Ascua.Domain.Views;
 
 /// <summary>
 /// Filtra la información oculta (sección 8 de las reglas): niebla de radio 3 (Manhattan),
-/// sigilo, pactos, bendiciones, drafts y contenido de cofres ajenos.
+/// sigilo, pactos, bendiciones, drafts y contenido de cofres ajenos. Con los caminos
+/// (planteamiento/04-caminos-tras-morir.md): la elección, los ecos y las ascuas guardadas solo los ve
+/// su dueño; la Brasa es visible para el grupo; Renegados y héroes se ven entre sí solo dentro de la
+/// visión; el Faro de una Brasa suma visión al grupo.
 /// </summary>
 public static class PlayerViewProjector
 {
@@ -15,13 +18,13 @@ public static class PlayerViewProjector
         ArgumentNullException.ThrowIfNull(state);
         var me = state.FindHero(viewer) ?? throw new ArgumentException("El jugador no participa en esta partida.", nameof(viewer));
         var room = state.CurrentRoom;
-        bool CanSee(Position p) => IsVisible(me, p);
+        bool CanSee(Position p) => IsVisible(state, me, p);
 
         var allies = state.Heroes
             .Where(h => h.Player != viewer)
             .Select(h =>
             {
-                var shown = h.IsOnBoard && !h.IsStealthed;
+                var shown = IsShown(state, me, h);
                 return new AllyView(
                     h.Player,
                     h.Seat,
@@ -56,7 +59,7 @@ public static class PlayerViewProjector
         var fires = room.Fires.Where(f => CanSee(f.Position)).Select(f => new FireView(f.Position, f.Rounds)).ToImmutableList();
 
         var telegraphs = state.Enemies
-            .Select(e => new TelegraphView(CanSee(e.Position) ? e.Id : null, VisibleTelegraph(me, e.Telegraph)))
+            .Select(e => new TelegraphView(CanSee(e.Position) ? e.Id : null, VisibleTelegraph(state, me, e.Telegraph)))
             .Where(t => !t.Tiles.IsEmpty)
             .ToImmutableList();
 
@@ -80,7 +83,16 @@ public static class PlayerViewProjector
             me.Blessings,
             BlessingRules.SynergiesOf(me.Blessings),
             me.DraftOptions,
-            me.Pact);
+            me.Pact,
+            new PathView(
+                me.IsChoosingPath,
+                me.Extinctions,
+                me.PathChoice,
+                me.SavedEmbers,
+                me.Echoes,
+                me.HinderCooldown,
+                me.AwaitingSpawn,
+                me.AwaitingSpawn && me.SpawnRound > 0 ? me.SpawnRound : null));
 
         var outcome = state.Outcome is { } o ? new OutcomeView(o.Kind, o.Reason, o.Winners, o.Scores) : null;
 
@@ -129,8 +141,8 @@ public static class PlayerViewProjector
         var audience = domainEvent.Audience;
         if (domainEvent is AttackTelegraphed telegraphed)
         {
-            var tiles = VisibleTelegraph(me, telegraphed.Tiles);
-            var source = audience.Position is { } origin && IsVisible(me, origin) ? telegraphed.EnemyId : null;
+            var tiles = VisibleTelegraph(state, me, telegraphed.Tiles);
+            var source = audience.Position is { } origin && IsVisible(state, me, origin) ? telegraphed.EnemyId : null;
             return tiles.IsEmpty ? null : telegraphed with { EnemyId = source, Tiles = tiles };
         }
 
@@ -138,7 +150,8 @@ public static class PlayerViewProjector
         {
             AudienceKind.Everyone => true,
             AudienceKind.Player => audience.Player == me.Player,
-            AudienceKind.Location => audience.Position is { } p && IsVisible(me, p),
+            AudienceKind.Location => audience.Position is { } p && IsVisible(state, me, p),
+            AudienceKind.Group => !me.IsRenegade || (audience.Position is { } g && IsVisible(state, me, g)),
             _ => false,
         };
         if (!allowed)
@@ -150,6 +163,7 @@ public static class PlayerViewProjector
         {
             EntityDamaged damaged when HidesSource(state, me, damaged.Source) => damaged with { Source = null },
             HitPrevented prevented when HidesSource(state, me, prevented.Source) => prevented with { Source = null },
+            RenegadeSpawned spawned when spawned.Position is { } at && !IsShownAt(state, me, spawned.Player, at) => spawned with { Position = null },
             _ => domainEvent,
         };
     }
@@ -157,9 +171,39 @@ public static class PlayerViewProjector
     private static bool HidesSource(GameState state, Hero me, EntityRef? source) =>
         source?.Hero is { } author && author != me.Player && state.FindHero(author)?.IsStealthed == true;
 
-    private static ImmutableList<Position> VisibleTelegraph(Hero me, ImmutableList<Position> tiles) =>
-        me.Has(Blessing.OwlEye) ? tiles : [.. tiles.Where(t => IsVisible(me, t))];
+    private static ImmutableList<Position> VisibleTelegraph(GameState state, Hero me, ImmutableList<Position> tiles) =>
+        me.Has(Blessing.OwlEye) ? tiles : [.. tiles.Where(t => IsVisible(state, me, t))];
 
-    private static bool IsVisible(Hero me, Position position) =>
-        me.Position.DistanceTo(position) <= me.VisionRadius;
+    /// <summary>
+    /// Visión del jugador: su radio (4 para la Brasa) y, si es del grupo, el radio 2 de cada Faro encendido.
+    /// La usan la vista, los eventos y las pruebas de no filtración.
+    /// </summary>
+    public static bool IsVisible(GameState state, Hero me, Position position)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentNullException.ThrowIfNull(me);
+        if (me.Position.DistanceTo(position) <= me.VisionRadius)
+        {
+            return true;
+        }
+
+        return !me.IsRenegade && state.Heroes.Any(h => h.BeaconActive && h.Position.DistanceTo(position) <= PathRules.BeaconRadius);
+    }
+
+    /// <summary>
+    /// ¿Ve la posición de otro portador? Del propio bando siempre (salvo sigilo); del otro bando solo dentro de
+    /// la visión. Extintos, retirados y Renegados que aún no aparecieron no tienen posición.
+    /// </summary>
+    private static bool IsShown(GameState state, Hero me, Hero other)
+    {
+        if (!(other.IsOnBoard || other.IsEmber) || other.IsStealthed)
+        {
+            return false;
+        }
+
+        return me.IsSameFaction(other) || IsVisible(state, me, other.Position);
+    }
+
+    private static bool IsShownAt(GameState state, Hero me, PlayerId player, Position position) =>
+        player == me.Player || (state.FindHero(player) is { } other && me.IsSameFaction(other)) || IsVisible(state, me, position);
 }

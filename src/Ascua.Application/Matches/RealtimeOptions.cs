@@ -11,6 +11,9 @@ public sealed class RealtimeOptions
     /// <summary>Plazo del draft inicial; al vencer se elige la primera opción.</summary>
     public TimeSpan DraftDuration { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Plazo para elegir camino tras extinguirse; al vencer se toma Amistad (04-caminos-tras-morir.md).</summary>
+    public TimeSpan PathChoiceDuration { get; set; } = TimeSpan.FromSeconds(15);
+
     /// <summary>Gracia de reconexión; al vencer se aplica la regla de abandono.</summary>
     public TimeSpan ReconnectGrace { get; set; } = TimeSpan.FromSeconds(60);
 
@@ -75,6 +78,7 @@ public static class RealtimeErrors
     public const string MatchNotActive = "MATCH_NOT_ACTIVE";
     public const string DraftClosed = "DRAFT_CLOSED";
     public const string InvalidPick = "INVALID_PICK";
+    public const string PathClosed = "PATH_CLOSED";
     public const string RateLimited = "RATE_LIMITED";
     public const string InternalError = "INTERNAL_ERROR";
 }

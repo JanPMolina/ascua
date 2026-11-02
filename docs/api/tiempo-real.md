@@ -10,7 +10,8 @@ explica cómo lo implementa el servidor y cómo probarlo.
    Partida terminada: `409 match-not-active`.
 2. WebSocket a `/realtime/match?protocolVersion=1&access_token=<ticket>` con `skipNegotiation` y
    transporte WebSockets. El ticket vale 30 s, sirve una sola vez (`GETDEL`) y solo para esa partida.
-3. `JoinMatch { matchId }` → ACK con asiento y `Snapshot`. Si hay draft pendiente llega también `DraftOffer`.
+3. `JoinMatch { matchId }` → ACK con asiento y `Snapshot`. Si hay draft pendiente llega también `DraftOffer`,
+   y si hay una elección de camino abierta, `PathOffer` (también tras `GetSnapshot`).
 
 | Rechazo del upgrade | HTTP | `code` (Problem Details) |
 |---|---|---|
@@ -36,8 +37,38 @@ CloseRound ─► lock por partida (SET NX PX) ─► sella la ronda y lee órde
 - Un reenvío con el mismo `clientActionId` devuelve el ACK original (`DUPLICATE_ACTION`), aunque la
   ronda ya haya cerrado. Otra orden en la misma ronda: `ORDER_ALREADY_SUBMITTED`.
 - Una orden que llega después de que el cerrador selló la ronda: `STALE_ROUND` (nunca se pierde en silencio).
+- Una elección de camino abierta (`PathOffer` sin responder) de un jugador conectado también frena el
+  cierre anticipado, hasta su plazo de 15 s.
 - Una excepción del dominio marca la partida `FAULTED`, avisa `Error` + `MatchFinished { outcome: FAULTED }`
   y no afecta a las demás partidas ni al proceso.
+
+## Caminos tras la extinción (contrato 1.3.0)
+
+Reglas: [`planteamiento/04-caminos-tras-morir.md`](../../planteamiento/04-caminos-tras-morir.md).
+
+```
+Extinción (al resolver la ronda N) ─► PathOffered (privado) ─► PathOffer al jugador (+ me.path.offerId)
+ChoosePath ─► esquema (path FRIENDSHIP|VENGEANCE) ─► NOT_JOINED? ─► ACK guardado (path:{user}:{offer})
+          ─► participante / partida en curso / oferta vigente (offerId de esa extinción, sin elegir)
+          ─► MatchRules.ChoosePath: héroe.PathChoice + PathSelected (privado) ─► si decidieron todos → CloseRound
+Plazo (15 s desde que abrió la ronda) ─► MatchRules.AutoChoosePaths → FRIENDSHIP (Snapshot al jugador)
+CloseRound N+1 ─► Resolver revela: PathChosen (todos) ─► la Brasa actúa desde N+2; el Renegado espera la sala siguiente
+```
+
+- **Plazo durable sin columnas nuevas.** La oferta nace al resolverse la ronda anterior, así que su plazo
+  es `deadline − roundDuration + PathChoiceDuration` (`MatchSnapshot.PathDeadline`), derivado de lo que ya
+  guarda Postgres. El sorted set `ascua:deadlines` agenda `MatchSnapshot.WakeAt` = mín(plazo de camino,
+  plazo de la ronda). Si Redis pierde el plazo, a más tardar el cierre de la ronda resuelve la oferta con
+  Amistad (lo hace el propio `Resolver`), así que nunca queda colgada.
+- **Idempotencia.** `ChoosePath` repetido con el mismo camino devuelve el ACK original
+  (`result: DUPLICATE_ACTION`, mismo `acceptedAt`), incluso después de la resolución; con otro camino,
+  `PATH_CLOSED`. El `offerId` es un hash de partida + jugador + número de extinción.
+- **Audiencias.** `PathOffered`, `PathSelected` y `EchoGained` son privados (`Audience.Only`); `PathChosen`,
+  `EmberReborn`, `RenegadeDefeated` y `RenegadeSpawned` son para todos (a quien no ve al Renegado se le quita
+  la posición); lo que hace una Brasa usa la audiencia nueva `Group` (el grupo siempre, un Renegado solo si
+  ve la casilla).
+- **Reproducción.** Todo pasa por el log de eventos y `match_states` como cualquier mutación; el `Resolver`
+  sigue siendo puro y determinista.
 
 ## Estado y claves
 
@@ -50,6 +81,7 @@ CloseRound ─► lock por partida (SET NX PX) ─► sella la ronda y lee órde
 | `ascua:{m:<id>}:lock` | Lock de cierre/mutación (`PX` = `LockLifetime`) |
 | `ascua:{m:<id>}:r:<N>:orders` / `:sealed` | Órdenes de la ronda y marca de ronda sellada |
 | `ascua:{m:<id>}:act:<clientActionId>` | ACK guardado para la idempotencia |
+| `ascua:{m:<id>}:path:<user>:<offerId>` | ACK guardado de `ChoosePath` |
 | `ascua:{m:<id>}:presence` | Conexión vigente por usuario (`SESSION_REPLACED` al abrir otra) |
 | `ascua:deadlines`, `ascua:graces` | Sorted sets de plazos y gracias que leen los temporizadores de todas las réplicas |
 | `ascua:ticket:<sha256>` | Tickets (se guarda el hash, no el ticket) |
@@ -58,7 +90,7 @@ CloseRound ─► lock por partida (SET NX PX) ─► sella la ronda y lee órde
 ## Temporizadores y ciclo de vida
 
 `RoundTimerService` corre en cada réplica cada 250 ms: plazos vencidos (draft → elige el servidor;
-ronda → cierra con GUARD) y gracias vencidas (abandono con `MatchRules.Retire`). Cada 30 s expira
+elección de camino → Amistad; ronda → cierra con GUARD) y gracias vencidas (abandono con `MatchRules.Retire`). Cada 30 s expira
 partidas sin cambios por 10 min (`EXPIRED`) y recupera plazos que Redis haya perdido. La duración de
 ronda se fija al crear la partida (`matches.round_duration_ms`), así que réplicas con otra
 configuración no cambian el ritmo de una partida en curso.
@@ -86,6 +118,7 @@ La concurrencia entre réplicas (dos cerradores, una sola resolución) está en 
 | Clave | Por defecto |
 |---|---|
 | `RoundDuration` / `DraftDuration` | 20 s / 30 s |
+| `PathChoiceDuration` | 15 s (elección de camino; al vencer, Amistad) |
 | `ReconnectGrace` / `JoinTimeout` | 60 s / 120 s |
 | `InactivityTimeout` | 10 min |
 | `TicketLifetime` / `MaxConnectionsPerUser` | 30 s / 3 |
@@ -107,4 +140,4 @@ docker compose --profile bot run --rm --build bot http://api:8080 2 300
 ```
 
 El bot registra 2 jugadores, arranca una partida con `POST /api/v1/dev/matches` (solo con
-`EnableDevEndpoints`), elige bendiciones y juega órdenes al azar hasta `MatchFinished`.
+`EnableDevEndpoints`), elige bendiciones, elige camino al azar si se extingue y juega órdenes al azar hasta `MatchFinished`.

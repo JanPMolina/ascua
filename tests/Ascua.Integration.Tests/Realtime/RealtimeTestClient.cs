@@ -120,6 +120,7 @@ public sealed class RealtimeTestClient : IAsyncDisposable
         client.Listen<RoundResolvedMessage>("RoundResolved");
         client.Listen<SnapshotMessage>("Snapshot");
         client.Listen<DraftOfferMessage>("DraftOffer");
+        client.Listen<PathOfferMessage>("PathOffer");
         client.Listen<PlayerConnectionChangedMessage>("PlayerConnectionChanged");
         client.Listen<MatchFinishedMessage>("MatchFinished");
         client.Listen<ServerDrainingMessage>("ServerDraining");
@@ -169,6 +170,9 @@ public sealed class RealtimeTestClient : IAsyncDisposable
 
     public Task<DraftReply> DraftPickAsync(Guid matchId, string offerId, string blessingId) =>
         Connection.InvokeAsync<DraftReply>("DraftPick", new DraftPickRequest { MatchId = matchId.ToString("D"), OfferId = offerId, BlessingId = blessingId });
+
+    public Task<ChoosePathReply> ChoosePathAsync(Guid matchId, string offerId, string path) =>
+        Connection.InvokeAsync<ChoosePathReply>("ChoosePath", new ChoosePathRequest { MatchId = matchId.ToString("D"), OfferId = offerId, Path = path });
 
     /// <summary>Espera su oferta de draft y elige la primera opción.</summary>
     public async Task PickFirstAsync(Guid matchId)
@@ -226,6 +230,25 @@ public sealed class JoinReply
 
     [Key("snapshot")]
     public SnapshotMessage? Snapshot { get; set; }
+
+    [Key("error")]
+    public ErrorBodyDto? Error { get; set; }
+}
+
+[MessagePackObject]
+public sealed class ChoosePathReply
+{
+    [Key("offerId")]
+    public string? OfferId { get; set; }
+
+    [Key("path")]
+    public string? Path { get; set; }
+
+    [Key("result")]
+    public string? Result { get; set; }
+
+    [Key("acceptedAt")]
+    public string? AcceptedAt { get; set; }
 
     [Key("error")]
     public ErrorBodyDto? Error { get; set; }

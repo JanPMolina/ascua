@@ -140,6 +140,31 @@ public static partial class RealtimeValidation
         return null;
     }
 
+    public static MatchError? ChoosePath(ChoosePathRequest? request, out Guid matchId, out Guid offerId, out PathKind path)
+    {
+        offerId = Guid.Empty;
+        path = default;
+        if (request is null)
+        {
+            matchId = Guid.Empty;
+            return Invalid("payload", "Falta el cuerpo del mensaje.");
+        }
+
+        var error = Uuid(request.MatchId, "matchId", out matchId) ?? Uuid(request.OfferId, "offerId", out offerId);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        if (RealtimeMapper.ParsePath(request.Path) is not { } parsed)
+        {
+            return Invalid("path", "path debe ser FRIENDSHIP o VENGEANCE.");
+        }
+
+        path = parsed;
+        return null;
+    }
+
     private static MatchError? Uuid(string? value, string field, out Guid id)
     {
         id = Guid.Empty;

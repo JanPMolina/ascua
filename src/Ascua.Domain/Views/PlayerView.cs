@@ -24,7 +24,10 @@ public sealed record PlayerView(
     ImmutableList<TelegraphView> Telegraphs,
     OutcomeView? Outcome);
 
-/// <summary>Datos completos del propio héroe, incluidos sus secretos (pacto, bendiciones, draft).</summary>
+/// <summary>
+/// Datos completos del propio héroe, incluidos sus secretos (pacto, bendiciones, draft) y los de los caminos:
+/// la elección pendiente, el camino elegido sin revelar, los ecos y las ascuas guardadas.
+/// </summary>
 public sealed record SelfView(
     HeroClass Class,
     Position Position,
@@ -45,11 +48,27 @@ public sealed record SelfView(
     ImmutableList<Blessing> Blessings,
     ImmutableList<Synergy> Synergies,
     ImmutableList<Blessing> DraftOptions,
-    PactKind Pact);
+    PactKind Pact,
+    PathView Path);
 
 /// <summary>
-/// Otro portador. La posición es <c>null</c> si está en sigilo o fuera de la partida. De sus
-/// bendiciones solo se ve cuántas tiene; la vida máxima se omite porque las delataría.
+/// Lo privado de los caminos. <see cref="OfferPending"/>: hay que elegir (oferta número <see cref="Extinctions"/>);
+/// <see cref="Choice"/>: lo elegido, que los demás no ven hasta que se resuelve la ronda.
+/// </summary>
+public sealed record PathView(
+    bool OfferPending,
+    int Extinctions,
+    PathKind? Choice,
+    int SavedEmbers,
+    int Echoes,
+    int HinderCooldown,
+    bool AwaitingSpawn,
+    int? SpawnRound);
+
+/// <summary>
+/// Otro portador. La posición es <c>null</c> si está en sigilo o fuera de la partida, y también si es del otro
+/// bando (Renegado frente al grupo) y está fuera de la visión. De sus bendiciones solo se ve cuántas tiene;
+/// la vida máxima se omite porque las delataría. Sus ecos y ascuas guardadas nunca se ven.
 /// </summary>
 public sealed record AllyView(
     PlayerId Player,

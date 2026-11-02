@@ -43,8 +43,14 @@ internal sealed class RoundContext
     /// <summary>Héroes que entraron en sigilo esta ronda (su sigilo no se descuenta aún).</summary>
     public HashSet<PlayerId> FreshStealth { get; } = [];
 
-    /// <summary>Enemigos congelados que pierden su acción (ejecutar, moverse y anunciar).</summary>
+    /// <summary>Enemigos congelados o estorbados que pierden su acción (ejecutar, moverse y anunciar).</summary>
     public HashSet<int> SkippingEnemies { get; } = [];
+
+    /// <summary>Faros encendidos esta ronda: Brasa → centro de la zona iluminada.</summary>
+    public Dictionary<PlayerId, Position> Beacons { get; } = [];
+
+    /// <summary>¿Es la sala del Celador (la última)?</summary>
+    public bool IsWardenRoom => RoomIndex == Rooms.Count - 1;
 
     public Room Room
     {
@@ -56,6 +62,19 @@ internal sealed class RoundContext
     public IReadOnlyList<DomainEvent> Events => _log.Events;
 
     public void Emit(DomainEvent domainEvent) => _log.Emit(domainEvent);
+
+    /// <summary>Suma ecos a una Brasa (evento privado).</summary>
+    public void GainEchoes(PlayerId ember, int amount, EchoReason reason)
+    {
+        var hero = Hero(ember);
+        if (amount <= 0 || !hero.IsEmber)
+        {
+            return;
+        }
+
+        Update(hero with { Echoes = hero.Echoes + amount });
+        Emit(new EchoGained(ember, amount, reason, hero.Echoes + amount) { Audience = Audience.Only(ember) });
+    }
 
     /// <summary>Tirada de probabilidad. Solo consume azar si el resultado no es seguro.</summary>
     public bool Chance(int percent) => percent > 0 && (percent >= 100 || Rng.Next(100) < percent);
