@@ -67,8 +67,9 @@ public sealed class PropertyTests
                 Assert.DoesNotContain(visible, e => e is BlessingChosen b && b.Player != viewer.Player);
                 Assert.DoesNotContain(visible, e => e is ChestLooted c && c.Player != viewer.Player);
                 Assert.DoesNotContain(visible, e => e is EmbersChanged c && c.Player != viewer.Player);
-                Assert.All(view.Tiles, t => Assert.True(PlayerViewProjector.IsVisible(after, viewer, t.Position)));
-                Assert.All(view.Enemies, e => Assert.True(PlayerViewProjector.IsVisible(after, viewer, e.Position)));
+                Assert.All(view.Tiles, t => Assert.True(viewer.IsBlind || PlayerViewProjector.IsVisible(after, viewer, t.Position)));
+                Assert.All(view.Enemies, e => Assert.True(PlayerViewProjector.CanSeeEnemy(after, viewer, after.Enemies.Single(x => x.Id == e.Id))));
+                Assert.All(view.Chests, c => Assert.True(PlayerViewProjector.IsVisible(after, viewer, c.Position)));
             }
         }
     }
@@ -127,13 +128,89 @@ public sealed class PropertyTests
         }
     }
 
+    [Theory]
+    [MemberData(nameof(Seeds))]
+    public void No_view_ever_leaks_hidden_stowaways_debts_or_betrayals(ulong seed)
+    {
+        foreach (var (_, after, events) in Play(seed))
+        {
+            foreach (var viewer in after.Heroes)
+            {
+                var view = PlayerViewProjector.For(after, viewer.Player);
+                foreach (var ally in view.Allies)
+                {
+                    var other = after.H(ally.Player);
+
+                    // Polizón dentro de un huésped no aparece para nadie, aliados incluidos.
+                    if (other.IsInHost)
+                    {
+                        Assert.Null(ally.Position);
+                        Assert.Null(ally.Facing);
+                    }
+
+                    // La deuda solo la ven el deudor y la Usurera.
+                    Assert.Equal(other.DebtTo == viewer.Player && other.Debt > 0 ? other.Debt : null, ally.DebtToMe);
+
+                    // La Escucha solo ubica a otro portador a su alcance o si hizo ruido.
+                    if (viewer.IsBlind && ally.Position is { } seen)
+                    {
+                        Assert.True(after.NoisyHeroes.Contains(ally.Player) || PlayerViewProjector.IsVisible(after, viewer, seen));
+                    }
+                }
+
+                var visible = PlayerViewProjector.VisibleEvents(after, events, viewer.Player);
+                Assert.DoesNotContain(visible, e => e is HostBoarded h && h.Player != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is HostDrained h && h.Player != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is BetrayalRecorded b && b.Traitor != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is DebtChanged d && d.Debtor != viewer.Player && d.Creditor != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is EnemyKilled { HiddenKiller: true } k && k.Killer is not null && k.Killer != viewer.Player);
+                Assert.DoesNotContain(visible, e => e is SkillUsed { Hero: HeroClass.Errata } s && s.Player != viewer.Player);
+
+                // Antes del final nadie ve las traiciones; después, todos.
+                if (after.Phase != MatchPhase.Finished)
+                {
+                    Assert.Null(view.Outcome);
+                    Assert.DoesNotContain(visible, e => e is BetrayalRevealed);
+                }
+                else
+                {
+                    Assert.Equal(after.Outcome!.Betrayals, view.Outcome!.Betrayals);
+                }
+
+                // Sin el estado completo, la vista no tiene de dónde sacar el huésped de otro.
+                Assert.Equal(viewer.HostEnemyId, view.Self.HostEnemyId);
+                if (!viewer.IsInHost)
+                {
+                    Assert.Null(view.Self.HostEnemyId);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void Random_matches_exercise_all_nine_heroes()
+    {
+        var plays = Enumerable.Range(1, 40).SelectMany(seed => Play((ulong)seed)).ToList();
+
+        Assert.Equal(Enum.GetValues<HeroClass>().Length, plays.SelectMany(p => p.Before.Heroes).Select(h => h.Class).Distinct().Count());
+        var events = plays.SelectMany(p => p.Events).ToList();
+        Assert.Contains(events, e => e is SkillUsed);
+        Assert.Contains(events, e => e is EchoFired);
+        Assert.Contains(events, e => e is HostBoarded);
+        Assert.Contains(events, e => e is RoomShifted);
+        Assert.Contains(events, e => e is Shouted);
+        Assert.Contains(events, e => e is BellRung);
+        Assert.Contains(events, e => e is EmbersDropped);
+    }
+
     /// <summary>Juega una partida completa: draft automático y órdenes al azar de bots.</summary>
     private static IEnumerable<(GameState Before, GameState After, IReadOnlyList<DomainEvent> Events)> Play(ulong seed)
     {
         var bots = new SeededRandom(seed * 7919);
-        var classes = Enum.GetValues<HeroClass>();
+        // Como en las salas, sin repetir héroe; recorre los nueve según la semilla.
+        var classes = Enum.GetValues<HeroClass>().OrderBy(_ => bots.Next(1000)).ToList();
         var players = Enumerable.Range(0, 2 + bots.Next(3))
-            .Select(i => new PlayerSetup(new PlayerId($"bot-{i}"), classes[bots.Next(classes.Length)]))
+            .Select(i => new PlayerSetup(new PlayerId($"bot-{i}"), classes[i]))
             .ToList();
         var rng = new SeededRandom(seed);
         var (state, _) = MatchFactory.Create(players, rng);
@@ -185,14 +262,27 @@ public sealed class PropertyTests
             Assert.InRange(hero.Hp, 0, Math.Max(hero.MaxHp, before.FindHero(hero.Player)!.Hp));
             Assert.True(hero.Embers >= 0);
             Assert.True(hero.Shield >= 0);
-            Assert.InRange(hero.Charges, 0, hero.MaxCharges);
             Assert.True(hero.SkillCooldown >= 0);
             Assert.Equal(hero.IsActive || hero.IsPresentRenegade, hero.Hp > 0);
             Assert.True(hero.SavedEmbers >= 0 && hero.Echoes >= 0);
             Assert.InRange(hero.EmberShieldBy.Count, 0, Math.Min(PathRules.MaxEmberShield, hero.Shield));
             Assert.Equal(hero.Status == HeroStatus.Extinct, hero.PathOfferPending);
             Assert.True(Room.IsInside(hero.Position));
+            Assert.True(hero.SecondBody is null || (hero.Class == HeroClass.Hilvan && Room.IsInside(hero.SecondBody.Value)));
+            Assert.True(hero.Debt >= 0);
+            Assert.Equal(hero.Debt > 0, hero.DebtTo is not null);
+            Assert.True(!hero.IsMiser || hero.PeakEmbers >= hero.Embers);
+            if (hero.HostEnemyId is { } host)
+            {
+                Assert.Equal(HeroClass.Polizon, hero.Class);
+                Assert.True(hero.IsVulnerable);
+                Assert.Equal(after.Enemies.Single(e => e.Id == host).Position, hero.Position);
+            }
         }
+
+        // La sala nunca queda rota: cada casilla tiene a lo sumo una entidad y un Polizón en cada huésped.
+        var hosts = after.Heroes.Where(h => h.IsInHost).Select(h => h.HostEnemyId!.Value).ToList();
+        Assert.Equal(hosts.Count, hosts.Distinct().Count());
 
         foreach (var enemy in after.Enemies)
         {
@@ -200,7 +290,7 @@ public sealed class PropertyTests
             Assert.True(Room.IsInside(enemy.Position));
         }
 
-        var occupied = after.Heroes.Where(h => h.IsOnBoard).Select(h => h.Position)
+        var occupied = after.Heroes.Where(h => h.HasBody).SelectMany(h => h.Bodies)
             .Concat(after.Enemies.Select(e => e.Position))
             .ToList();
         Assert.Equal(occupied.Count, occupied.Distinct().Count());

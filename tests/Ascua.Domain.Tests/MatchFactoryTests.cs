@@ -11,9 +11,9 @@ public sealed class MatchFactoryTests
 {
     private static readonly PlayerSetup[] ThreePlayers =
     [
-        new(A, HeroClass.Yunque),
-        new(B, HeroClass.Chispa),
-        new(C, HeroClass.Raiz),
+        new(A, HeroClass.Mampostero),
+        new(B, HeroClass.Usurera),
+        new(C, HeroClass.Campanero),
     ];
 
     [Fact]
@@ -60,7 +60,7 @@ public sealed class MatchFactoryTests
     [InlineData(5)]
     public void Rejects_invalid_player_counts(int count)
     {
-        var players = Enumerable.Range(0, count).Select(i => new PlayerSetup(new PlayerId($"p{i}"), HeroClass.Yunque)).ToList();
+        var players = Enumerable.Range(0, count).Select(i => new PlayerSetup(new PlayerId($"p{i}"), HeroClass.Mampostero)).ToList();
 
         Assert.Throws<ArgumentException>(() => MatchFactory.Create(players, new SeededRandom(1)));
     }
@@ -98,7 +98,7 @@ public sealed class MatchFactoryTests
     [Fact]
     public void Retiring_forfeits_embers_and_the_last_retirement_abandons_the_match()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 3, 8, seat: 0) with { Embers = 4 }, Hero(B, HeroClass.Chispa, 5, 8, seat: 1)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 3, 8, seat: 0) with { Embers = 4 }, Hero(B, HeroClass.Usurera, 5, 8, seat: 1)]);
 
         var first = MatchRules.Retire(state, A);
         Assert.Equal(HeroStatus.Retired, first.State.H(A).Status);

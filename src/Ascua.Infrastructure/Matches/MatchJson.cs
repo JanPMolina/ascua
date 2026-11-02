@@ -14,7 +14,7 @@ public static class MatchJson
 {
     public static readonly JsonSerializerOptions Options = new()
     {
-        Converters = { new HeroClassJsonConverter(), new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter() },
 
         // Las propiedades calculadas (Hero.MaxHp, GameState.CurrentRoom…) no se guardan.
         IgnoreReadOnlyProperties = true,

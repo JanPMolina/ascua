@@ -81,6 +81,9 @@ public interface IMatchHotState
 
     Task SavePathAckAsync(Guid userId, PathAck ack, CancellationToken cancellationToken);
 
+    /// <summary>Reserva el turno del jugador para enviar una señal; <c>false</c> si ya envió una hace menos de <paramref name="interval"/>.</summary>
+    Task<bool> TryTakeSignalSlotAsync(Guid matchId, Guid userId, TimeSpan interval, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<Guid>> DueDeadlinesAsync(DateTimeOffset now, int limit, CancellationToken cancellationToken);
 
     Task RemoveDeadlineAsync(Guid matchId, CancellationToken cancellationToken);
@@ -112,6 +115,12 @@ public interface IMatchNotifier
     Task PlayerConnectionChangedAsync(Guid matchId, Guid userId, ConnectionState state, DateTimeOffset? graceDeadline, CancellationToken cancellationToken);
 
     Task MatchStoppedAsync(MatchSnapshot snapshot, CancellationToken cancellationToken);
+
+    /// <summary>Último en hablar: las órdenes de los demás, solo para el Campanero.</summary>
+    Task LastWordAsync(MatchSnapshot snapshot, Guid userId, LastWordHeard heard, CancellationToken cancellationToken);
+
+    /// <summary>Señal rápida: llega solo al bando de quien la envía. No se guarda.</summary>
+    Task SignalAsync(MatchSnapshot snapshot, MatchParticipant sender, QuickSignal signal, DateTimeOffset sentAt, CancellationToken cancellationToken);
 }
 
 /// <summary>Una confirmación: estado anterior, nuevo y eventos (verdad completa; se filtran por jugador al difundir).</summary>

@@ -98,6 +98,12 @@ public sealed record MatchSnapshot
     /// </summary>
     public TimeSpan PathChoiceDuration { get; init; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// Plazo reducido del Repique. Como <see cref="RoundDuration"/>, se fija al crear la partida y es durable: el plazo
+    /// sale de <see cref="Deadline"/>, de esto y del estado, así que sobrevive a un reinicio.
+    /// </summary>
+    public TimeSpan BellDuration { get; init; } = TimeSpan.FromSeconds(8);
+
     public required DateTimeOffset CreatedAt { get; init; }
 
     public MatchParticipant? FindParticipant(Guid userId)
@@ -122,8 +128,44 @@ public sealed record MatchSnapshot
             ? Min(deadline, deadline - RoundDuration + PathChoiceDuration)
             : null;
 
-    /// <summary>Próximo instante en que el temporizador debe procesar la partida (elección de camino o plazo).</summary>
-    public DateTimeOffset? WakeAt => PathDeadline is { } path && Deadline is { } deadline ? Min(path, deadline) : Deadline;
+    /// <summary>
+    /// Vence el plazo reducido del Repique en la ronda abierta: los demás ya no pueden decidir. <c>null</c> si no
+    /// suena o ya venció (ya se confirmó en el estado).
+    /// </summary>
+    public DateTimeOffset? BellDeadline =>
+        Status == MatchStatus.InProgress && Deadline is { } deadline && State.IsBellRound && !State.BellClosed
+            ? Min(deadline, deadline - RoundDuration + BellDuration)
+            : null;
+
+    /// <summary>Próximo instante en que el temporizador debe procesar la partida (elección de camino, Repique o plazo).</summary>
+    public DateTimeOffset? WakeAt
+    {
+        get
+        {
+            var wake = Deadline;
+            if (wake is { } deadline && PathDeadline is { } path)
+            {
+                wake = Min(deadline, path);
+            }
+
+            return wake is { } current && BellDeadline is { } bell ? Min(current, bell) : wake;
+        }
+    }
+
+    /// <summary>Plazo de este jugador en la ronda abierta: con el Repique, los demás tienen menos que quien lo tocó.</summary>
+    public DateTimeOffset? DeadlineFor(PlayerId player)
+    {
+        if (!State.IsBellRound || State.BellRinger == player || Deadline is not { } deadline)
+        {
+            return Deadline;
+        }
+
+        return Min(deadline, deadline - RoundDuration + BellDuration);
+    }
+
+    /// <summary>¿Se le acabó el tiempo del Repique a este jugador?</summary>
+    public bool IsBellOverFor(PlayerId player, DateTimeOffset now) =>
+        State.IsBellRound && State.BellRinger != player && (State.BellClosed || DeadlineFor(player) <= now);
 
     /// <summary>Jugadores de los que se espera orden en la ronda abierta (héroes activos, Brasas y Renegados presentes).</summary>
     public IReadOnlyList<PlayerId> ActivePlayers() => [.. State.Heroes.Where(h => h.CanAct).Select(h => h.Player)];
@@ -142,6 +184,28 @@ public sealed record DraftAck(Guid MatchId, Guid OfferId, Blessing Blessing, Dat
 
 /// <summary>ACK guardado de un <c>ChoosePath</c>: repetir la misma elección devuelve lo mismo.</summary>
 public sealed record PathAck(Guid MatchId, Guid OfferId, PathKind Path, DateTimeOffset AcceptedAt);
+
+/// <summary>Órdenes que oye el Campanero (Último en hablar). Como Renegado solo oye los tipos.</summary>
+public sealed record LastWordHeard(int Round, IReadOnlyList<(PlayerId Player, Order Order)> Orders, bool TypesOnly);
+
+/// <summary>Frases fijas de las señales rápidas (05-heroes.md §13).</summary>
+public enum SignalKind
+{
+    /// <summary>«¡Aquí!»</summary>
+    Here,
+
+    /// <summary>«¡Cuidado!»</summary>
+    Danger,
+
+    /// <summary>«Ayuda»</summary>
+    Help,
+
+    /// <summary>«Es mía»</summary>
+    Mine,
+}
+
+/// <summary>Señal rápida: una frase fija y, si quiere, una casilla marcada. Es información libre: también se puede mentir.</summary>
+public sealed record QuickSignal(SignalKind Kind, Position? Tile);
 
 public enum ConnectionState
 {

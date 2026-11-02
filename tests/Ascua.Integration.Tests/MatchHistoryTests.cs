@@ -51,7 +51,7 @@ public sealed class MatchHistoryTests(AscuaApiFactory factory)
             Assert.Equal("DRAFTING", i.Status);
             Assert.Null(i.Outcome);
             Assert.Null(i.Result);
-            Assert.Equal("YUNQUE", i.Hero);
+            Assert.Equal("ERRATA", i.Hero);
             Assert.Equal(2, i.PlayerCount);
         });
 

@@ -76,7 +76,7 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
     {
         var ticket = await api.TicketAsync(user, _matchId, cancellationToken);
         var connection = new HubConnectionBuilder()
-            .WithUrl(new Uri(options.BaseUrl, $"realtime/match?protocolVersion=1&access_token={ticket}"), o =>
+            .WithUrl(new Uri(options.BaseUrl, $"realtime/match?protocolVersion=2&access_token={ticket}"), o =>
             {
                 o.SkipNegotiation = true;
                 o.Transports = HttpTransportType.WebSockets;

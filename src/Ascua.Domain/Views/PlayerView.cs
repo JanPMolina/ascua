@@ -22,7 +22,23 @@ public sealed record PlayerView(
     ImmutableList<ChestView> Chests,
     ImmutableList<FireView> Fires,
     ImmutableList<TelegraphView> Telegraphs,
-    OutcomeView? Outcome);
+    OutcomeView? Outcome)
+{
+    /// <summary>Próximos Ecos de Anteayer cuya casilla se ve; ella ve todos los suyos.</summary>
+    public ImmutableList<EchoView> Echoes { get; init; } = [];
+
+    /// <summary>Ascuas en el suelo en casillas que se ven.</summary>
+    public ImmutableList<GroundEmbersView> Ground { get; init; } = [];
+
+    /// <summary>La Escucha: casillas donde oyó ruido en la última resolución. Vacío para los demás.</summary>
+    public ImmutableList<Position> Noise { get; init; } = [];
+
+    /// <summary>Quién tocó el Repique que suena en la ronda abierta (es público: se oye).</summary>
+    public PlayerId? BellRinger { get; init; }
+
+    /// <summary>Venció el plazo reducido del Repique en la ronda abierta.</summary>
+    public bool BellClosed { get; init; }
+}
 
 /// <summary>
 /// Datos completos del propio héroe, incluidos sus secretos (pacto, bendiciones, draft) y los de los caminos:
@@ -39,8 +55,6 @@ public sealed record SelfView(
     HeroStatus Status,
     int DownRounds,
     int SkillCooldown,
-    int Charges,
-    int StealthRounds,
     bool Frozen,
     int BurnRounds,
     int SilverKeys,
@@ -49,7 +63,26 @@ public sealed record SelfView(
     ImmutableList<Synergy> Synergies,
     ImmutableList<Blessing> DraftOptions,
     PactKind Pact,
-    PathView Path);
+    PathView Path)
+{
+    /// <summary>Hilván: su segundo cuerpo.</summary>
+    public Position? SecondBody { get; init; }
+
+    /// <summary>Polizón: el enemigo en el que va (nadie más lo sabe).</summary>
+    public int? HostEnemyId { get; init; }
+
+    /// <summary>Lo que debe a la Usurera.</summary>
+    public int Debt { get; init; }
+
+    /// <summary>A quién le debe.</summary>
+    public PlayerId? DebtTo { get; init; }
+
+    /// <summary>Anteayer: adónde saltaría Volver en la ronda abierta; <c>null</c> sin 2 rondas de historia.</summary>
+    public Position? RewindTile { get; init; }
+
+    /// <summary>Anteayer: vida que tenía allí.</summary>
+    public int? RewindHp { get; init; }
+}
 
 /// <summary>
 /// Lo privado de los caminos. <see cref="OfferPending"/>: hay que elegir (oferta número <see cref="Extinctions"/>);
@@ -66,9 +99,9 @@ public sealed record PathView(
     int? SpawnRound);
 
 /// <summary>
-/// Otro portador. La posición es <c>null</c> si está en sigilo o fuera de la partida, y también si es del otro
-/// bando (Renegado frente al grupo) y está fuera de la visión. De sus bendiciones solo se ve cuántas tiene;
-/// la vida máxima se omite porque las delataría. Sus ecos y ascuas guardadas nunca se ven.
+/// Otro portador. La posición es <c>null</c> si va dentro de un huésped o está fuera de la partida, si es del otro
+/// bando (Renegado frente al grupo) y está fuera de la visión, y para La Escucha si no lo percibe. De sus bendiciones
+/// solo se ve cuántas tiene; la vida máxima se omite porque las delataría. Sus ecos y ascuas guardadas nunca se ven.
 /// </summary>
 public sealed record AllyView(
     PlayerId Player,
@@ -79,9 +112,16 @@ public sealed record AllyView(
     int Hp,
     HeroStatus Status,
     int Embers,
-    int BlessingCount);
+    int BlessingCount)
+{
+    /// <summary>Hilván: su segundo cuerpo, con la misma regla de visibilidad que el primero.</summary>
+    public Position? SecondBody { get; init; }
 
-/// <summary>Casilla dentro de la visión. Las de fuera no se envían.</summary>
+    /// <summary>Lo que le debe a quien mira: solo lo ven el deudor y la Usurera.</summary>
+    public int? DebtToMe { get; init; }
+}
+
+/// <summary>Casilla conocida: la visión, o toda la sala para La Escucha. Las de fuera no se envían.</summary>
 public sealed record TileView(Position Position, Terrain Terrain);
 
 public sealed record EnemyView(int Id, EnemyKind Kind, Position Position, Direction Facing, int Hp, int MaxHp, int Phase);
@@ -96,5 +136,12 @@ public sealed record FireView(Position Position, int Rounds);
 
 public sealed record TelegraphView(int? EnemyId, ImmutableList<Position> Tiles);
 
-/// <summary>Resultado final; al terminar se revelan los pactos de todos.</summary>
-public sealed record OutcomeView(OutcomeKind Kind, DefeatReason Reason, ImmutableList<PlayerId> Winners, ImmutableList<FinalScore> Scores);
+public sealed record EchoView(PlayerId Owner, Position Origin, Direction Direction, int FireRound);
+
+public sealed record GroundEmbersView(Position Position, int Amount);
+
+/// <summary>Resultado final; al terminar se revelan los pactos y las traiciones de todos.</summary>
+public sealed record OutcomeView(OutcomeKind Kind, DefeatReason Reason, ImmutableList<PlayerId> Winners, ImmutableList<FinalScore> Scores)
+{
+    public ImmutableList<Betrayal> Betrayals { get; init; } = [];
+}

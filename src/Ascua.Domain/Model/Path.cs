@@ -72,7 +72,6 @@ public static class PathRules
     public const int RenegadeFinalHpPercent = 40;
     public const int RenegadeMaxDamage = 1;
     public const int RenegadeCooldownFactor = 2;
-    public const int RenegadeMaxCharges = 2;
     public const int RenegadeFinalSkillLock = 3;
     public const int RenegadeSpawnDelay = 2;
     public const int RenegadeMinDistance = 4;
@@ -88,11 +87,27 @@ public static class PathRules
     /// <summary>⌈guardadas × (25% + 8% × ecos)⌉, con tope de 85% de las guardadas.</summary>
     public static int RebirthEmbers(int saved, int echoes) => CeilPercent(saved, RebirthPercent(echoes));
 
+    /// <summary>Lo que recupera la Brasa de este héroe: el Avaro vuelve con al menos 2 (sus ascuas son su vida).</summary>
+    public static int RebirthEmbers(Hero hero, int echoes)
+    {
+        ArgumentNullException.ThrowIfNull(hero);
+        var embers = RebirthEmbers(hero.SavedEmbers, echoes);
+        return hero.IsMiser ? Math.Max(HeroRules.MiserMinReturnEmbers, embers) : embers;
+    }
+
     /// <summary>⌈vidaMáxima / 2⌉.</summary>
     public static int RebirthHp(int maxHp) => (maxHp + 1) / 2;
 
     /// <summary>⌈guardadas / 2⌉: lo que conserva el Renegado.</summary>
     public static int RenegadeEmbers(int saved) => (saved + 1) / 2;
+
+    /// <summary>Lo que conserva el Renegado de este héroe: el Avaro vuelve con al menos 2.</summary>
+    public static int RenegadeEmbers(Hero hero)
+    {
+        ArgumentNullException.ThrowIfNull(hero);
+        var embers = RenegadeEmbers(hero.SavedEmbers);
+        return hero.IsMiser ? Math.Max(HeroRules.MiserMinReturnEmbers, embers) : embers;
+    }
 
     /// <summary>60% de la vida máxima (40% en la sala del Celador), redondeando hacia arriba.</summary>
     public static int RenegadeHp(int maxHp, bool wardenRoom) =>

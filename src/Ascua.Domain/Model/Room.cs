@@ -30,7 +30,7 @@ public enum ChestLoot
 {
     Nothing,
 
-    /// <summary>Poción: cura 2 al abrir (3 para Raíz).</summary>
+    /// <summary>Poción: cura 2 al abrir.</summary>
     HealingPotion,
 
     /// <summary>+1 de escudo.</summary>
@@ -45,6 +45,9 @@ public sealed record Chest(int Id, Position Position, ChestLoot Loot, bool HasSi
 
 public sealed record Fire(Position Position, int Rounds, int Damage);
 
+/// <summary>Ascuas tiradas en una casilla (del Avaro o de un enemigo sobornado). Las recoge el primero que la pise.</summary>
+public sealed record GroundEmbers(Position Position, int Amount);
+
 public sealed record Room
 {
     public const int Size = 9;
@@ -53,6 +56,9 @@ public sealed record Room
     public ImmutableList<Feature> Features { get; init; } = [];
     public ImmutableList<Chest> Chests { get; init; } = [];
     public ImmutableList<Fire> Fires { get; init; } = [];
+
+    /// <summary>Ascuas en el suelo de esta sala; se pierden al cambiar de sala.</summary>
+    public ImmutableList<GroundEmbers> Ground { get; init; } = [];
 
     /// <summary>Enemigos con los que arranca la sala cuando los héroes entran.</summary>
     public ImmutableList<Enemy> InitialEnemies { get; init; } = [];

@@ -21,6 +21,10 @@ internal sealed class RoundContext
         Rooms = [.. state.Rooms];
         RoomIndex = state.RoomIndex;
         NextEnemyId = state.NextEnemyId;
+        Betrayals = [.. state.Betrayals];
+        BellRound = state.BellRound;
+        BellRinger = state.BellRinger;
+        BellClosed = state.BellClosed;
         _log = new EventLog(state.LastSeq, state.Round);
     }
 
@@ -35,19 +39,26 @@ internal sealed class RoundContext
     public bool WardenSlain { get; set; }
 
     public HashSet<PlayerId> Guarding { get; } = [];
-    public Dictionary<PlayerId, Direction> Ramparts { get; } = [];
 
-    /// <summary>Héroes que atacaron o usaron Descarga esta ronda (Chispa no gana carga).</summary>
-    public HashSet<PlayerId> Attacked { get; } = [];
-
-    /// <summary>Héroes que entraron en sigilo esta ronda (su sigilo no se descuenta aún).</summary>
-    public HashSet<PlayerId> FreshStealth { get; } = [];
-
-    /// <summary>Enemigos congelados o estorbados que pierden su acción (ejecutar, moverse y anunciar).</summary>
+    /// <summary>Enemigos que pierden su acción de la ronda (ejecutar, moverse y anunciar).</summary>
     public HashSet<int> SkippingEnemies { get; } = [];
 
     /// <summary>Faros encendidos esta ronda: Brasa → centro de la zona iluminada.</summary>
     public Dictionary<PlayerId, Position> Beacons { get; } = [];
+
+    public List<Betrayal> Betrayals { get; }
+
+    public HashSet<PlayerId> NoisyHeroes { get; } = [];
+
+    public HashSet<int> NoisyEnemies { get; } = [];
+
+    public HashSet<Position> NoiseTiles { get; } = [];
+
+    public int BellRound { get; set; }
+
+    public PlayerId? BellRinger { get; set; }
+
+    public bool BellClosed { get; set; }
 
     /// <summary>¿Es la sala del Celador (la última)?</summary>
     public bool IsWardenRoom => RoomIndex == Rooms.Count - 1;
@@ -76,6 +87,34 @@ internal sealed class RoundContext
         Emit(new EchoGained(ember, amount, reason, hero.Echoes + amount) { Audience = Audience.Only(ember) });
     }
 
+    /// <summary>Hizo ruido este héroe (lo oye La Escucha). Las Brasas no hacen ruido, ni Polizón dentro de un huésped.</summary>
+    public void MakeNoise(Hero hero)
+    {
+        if (!hero.HasBody)
+        {
+            return;
+        }
+
+        NoisyHeroes.Add(hero.Player);
+        foreach (var body in hero.Bodies)
+        {
+            NoiseTiles.Add(body);
+        }
+    }
+
+    public void MakeNoise(Enemy enemy)
+    {
+        NoisyEnemies.Add(enemy.Id);
+        NoiseTiles.Add(enemy.Position);
+    }
+
+    public void ClearNoise()
+    {
+        NoisyHeroes.Clear();
+        NoisyEnemies.Clear();
+        NoiseTiles.Clear();
+    }
+
     /// <summary>Tirada de probabilidad. Solo consume azar si el resultado no es seguro.</summary>
     public bool Chance(int percent) => percent > 0 && (percent >= 100 || Rng.Next(100) < percent);
 
@@ -95,9 +134,13 @@ internal sealed class RoundContext
         }
     }
 
-    public Hero? HeroAt(Position position) => Heroes.Find(h => h.IsOnBoard && h.Position == position);
+    /// <summary>Héroe con un cuerpo en la casilla (Polizón dentro de un huésped no cuenta; la Brasa tampoco).</summary>
+    public Hero? HeroAt(Position position) => Heroes.Find(h => h.HasBody && h.Occupies(position));
 
     public Enemy? EnemyAt(Position position) => Enemies.Find(e => e.Position == position);
+
+    /// <summary>Polizón que va dentro de este enemigo.</summary>
+    public Hero? PassengerOf(int enemyId) => Heroes.Find(h => h.HostEnemyId == enemyId);
 
     public bool IsOccupied(Position position) => HeroAt(position) is not null || EnemyAt(position) is not null;
 
@@ -124,17 +167,22 @@ internal sealed class RoundContext
             .ThenBy(p => p.Y)
             .ThenBy(p => p.X)];
 
+    /// <summary>La casilla pedida si está libre; si no, la libre más cercana. <c>null</c> si no queda ninguna.</summary>
+    public Position? FreeTileOrNearest(Position tile) =>
+        IsFreeFor(tile, flies: false) ? tile : FreeTilesNear(tile).Select(p => (Position?)p).FirstOrDefault();
+
     public Enemy Spawn(EnemyKind kind, Position position, int? hp = null, bool isSplit = false)
     {
         var enemy = Model.Enemy.Create(NextEnemyId++, kind, position, hp) with { IsSplit = isSplit };
         Enemies.Add(enemy);
+        MakeNoise(enemy);
         Emit(new EnemySpawned(enemy.Id, kind, position) { Audience = Audience.At(position) });
         return enemy;
     }
 
-    /// <summary>Audiencia de un hecho protagonizado por un héroe: en sigilo, solo él lo ve.</summary>
+    /// <summary>Audiencia de un hecho protagonizado por un héroe: dentro de un huésped, solo él lo ve.</summary>
     public static Audience AudienceOf(Hero hero) =>
-        hero.IsStealthed ? Audience.Only(hero.Player) : Audience.At(hero.Position);
+        hero.IsInHost ? Audience.Only(hero.Player) : Audience.At(hero.Position);
 
     public Audience AudienceOf(EntityRef entity)
     {
@@ -144,5 +192,22 @@ internal sealed class RoundContext
         }
 
         return Enemy(entity.EnemyId ?? -1) is { } enemy ? Audience.At(enemy.Position) : Audience.Everyone;
+    }
+
+    /// <summary>Lo primero que cumpla <paramref name="find"/> en línea, a lo sumo a <paramref name="range"/> casillas.</summary>
+    public static T? FirstInLine<T>(Position origin, Direction direction, int range, Func<Position, T?> find)
+        where T : class
+    {
+        var position = origin;
+        for (var i = 0; i < range; i++)
+        {
+            position = position.Step(direction);
+            if (find(position) is { } found)
+            {
+                return found;
+            }
+        }
+
+        return null;
     }
 }

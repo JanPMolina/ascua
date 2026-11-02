@@ -19,7 +19,7 @@ public sealed class BlessingTests
     [Fact]
     public void Stone_fist_adds_damage_and_costs_max_life()
     {
-        var hero = Hero(A, HeroClass.Yunque, 4, 4) with { Blessings = [Blessing.StoneFist] };
+        var hero = Hero(A, HeroClass.Mampostero, 4, 4) with { Blessings = [Blessing.StoneFist] };
 
         var (next, _) = Resolve(State([hero], [Enemy(1, EnemyKind.Scavenger, 4, 3)]), (A, Attack(Direction.North)));
 
@@ -30,7 +30,7 @@ public sealed class BlessingTests
     [Fact]
     public void Greed_pays_an_extra_ember_per_kill_but_takes_extra_damage()
     {
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { Blessings = [Blessing.Greed] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [Blessing.Greed] };
         var moth = Enemy(1, EnemyKind.Moth, 4, 3);
         var scavenger = Enemy(2, EnemyKind.Scavenger, 5, 4, Direction.West) with { Telegraph = [new Position(4, 4)] };
 
@@ -43,7 +43,7 @@ public sealed class BlessingTests
     [Fact]
     public void Hungry_blade_heals_on_kill()
     {
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { Hp = 2, Blessings = [Blessing.HungryBlade] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { Hp = 2, Blessings = [Blessing.HungryBlade] };
 
         var (next, _) = Resolve(State([hero], [Enemy(1, EnemyKind.Moth, 4, 3)]), (A, Attack(Direction.North)));
 
@@ -53,7 +53,7 @@ public sealed class BlessingTests
     [Fact]
     public void Lockpick_makes_chests_drop_an_extra_ember()
     {
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { Blessings = [Blessing.Lockpick] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [Blessing.Lockpick] };
         var room = EmptyRoom() with { Chests = [new Chest(1, new Position(4, 3), ChestLoot.Shield, HasSilverKey: true)] };
 
         var (next, _) = Resolve(State([hero], room: room), (A, Interact(Direction.North)));
@@ -66,7 +66,7 @@ public sealed class BlessingTests
     [Fact]
     public void Living_ember_burns_the_target()
     {
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { Blessings = [Blessing.LivingEmber] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [Blessing.LivingEmber] };
 
         var (next, events) = Resolve(State([hero], [Enemy(1, EnemyKind.Totem, 4, 3)]), FixedRandom.Always, (A, Attack(Direction.North)));
 
@@ -81,7 +81,7 @@ public sealed class BlessingTests
     public void Fire_step_leaves_fire_and_inferno_makes_it_last_longer_and_hurt_more(bool inferno, int rounds, int damage)
     {
         Blessing[] blessings = inferno ? [Blessing.FireStep, Blessing.LivingEmber] : [Blessing.FireStep];
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { Blessings = [.. blessings] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [.. blessings] };
 
         var (next, _) = Resolve(State([hero]), FixedRandom.Always, (A, Move(Direction.North)));
 
@@ -97,7 +97,7 @@ public sealed class BlessingTests
     public void Living_armor_raises_the_reflection_chance_to_half(bool livingArmor, int scavengerHp)
     {
         Blessing[] blessings = livingArmor ? [Blessing.BrokenMirror, Blessing.DoubleHeart] : [Blessing.BrokenMirror];
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { Blessings = [.. blessings] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [.. blessings] };
         var scavenger = Enemy(1, EnemyKind.Scavenger, 4, 3) with { Telegraph = [new Position(4, 4)] };
 
         var (next, _) = Resolve(State([hero], [scavenger]), new SequenceRandom(30), (A, Interact(Direction.East)));
@@ -109,7 +109,7 @@ public sealed class BlessingTests
     public void Toppling_a_brazier_starts_fire_in_a_cross()
     {
         var room = EmptyRoom().WithTerrain(new Position(4, 2), Terrain.Brazier);
-        var hero = Hero(A, HeroClass.Chispa, 4, 5);
+        var hero = Hero(A, HeroClass.Escucha, 4, 5);
 
         var (next, events) = Resolve(State([hero], room: room), (A, Attack(Direction.North)));
 
@@ -122,7 +122,7 @@ public sealed class BlessingTests
     public void Altars_consume_a_silver_key_and_offer_a_private_draft()
     {
         var room = EmptyRoom().WithTerrain(new Position(4, 3), Terrain.Altar);
-        var hero = Hero(A, HeroClass.Cuervo, 4, 4) with { SilverKeys = 1, Blessings = [Blessing.Lamp] };
+        var hero = Hero(A, HeroClass.Errata, 4, 4) with { SilverKeys = 1, Blessings = [Blessing.Lamp] };
 
         var (next, events) = Resolve(State([hero], room: room), (A, Interact(Direction.North)));
 

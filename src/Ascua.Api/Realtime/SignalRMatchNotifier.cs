@@ -82,6 +82,8 @@ public sealed class SignalRMatchNotifier(
                     Deadline = RealtimeMapper.Timestamp(deadline),
                     DurationMs = (int)Math.Clamp(after.RoundDuration.TotalMilliseconds, 1000, 60000),
                     ExpectedPlayers = Math.Clamp(after.ActivePlayers().Count, 1, 4),
+                    BellDeadline = after.BellDeadline is { } bell ? RealtimeMapper.Timestamp(bell) : null,
+                    BellRingerId = after.BellDeadline is not null ? after.State.BellRinger?.Value : null,
                 },
                 cancellationToken);
         }
@@ -90,6 +92,26 @@ public sealed class SignalRMatchNotifier(
         {
             await group.SendAsync("MatchFinished", RealtimeMapper.Finished(after, options.PublicBaseUrl, now), cancellationToken);
         }
+    }
+
+    public Task LastWordAsync(MatchSnapshot snapshot, Guid userId, LastWordHeard heard, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(heard);
+        return hub.Clients.User(RealtimeMapper.Id(userId)).SendAsync("LastWord", RealtimeMapper.LastWord(snapshot.MatchId, heard), cancellationToken);
+    }
+
+    public async Task SignalAsync(MatchSnapshot snapshot, MatchParticipant sender, QuickSignal signal, DateTimeOffset sentAt, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(sender);
+        ArgumentNullException.ThrowIfNull(signal);
+        var from = snapshot.State.FindHero(sender.PlayerId);
+        var message = RealtimeMapper.Signal(snapshot.MatchId, sender, signal, sentAt);
+        var sends = snapshot.Participants
+            .Where(p => from is not null && snapshot.State.FindHero(p.PlayerId) is { } hero && hero.IsSameFaction(from))
+            .Select(p => hub.Clients.User(RealtimeMapper.Id(p.UserId)).SendAsync("SignalReceived", message, cancellationToken));
+        await Task.WhenAll(sends);
     }
 
     public Task PlayerConnectionChangedAsync(

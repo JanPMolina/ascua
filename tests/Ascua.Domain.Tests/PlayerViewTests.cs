@@ -15,8 +15,8 @@ public sealed class PlayerViewTests
     /// <summary>A en la esquina inferior izquierda, B en la superior derecha (distancia 12).</summary>
     private static GameState SecretsOfB()
     {
-        var alice = Hero(A, HeroClass.Yunque, 1, 7, seat: 0) with { Pact = PactKind.NeverFall };
-        var bruno = Hero(B, HeroClass.Cuervo, 7, 1, seat: 1) with
+        var alice = Hero(A, HeroClass.Mampostero, 1, 7, seat: 0) with { Pact = PactKind.NeverFall };
+        var bruno = Hero(B, HeroClass.Errata, 7, 1, seat: 1) with
         {
             Pact = PactKind.BetrayUnseen,
             Blessings = [Blessing.Lamp, Blessing.Greed],
@@ -68,12 +68,12 @@ public sealed class PlayerViewTests
     }
 
     [Fact]
-    public void Allies_are_visible_anywhere_unless_in_stealth()
+    public void Allies_are_visible_anywhere_unless_inside_a_host()
     {
         var state = SecretsOfB();
         Assert.Equal(new Position(7, 1), PlayerViewProjector.For(state, A).Allies.Single().Position);
 
-        var hidden = state with { Heroes = [state.H(A), state.H(B) with { StealthRounds = 2 }] };
+        var hidden = state with { Heroes = [state.H(A), state.H(B) with { HostEnemyId = 1 }] };
         var ally = PlayerViewProjector.For(hidden, A).Allies.Single();
 
         Assert.Null(ally.Position);
@@ -99,8 +99,8 @@ public sealed class PlayerViewTests
     public void Plunderer_sees_silver_keys_in_closed_chests_and_nobody_else_does()
     {
         var room = EmptyRoom() with { Chests = [new Chest(1, new Position(4, 3), ChestLoot.Nothing, HasSilverKey: true)] };
-        var plunderer = Hero(A, HeroClass.Cuervo, 4, 4, seat: 0) with { Blessings = [Blessing.Greed, Blessing.Lockpick] };
-        var other = Hero(B, HeroClass.Yunque, 5, 4, seat: 1);
+        var plunderer = Hero(A, HeroClass.Errata, 4, 4, seat: 0) with { Blessings = [Blessing.Greed, Blessing.Lockpick] };
+        var other = Hero(B, HeroClass.Mampostero, 5, 4, seat: 1);
         var state = State([plunderer, other], room: room);
 
         Assert.True(PlayerViewProjector.For(state, A).Chests.Single().HasSilverKey);
@@ -110,7 +110,7 @@ public sealed class PlayerViewTests
     [Fact]
     public void Telegraphs_only_include_visible_tiles_unless_owl_eye()
     {
-        var hero = Hero(A, HeroClass.Yunque, 1, 7);
+        var hero = Hero(A, HeroClass.Mampostero, 1, 7);
         var crossbow = Enemy(1, EnemyKind.Crossbowman, 8, 7) with
         {
             Telegraph = [.. Enumerable.Range(0, 8).Select(x => new Position(x, 7))],
@@ -147,18 +147,6 @@ public sealed class PlayerViewTests
     }
 
     [Fact]
-    public void Hits_from_a_hero_in_stealth_do_not_reveal_the_attacker()
-    {
-        var state = SecretsOfB();
-        var hidden = state with { Heroes = [state.H(A), state.H(B) with { StealthRounds = 1 }] };
-        DomainEvent hit = new EntityDamaged(EntityRef.ForHero(A), 1, EntityRef.ForHero(B), 5) { Audience = Audience.At(new Position(1, 7)) };
-
-        var seen = Assert.IsType<EntityDamaged>(Assert.Single(PlayerViewProjector.VisibleEvents(hidden, [hit], A)));
-
-        Assert.Null(seen.Source);
-    }
-
-    [Fact]
     public void Views_have_no_member_that_could_carry_the_seed()
     {
         var types = typeof(PlayerView).Assembly.GetTypes().Where(t => t.Namespace == typeof(PlayerView).Namespace);
@@ -172,8 +160,8 @@ public sealed class PlayerViewTests
     public void Pacts_are_revealed_to_everyone_when_the_match_ends()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 1, Phase = 2 };
-        var alice = Hero(A, HeroClass.Yunque, 4, 3, seat: 0) with { Pact = PactKind.NeverFall };
-        var bruno = Hero(B, HeroClass.Cuervo, 8, 8, seat: 1) with { Pact = PactKind.BetrayUnseen };
+        var alice = Hero(A, HeroClass.Mampostero, 4, 3, seat: 0) with { Pact = PactKind.NeverFall };
+        var bruno = Hero(B, HeroClass.Errata, 8, 8, seat: 1) with { Pact = PactKind.BetrayUnseen };
 
         var (finished, _) = Resolve(State([alice, bruno], [warden]), (A, Attack(Direction.North)));
 

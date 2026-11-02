@@ -69,8 +69,10 @@ public sealed class AscuaApi(HttpClient http)
 
     public async Task<Guid> LaunchDevMatchAsync(IReadOnlyList<BotUser> players, CancellationToken cancellationToken)
     {
-        string[] heroes = ["YUNQUE", "CHISPA", "CUERVO", "RAIZ"];
-        var body = new { players = players.Select((p, i) => new { userId = p.Id, hero = heroes[i % heroes.Length] }) };
+        // Rota por los nueve héroes sin repetir dentro de la partida.
+        string[] heroes = ["HILVAN", "ANTEAYER", "POLIZON", "USURERA", "ESCUCHA", "AVARO", "MAMPOSTERO", "ERRATA", "CAMPANERO"];
+        var offset = Random.Shared.Next(heroes.Length);
+        var body = new { players = players.Select((p, i) => new { userId = p.Id, hero = heroes[(i + offset) % heroes.Length] }) };
         return (await PostAsync<Launched>(players[0].AccessToken, "/api/v1/dev/matches", body, cancellationToken)).MatchId;
     }
 

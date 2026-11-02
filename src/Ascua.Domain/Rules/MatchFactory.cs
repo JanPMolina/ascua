@@ -66,6 +66,7 @@ public static class MatchFactory
             {
                 Pact = pacts[seat % pacts.Count],
                 DraftOptions = [.. options],
+                SecondBody = setup.Class == HeroClass.Hilvan ? SecondBodyAt(seat, players.Count) : null,
             });
         }
 
@@ -90,6 +91,15 @@ public static class MatchFactory
             LastSeq = log.LastSeq,
         };
         return (state, log.Events);
+    }
+
+    /// <summary>Hilván empieza con sus cuerpos en la misma fila, a 2 casillas, sin pisar la entrada de otro asiento.</summary>
+    private static Position SecondBodyAt(int seat, int playerCount)
+    {
+        var east = SpawnPoints[seat].Step(Direction.East, HeroRules.BodySpacing);
+        return Room.IsInside(east) && !SpawnPoints.Take(playerCount).Contains(east)
+            ? east
+            : SpawnPoints[seat].Step(Direction.West, HeroRules.BodySpacing);
     }
 
     private static Room GenerateRoom(int index, int playerCount, IRandom rng, ref int nextEnemyId, ref int nextChestId)
@@ -263,7 +273,7 @@ public static class RoomValidator
         return allFloorReachable && objectsReachable;
     }
 
-    private static bool IsSafeFloor(Room room, Position position) =>
+    internal static bool IsSafeFloor(Room room, Position position) =>
         Room.IsInside(position)
         && room.TerrainAt(position) is Terrain.Floor or Terrain.Spikes or Terrain.Stairs
         && room.ChestAt(position) is null;

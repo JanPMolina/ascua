@@ -34,9 +34,9 @@ internal static class Paths
                 PathChoice = null,
                 SkillCooldown = 0,
                 HinderCooldown = 0,
-                Charges = 0,
                 Shield = 0,
                 EmberShieldBy = [],
+                EchoQueue = [],
             };
             ctx.Emit(new PathChosen(hero.Player, path));
             if (path == PathKind.Friendship)
@@ -45,20 +45,19 @@ internal static class Paths
                 continue;
             }
 
-            var embers = PathRules.RenegadeEmbers(hero.SavedEmbers);
+            var embers = PathRules.RenegadeEmbers(hero);
             ctx.Update(cleared with
             {
                 Status = HeroStatus.Renegade,
                 AwaitingSpawn = true,
                 SpawnRound = ctx.IsWardenRoom ? ctx.Round + PathRules.RenegadeSpawnDelay : 0,
-                Embers = embers,
+                Embers = 0,
                 SavedEmbers = 0,
                 WarnedHeroes = [],
             });
-            if (embers > 0)
-            {
-                ctx.Emit(new EmbersChanged(hero.Player, embers, EmberReason.RenegadeReturn, embers) { Audience = Audience.Only(hero.Player) });
-            }
+
+            // La deuda sobrevive: lo que recupera paga primero a la Usurera.
+            Combat.GainEmbers(ctx, hero.Player, embers, EmberReason.RenegadeReturn);
         }
     }
 
@@ -90,8 +89,8 @@ internal static class Paths
     public static void Kindle(RoundContext ctx, Hero ember, Direction direction)
     {
         ctx.Update(ember with { Facing = direction, SkillCooldown = PathRules.KindleCooldown });
-        var target = FirstInLine(ember.Position, direction, PathRules.KindleRange, p =>
-            ctx.Heroes.Find(h => h.IsActive && h.Position == p));
+        var target = RoundContext.FirstInLine(ember.Position, direction, PathRules.KindleRange, p =>
+            ctx.HeroAt(p) is { IsActive: true } hero ? hero : null);
         if (target is not null && target.EmberShieldBy.Count < PathRules.MaxEmberShield)
         {
             ctx.Update(target with { Shield = target.Shield + 1, EmberShieldBy = target.EmberShieldBy.Add(ember.Player) });
@@ -116,7 +115,7 @@ internal static class Paths
             return;
         }
 
-        ctx.Update(fallen with { Status = HeroStatus.Active, Hp = Math.Min(PathRules.RekindleHp, fallen.MaxHp), DownRounds = 0 });
+        Combat.StandUp(ctx, fallen, PathRules.RekindleHp, HeroRules.MiserRekindleEmbers);
         ctx.Emit(new HeroRevived(ember.Player, fallen.Player));
         ctx.GainEchoes(ember.Player, PathRules.RekindleEchoes, EchoReason.Rekindled);
     }
@@ -128,7 +127,7 @@ internal static class Paths
     public static void Hinder(RoundContext ctx, Hero ember, Direction direction)
     {
         ctx.Update(ember with { Facing = direction });
-        var enemy = FirstInLine(ember.Position, direction, PathRules.HinderRange, ctx.EnemyAt);
+        var enemy = RoundContext.FirstInLine(ember.Position, direction, PathRules.HinderRange, ctx.EnemyAt);
         if (enemy is null || enemy is { Kind: EnemyKind.Warden, Phase: 2 })
         {
             ctx.Emit(new EmberAbilityUsed(ember.Player, EmberAbility.Hinder, null, null) { Audience = Audience.Group(ember.Position) });
@@ -168,7 +167,7 @@ internal static class Paths
         foreach (var ember in ctx.Heroes.Where(h => h.IsEmber).OrderBy(h => h.Seat).ToList())
         {
             var allies = ctx.Heroes
-                .Where(h => h.IsActive && h.WarmthCooldown == 0 && h.Hp < h.MaxHp && h.Position.DistanceTo(ember.Position) <= 1)
+                .Where(h => h is { IsActive: true, HasBody: true, WarmthCooldown: 0 } && h.Hp < h.MaxHp && h.DistanceTo(ember.Position) <= 1)
                 .OrderBy(h => h.Seat)
                 .ToList();
             foreach (var ally in allies)
@@ -215,24 +214,22 @@ internal static class Paths
         {
             reborn.Add(ember.Player);
             var hp = PathRules.RebirthHp(ember.MaxHp);
-            var embers = PathRules.RebirthEmbers(ember.SavedEmbers, ember.Echoes);
+            var embers = PathRules.RebirthEmbers(ember, ember.Echoes);
             ctx.Update(ember with
             {
                 Status = HeroStatus.Active,
                 Hp = hp,
-                Embers = embers,
+                Embers = 0,
                 SavedEmbers = 0,
                 Echoes = 0,
                 SkillCooldown = 0,
                 HinderCooldown = 0,
-                Charges = 0,
                 WarmthCooldown = 0,
                 BeaconActive = false,
             });
-            if (embers > 0)
-            {
-                ctx.Emit(new EmbersChanged(ember.Player, embers, EmberReason.Rebirth, embers) { Audience = Audience.Only(ember.Player) });
-            }
+
+            // La deuda sobrevive a la Brasa: las ascuas con las que se renace pagan.
+            Combat.GainEmbers(ctx, ember.Player, embers, EmberReason.Rebirth);
         }
 
         return reborn;
@@ -270,10 +267,11 @@ internal static class Paths
             AwaitingSpawn = false,
             SpawnRound = 0,
             Hp = fresh ? PathRules.RenegadeHp(renegade.MaxHp, wardenRoom) : renegade.Hp,
-            Charges = Math.Min(renegade.Charges, PathRules.RenegadeMaxCharges),
             SkillCooldown = wardenRoom ? Math.Max(renegade.SkillCooldown, PathRules.RenegadeFinalSkillLock) : renegade.SkillCooldown,
         };
         ctx.Update(renegade);
+        HeroSkills.PlaceSecondBody(ctx, renegade);
+        ctx.MakeNoise(ctx.Hero(player));
         ctx.Emit(new RenegadeSpawned(player, tile));
 
         foreach (var hero in ctx.Heroes.Where(h => h.IsActive).ToList())
@@ -292,7 +290,7 @@ internal static class Paths
     /// <summary>Casilla libre más lejana de los héroes (a ≥4 de todos si se puede); en empate, fila y columna menores.</summary>
     private static Position? FarthestFreeTile(RoundContext ctx)
     {
-        var heroes = ctx.Heroes.Where(h => h.Status is HeroStatus.Active or HeroStatus.Down).Select(h => h.Position).ToList();
+        var heroes = ctx.Heroes.Where(h => h.Status is HeroStatus.Active or HeroStatus.Down).SelectMany(h => h.Bodies).ToList();
         var candidates = Room.AllPositions()
             .Where(p => ctx.IsFreeFor(p, flies: false) && ctx.Room.TerrainAt(p) != Terrain.Stairs)
             .Select(p => (Position: p, Distance: heroes.Count == 0 ? int.MaxValue : heroes.Min(h => h.DistanceTo(p))))
@@ -301,21 +299,5 @@ internal static class Paths
             .ThenBy(c => c.Position.X)
             .ToList();
         return candidates.Count == 0 ? null : candidates[0].Position;
-    }
-
-    private static T? FirstInLine<T>(Position origin, Direction direction, int range, Func<Position, T?> find)
-        where T : class
-    {
-        var position = origin;
-        for (var i = 0; i < range; i++)
-        {
-            position = position.Step(direction);
-            if (find(position) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
     }
 }

@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="..\..\src\Ascua.Domain\Ascua.Domain.csproj" />
+    <ProjectReference Include="..\..\tools\Ascua.Sim\Ascua.Sim.csproj" />
   </ItemGroup>
 </Project>

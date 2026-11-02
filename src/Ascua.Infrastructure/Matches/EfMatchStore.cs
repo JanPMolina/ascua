@@ -51,6 +51,7 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
                 State = MatchJson.Serialize(snapshot.State),
                 Deadline = snapshot.Deadline,
                 RoundDurationMs = (int)snapshot.RoundDuration.TotalMilliseconds,
+                BellDurationMs = (int)snapshot.BellDuration.TotalMilliseconds,
                 CreatedAt = snapshot.CreatedAt,
                 UpdatedAt = snapshot.CreatedAt,
             });
@@ -59,7 +60,7 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
                 MatchId = snapshot.MatchId,
                 UserId = p.UserId,
                 Seat = p.Seat,
-                Hero = HeroNames.ToColumn(p.Hero),
+                Hero = HeroColumn.From(p.Hero),
                 DisplayName = p.DisplayName,
                 CreatedAt = snapshot.CreatedAt,
             }));
@@ -214,9 +215,10 @@ public sealed class EfMatchStore(IServiceScopeFactory scopes) : IMatchStore
             Status = MatchStatusExtensions.FromCode(match.Status),
             Version = match.Version,
             State = MatchJson.DeserializeState(match.State),
-            Participants = [.. players.Select(p => new MatchParticipant(p.UserId, p.Seat, HeroNames.Parse(p.Hero), p.DisplayName))],
+            Participants = [.. players.Select(p => new MatchParticipant(p.UserId, p.Seat, HeroColumn.Parse(p.Hero), p.DisplayName))],
             Deadline = match.Deadline,
             RoundDuration = TimeSpan.FromMilliseconds(match.RoundDurationMs),
+            BellDuration = TimeSpan.FromMilliseconds(match.BellDurationMs),
             CreatedAt = match.CreatedAt,
         };
     }

@@ -11,16 +11,16 @@ public sealed class HeroAssignmentTests
     [Fact]
     public void Earlier_players_keep_their_preferred_hero_and_the_rest_get_free_ones()
     {
-        var heroes = HeroAssignment.Assign([HeroClass.Cuervo, HeroClass.Cuervo, null, HeroClass.Yunque]);
+        var heroes = HeroAssignment.Assign([HeroClass.Polizon, HeroClass.Polizon, null, HeroClass.Errata]);
 
-        Assert.Equal([HeroClass.Cuervo, HeroClass.Chispa, HeroClass.Raiz, HeroClass.Yunque], heroes);
+        Assert.Equal([HeroClass.Polizon, HeroClass.Anteayer, HeroClass.Hilvan, HeroClass.Errata], heroes);
         Assert.Equal(heroes.Count, heroes.Distinct().Count());
     }
 
     [Fact]
     public void More_players_than_heroes_is_rejected()
     {
-        Assert.Throws<ArgumentException>(() => HeroAssignment.Assign([null, null, null, null, null]));
+        Assert.Throws<ArgumentException>(() => HeroAssignment.Assign([.. Enumerable.Repeat<HeroClass?>(null, Enum.GetValues<HeroClass>().Length + 1)]));
     }
 }
 
@@ -32,13 +32,13 @@ public sealed class MatchmakingProcessorTests
     [Fact]
     public async Task Formed_group_is_launched_with_distinct_heroes_and_completed()
     {
-        _queue.Groups.Enqueue(Group(HeroClass.Chispa, HeroClass.Chispa, null));
+        _queue.Groups.Enqueue(Group(HeroClass.Hilvan, HeroClass.Hilvan, null));
 
         var launched = await Processor().RunOnceAsync(default);
 
         Assert.Equal(1, launched);
         var request = Assert.Single(_launcher.Requests);
-        Assert.Equal([HeroClass.Chispa, HeroClass.Yunque, HeroClass.Cuervo], request.Seats.Select(s => s.Hero));
+        Assert.Equal([HeroClass.Hilvan, HeroClass.Errata, HeroClass.Anteayer], request.Seats.Select(s => s.Hero));
         Assert.Equal(request.RoomId, Assert.Single(_queue.Completed));
         Assert.Empty(_queue.Aborted);
     }

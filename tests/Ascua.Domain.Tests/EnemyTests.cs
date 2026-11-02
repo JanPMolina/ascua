@@ -10,7 +10,7 @@ public sealed class EnemyTests
     [Fact]
     public void Scavenger_approaches_and_telegraphs_the_hero_tile()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 4, 5)], [Enemy(1, EnemyKind.Scavenger, 4, 3)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 5)], [Enemy(1, EnemyKind.Scavenger, 4, 3)]);
 
         var (next, events) = Resolve(state, FixedRandom.Never);
 
@@ -23,7 +23,7 @@ public sealed class EnemyTests
     [Fact]
     public void Telegraphed_attacks_land_next_round_unless_the_hero_steps_away()
     {
-        var hero = Hero(A, HeroClass.Cuervo, 4, 5);
+        var hero = Hero(A, HeroClass.Errata, 4, 5);
         var scavenger = Enemy(1, EnemyKind.Scavenger, 4, 4) with { Telegraph = [new Position(4, 5)] };
         var state = State([hero], [scavenger]);
 
@@ -37,7 +37,7 @@ public sealed class EnemyTests
     [Fact]
     public void Guard_halves_incoming_damage()
     {
-        var hero = Hero(A, HeroClass.Cuervo, 4, 5);
+        var hero = Hero(A, HeroClass.Errata, 4, 5);
         var crossbow = Enemy(1, EnemyKind.Crossbowman, 4, 1) with { Telegraph = [new Position(4, 5)] };
 
         var (next, _) = Resolve(State([hero], [crossbow]), (A, Order.DefaultGuard));
@@ -48,7 +48,7 @@ public sealed class EnemyTests
     [Fact]
     public void Missing_orders_default_to_guard()
     {
-        var (_, events) = Resolve(State([Hero(A, HeroClass.Cuervo, 4, 5)]), FixedRandom.Never);
+        var (_, events) = Resolve(State([Hero(A, HeroClass.Errata, 4, 5)]), FixedRandom.Never);
 
         Assert.Contains(events, e => e is HeroGuarded { Player.Value: "alice" });
     }
@@ -57,19 +57,19 @@ public sealed class EnemyTests
     public void Moths_fly_over_cracks_but_walkers_go_around()
     {
         var room = EmptyRoom().WithTerrain(new Position(4, 3), Terrain.Crack);
-        var hero = Hero(A, HeroClass.Yunque, 4, 5);
+        var hero = Hero(A, HeroClass.Mampostero, 4, 5);
 
         var (withMoth, _) = Resolve(State([hero], [Enemy(1, EnemyKind.Moth, 4, 2)], room), FixedRandom.Never);
         var (withScavenger, _) = Resolve(State([hero], [Enemy(1, EnemyKind.Scavenger, 4, 2)], room), FixedRandom.Never);
 
         Assert.Equal(new Position(4, 3), withMoth.E(1)!.Position);
-        Assert.Equal(new Position(4, 2), withScavenger.E(1)!.Position);
+        Assert.Equal(new Position(5, 2), withScavenger.E(1)!.Position);
     }
 
     [Fact]
     public void Slime_splits_into_two_small_slimes_that_do_not_split_again()
     {
-        var hero = Hero(A, HeroClass.Yunque, 4, 4);
+        var hero = Hero(A, HeroClass.Mampostero, 4, 4);
         var slime = Enemy(1, EnemyKind.Slime, 4, 3) with { Hp = 1 };
 
         var (next, _) = Resolve(State([hero], [slime]), (A, Attack(Direction.North)));
@@ -88,7 +88,7 @@ public sealed class EnemyTests
     [Fact]
     public void Hopper_moves_two_tiles_per_round()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 4, 6)], [Enemy(1, EnemyKind.Hopper, 4, 0)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 6)], [Enemy(1, EnemyKind.Hopper, 4, 0)]);
 
         var (next, _) = Resolve(state, FixedRandom.Never);
 
@@ -98,7 +98,7 @@ public sealed class EnemyTests
     [Fact]
     public void Crossbowman_announces_a_full_line_when_aligned()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 4, 6)], [Enemy(1, EnemyKind.Crossbowman, 4, 1)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 6)], [Enemy(1, EnemyKind.Crossbowman, 4, 1)]);
 
         var (next, _) = Resolve(state, FixedRandom.Never);
 
@@ -109,7 +109,7 @@ public sealed class EnemyTests
     [Fact]
     public void Crossbowman_moves_to_align_and_then_announces()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 4, 2)], [Enemy(1, EnemyKind.Crossbowman, 1, 1)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 2)], [Enemy(1, EnemyKind.Crossbowman, 1, 1)]);
 
         var (next, _) = Resolve(state, FixedRandom.Never);
 
@@ -120,7 +120,7 @@ public sealed class EnemyTests
     [Fact]
     public void Totem_summons_a_scavenger_every_three_rounds_and_goes_out_after_three()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 0, 8)], [Enemy(1, EnemyKind.Totem, 8, 0)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 0, 8)], [Enemy(1, EnemyKind.Totem, 8, 0)]);
         var events = new List<DomainEvent>();
         for (var round = 1; round <= 9; round++)
         {
@@ -142,9 +142,9 @@ public sealed class EnemyTests
     public void Warden_in_phase_one_is_immune_from_the_front_but_not_from_the_flank()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Facing = Direction.South };
-        var yunque = Hero(A, HeroClass.Yunque, 4, 3, seat: 0);
-        var cuervo = Hero(B, HeroClass.Cuervo, 3, 2, seat: 1);
-        var state = State([yunque, cuervo], [warden]);
+        var mampostero = Hero(A, HeroClass.Mampostero, 4, 3, seat: 0);
+        var errata = Hero(B, HeroClass.Errata, 3, 2, seat: 1);
+        var state = State([mampostero, errata], [warden]);
 
         var (front, frontEvents) = Resolve(state, (A, Attack(Direction.North)));
         var (flank, _) = Resolve(state, (B, Attack(Direction.East)));
@@ -158,7 +158,7 @@ public sealed class EnemyTests
     public void Warden_telegraphs_a_three_by_three_in_front_of_him()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24);
-        var state = State([Hero(A, HeroClass.Yunque, 4, 4)], [warden]);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 4)], [warden]);
 
         var (next, _) = Resolve(state, FixedRandom.Never);
 
@@ -170,8 +170,8 @@ public sealed class EnemyTests
     public void Warden_enters_phase_two_at_half_life_summons_totems_and_alternates_with_a_cross()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 13, Facing = Direction.South };
-        var cuervo = Hero(A, HeroClass.Cuervo, 3, 2);
-        var state = State([cuervo], [warden]);
+        var errata = Hero(A, HeroClass.Errata, 3, 2);
+        var state = State([errata], [warden]);
 
         var (next, events) = Resolve(state, (A, Attack(Direction.East)));
 
@@ -190,7 +190,7 @@ public sealed class EnemyTests
     [Fact]
     public void Frozen_enemies_lose_their_next_action()
     {
-        var hero = Hero(A, HeroClass.Yunque, 4, 4) with { Blessings = [Blessing.Frost] };
+        var hero = Hero(A, HeroClass.Mampostero, 4, 4) with { Blessings = [Blessing.Frost] };
         var scavenger = Enemy(1, EnemyKind.Scavenger, 4, 3) with { Telegraph = [new Position(4, 4)] };
 
         var (next, events) = Resolve(State([hero], [scavenger]), FixedRandom.Always, (A, Attack(Direction.North)));

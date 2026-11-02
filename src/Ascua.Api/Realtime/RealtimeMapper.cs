@@ -36,11 +36,16 @@ public static class RealtimeMapper
                 Status = snapshot.Status.ToCode(),
                 Round = Math.Clamp(snapshot.State.Round, 0, 60),
                 Floor = view.RoomIndex + 1,
-                RoundDeadline = snapshot.Status == MatchStatus.InProgress && snapshot.Deadline is { } deadline ? Timestamp(deadline) : null,
+                RoundDeadline = RoundDeadline(snapshot, participant.PlayerId),
                 Me = Self(snapshot, participant, view, context),
                 Allies = [.. view.Allies.Select(a => Other(snapshot, a, context))],
                 Enemies = Enemies(view),
                 Tiles = Tiles(view),
+                HiddenTelegraphs = HiddenTelegraphs(view),
+                Echoes = Echoes(view),
+                GroundEmbers = Ground(view),
+                NoiseTiles = [.. view.Noise.Select(Position)],
+                Bell = Bell(snapshot, view),
             },
         };
     }
@@ -85,6 +90,12 @@ public static class RealtimeMapper
                 EnemiesRemoved = [.. previousEnemies.Keys.Where(id => floorChanged || enemies.All(e => e.EnemyId != id))],
                 TilesChanged = [.. Tiles(current).Where(t => !previousTiles.TryGetValue((t.X, t.Y), out var kind) || kind != t.Kind)],
                 Events = [.. visible.Take(128)],
+                HiddenTelegraphs = HiddenTelegraphs(current),
+                Echoes = Echoes(current),
+                GroundEmbers = Ground(current),
+                NoiseTiles = [.. current.Noise.Select(Position)],
+                Bell = Bell(after, current),
+                RoundDeadline = RoundDeadline(after, participant.PlayerId),
             },
         };
     }
@@ -148,6 +159,7 @@ public static class RealtimeMapper
             Standings = standings,
             FinishedAt = Timestamp(now),
             ReplayUrl = $"{publicBaseUrl.TrimEnd('/')}/api/v1/matches/{Id(snapshot.MatchId)}/replay",
+            Betrayals = [.. (outcome?.Betrayals ?? []).Select(b => new BetrayalDto { TraitorId = b.Traitor.Value, VictimId = b.Victim.Value, Damage = b.Damage })],
         };
     }
 
@@ -200,9 +212,13 @@ public static class RealtimeMapper
             Position = Position(self.Position),
             Facing = Direction(self.Facing),
             Embers = Math.Clamp(self.Embers, 0, 999),
-            Charges = Math.Clamp(self.Charges, 0, 3),
-            AbilityCooldown = Math.Clamp(self.SkillCooldown, 0, 8),
-            StealthRoundsLeft = Math.Clamp(self.StealthRounds, 0, 2),
+            AbilityCooldown = Math.Clamp(self.SkillCooldown, 0, 12),
+            SecondBody = self.SecondBody is { } second ? Position(second) : null,
+            HostEnemyId = self.HostEnemyId,
+            Debt = Math.Clamp(self.Debt, 0, 99),
+            DebtTo = self.DebtTo?.Value,
+            RewindTile = self.RewindTile is { } rewind ? Position(rewind) : null,
+            RewindHp = self.RewindHp is { } rewindHp ? Math.Clamp(rewindHp, 0, 8) : null,
             DownRoundsLeft = self.Status == HeroStatus.Down ? Math.Clamp(HeroCatalog.RoundsUntilExtinct - self.DownRounds, 0, 3) : null,
             Blessings = [.. self.Blessings.Distinct().Select(BlessingId)],
             Pact = new PactDto { PactId = PactId(self.Pact), Description = PactDescription(self.Pact) },
@@ -230,7 +246,7 @@ public static class RealtimeMapper
             Choice = path.Choice is { } choice ? Path(choice) : null,
             SavedEmbers = Math.Clamp(path.SavedEmbers, 0, 999),
             Echoes = Math.Clamp(path.Echoes, 0, 99),
-            RebirthEmbers = self.Status == HeroStatus.EmberSpirit ? Math.Clamp(PathRules.RebirthEmbers(path.SavedEmbers, path.Echoes), 0, 999) : null,
+            RebirthEmbers = self.Status == HeroStatus.EmberSpirit && hero is not null ? Math.Clamp(PathRules.RebirthEmbers(hero, path.Echoes), 0, 999) : null,
             HinderCooldown = Math.Clamp(path.HinderCooldown, 0, 2),
             AwaitingSpawn = path.AwaitingSpawn ? (path.SpawnRound is null ? "NEXT_FLOOR" : "ROUND") : null,
             SpawnRound = path.AwaitingSpawn && path.SpawnRound is { } round ? Math.Clamp(round, 1, 60) : null,
@@ -256,9 +272,9 @@ public static class RealtimeMapper
             DefaultPath = Path(PathKind.Friendship),
             Deadline = Timestamp(snapshot.PathDeadline ?? snapshot.Deadline ?? now),
             SavedEmbers = Math.Clamp(hero.SavedEmbers, 0, 999),
-            VengeanceEmbers = Math.Clamp(PathRules.RenegadeEmbers(hero.SavedEmbers), 0, 999),
-            FriendshipEmbersMin = Math.Clamp(PathRules.RebirthEmbers(hero.SavedEmbers, 0), 0, 999),
-            FriendshipEmbersMax = Math.Clamp(PathRules.RebirthEmbers(hero.SavedEmbers, int.MaxValue / 16), 0, 999),
+            VengeanceEmbers = Math.Clamp(PathRules.RenegadeEmbers(hero), 0, 999),
+            FriendshipEmbersMin = Math.Clamp(PathRules.RebirthEmbers(hero, 0), 0, 999),
+            FriendshipEmbersMax = Math.Clamp(PathRules.RebirthEmbers(hero, int.MaxValue / 16), 0, 999),
             WardenRoom = snapshot.State.RoomIndex == snapshot.State.Rooms.Count - 1,
         };
     }
@@ -283,8 +299,88 @@ public static class RealtimeMapper
             BlessingCount = Math.Clamp(ally.BlessingCount, 0, 12),
             Connected = context.Connected.Contains(participant.UserId),
             Decided = snapshot.Status == MatchStatus.InProgress && context.Orders.ContainsKey(ally.Player),
+            SecondBody = ally.SecondBody is { } second ? Position(second) : null,
+            DebtToYou = ally.DebtToMe,
         };
     }
+
+    private static string? RoundDeadline(MatchSnapshot snapshot, PlayerId player) =>
+        snapshot.Status == MatchStatus.InProgress && snapshot.DeadlineFor(player) is { } deadline ? Timestamp(deadline) : null;
+
+    /// <summary>Casillas anunciadas por enemigos que no se ven: solo las casillas, sin decir de quién son.</summary>
+    private static List<PositionDto> HiddenTelegraphs(PlayerView view) =>
+        [.. view.Telegraphs.Where(t => t.EnemyId is null).SelectMany(t => t.Tiles).Distinct().Select(Position)];
+
+    private static List<EchoDto> Echoes(PlayerView view) =>
+        [.. view.Echoes.Select(e => new EchoDto
+        {
+            OwnerId = e.Owner.Value,
+            Position = Position(e.Origin),
+            Direction = Direction(e.Direction),
+            FireRound = Math.Clamp(e.FireRound, 1, 60),
+        })];
+
+    private static List<GroundEmbersDto> Ground(PlayerView view) =>
+        [.. view.Ground.Select(g => new GroundEmbersDto { Position = Position(g.Position), Amount = Math.Clamp(g.Amount, 1, 99) })];
+
+    private static BellDto? Bell(MatchSnapshot snapshot, PlayerView view) =>
+        view.BellRinger is { } ringer && snapshot.Status == MatchStatus.InProgress
+            ? new BellDto
+            {
+                RingerId = ringer.Value,
+                Deadline = snapshot.BellDeadline is { } deadline ? Timestamp(deadline) : null,
+                Closed = view.BellClosed,
+            }
+            : null;
+
+    /// <summary>Último en hablar: lo que oye el Campanero. Como Renegado, sin direcciones.</summary>
+    public static LastWordMessage LastWord(Guid matchId, LastWordHeard heard)
+    {
+        ArgumentNullException.ThrowIfNull(heard);
+        return new LastWordMessage
+        {
+            MatchId = Id(matchId),
+            Round = Math.Clamp(heard.Round, 1, 60),
+            TypesOnly = heard.TypesOnly,
+            Orders = [.. heard.Orders.Select(o => new HeardOrderDto
+            {
+                PlayerId = o.Player.Value,
+                Type = OrderType(o.Order.Type),
+                Direction = !heard.TypesOnly && o.Order.Direction is { } direction ? Direction(direction) : null,
+            })],
+        };
+    }
+
+    public static SignalReceivedMessage Signal(Guid matchId, MatchParticipant sender, QuickSignal signal, DateTimeOffset sentAt)
+    {
+        ArgumentNullException.ThrowIfNull(sender);
+        ArgumentNullException.ThrowIfNull(signal);
+        return new SignalReceivedMessage
+        {
+            MatchId = Id(matchId),
+            FromPlayerId = sender.PlayerId.Value,
+            Kind = SignalKindCode(signal.Kind),
+            Position = signal.Tile is { } tile ? Position(tile) : null,
+            SentAt = Timestamp(sentAt),
+        };
+    }
+
+    public static string SignalKindCode(SignalKind kind) => kind switch
+    {
+        SignalKind.Here => "HERE",
+        SignalKind.Danger => "DANGER",
+        SignalKind.Help => "HELP",
+        _ => "MINE",
+    };
+
+    public static SignalKind? ParseSignal(string? value) => value switch
+    {
+        "HERE" => SignalKind.Here,
+        "DANGER" => SignalKind.Danger,
+        "HELP" => SignalKind.Help,
+        "MINE" => SignalKind.Mine,
+        _ => null,
+    };
 
     private static List<EnemyDto> Enemies(PlayerView view) =>
         [.. view.Enemies.Select(e => new EnemyDto
@@ -317,9 +413,9 @@ public static class RealtimeMapper
     /// <summary>Evento del contrato. Solo para eventos ya filtrados (o para la vista completa de un administrador).</summary>
     internal static Dictionary<string, object>? VisibleEvent(DomainEvent domainEvent) => domainEvent switch
     {
-        HeroMoved e => Event("MOVED", actor: e.Player.Value, position: e.To),
+        HeroMoved e => Event("MOVED", actor: e.Player.Value, position: e.To, detail: e.Body == 1 ? "SECOND_BODY" : null),
         HitPrevented { Reason: PreventionReason.WarningShield } e => Event("BLOCKED", actor: Ref(e.Source), target: Ref(e.Target), detail: "WARNING_SHIELD"),
-        MoveBounced e => Event("BOUNCED", actor: e.Player.Value, position: e.Attempted),
+        MoveBounced e => Event("BOUNCED", actor: e.Player.Value, position: e.Attempted, detail: e.Body == 1 ? "SECOND_BODY" : null),
         HeroAttacked e => Event("ATTACKED", actor: e.Player.Value),
         SkillUsed e => Event("ABILITY_USED", actor: e.Player.Value),
         HeroGuarded e => Event("GUARDED", actor: e.Player.Value),
@@ -335,7 +431,8 @@ public static class RealtimeMapper
         ChestOpened e => Event("CHEST_OPENED", actor: e.Player.Value),
         EmbersChanged { Reason: EmberReason.StolenFromAlly } e => Event("EMBERS_STOLEN", actor: e.Player.Value, amount: e.Delta),
         EmbersChanged { Reason: EmberReason.StolenByAlly } e => Event("EMBERS_STOLEN", target: e.Player.Value, amount: e.Delta),
-        EmbersChanged { Delta: > 0 } e => Event("EMBERS_GAINED", actor: e.Player.Value, amount: e.Delta),
+        EmbersChanged { Delta: > 0 } e => Event("EMBERS_GAINED", actor: e.Player.Value, amount: e.Delta, detail: e.Reason == EmberReason.DebtCollected ? "DEBT_COLLECTED" : null),
+        EmbersChanged { Reason: EmberReason.MiserHit or EmberReason.Bribe or EmberReason.DebtSettled } e => Event("EMBERS_LOST", actor: e.Player.Value, amount: e.Delta, detail: EmberLossCode(e.Reason)),
         BlessingChosen e => Event("BLESSING_GAINED", actor: e.Player.Value),
         TrapTriggered e => Event("TRAP_TRIGGERED", position: e.Position),
         FireStarted e => Event("FIRE_STARTED", position: e.Position),
@@ -349,11 +446,27 @@ public static class RealtimeMapper
         RenegadeDefeated e => Event("RENEGADE_DEFEATED", actor: e.By?.Value, target: e.Renegade.Value),
         EchoGained e => Event("ECHO_GAINED", actor: e.Player.Value, amount: e.Amount, detail: EchoReasonCode(e.Reason)),
         EmberAbilityUsed e => Event(EmberAbilityCode(e.Ability), actor: e.Player.Value, target: Ref(e.Target), position: e.Tile),
+        EchoFired e => Event("ECHO_FIRED", actor: e.Player.Value, position: e.Origin, detail: Direction(e.Direction)),
+        AttackCorrected e => Event("ATTACK_CORRECTED", target: e.EnemyId is { } id ? EnemyRef(id) : null, tiles: e.Tiles),
+        BetrayalRecorded e => Event("BETRAYAL_RECORDED", actor: e.Traitor.Value, target: e.Victim.Value, amount: e.Damage),
+        BetrayalRevealed e => Event("BETRAYAL_REVEALED", actor: e.Traitor.Value, target: e.Victim.Value, amount: e.Damage),
+        HostBoarded e => Event("HOST_BOARDED", actor: e.Player.Value, target: EnemyRef(e.EnemyId)),
+        HostExited e => Event("HOST_EXITED", actor: e.Player.Value, position: e.Tile),
+        HostDrained e => Event("HOST_DRAINED", actor: e.Player.Value, target: EnemyRef(e.EnemyId)),
+        WardenTurned e => Event("WARDEN_TURNED", target: EnemyRef(e.EnemyId), detail: Direction(e.Facing)),
+        Shouted e => Event("SHOUTED", actor: e.Player.Value),
+        DebtChanged e => Event("DEBT_CHANGED", actor: e.Creditor.Value, target: e.Debtor.Value, amount: e.Delta, detail: DebtReasonCode(e.Reason)),
+        EmbersDropped e => Event("EMBERS_DROPPED", position: e.Tile, amount: e.Amount),
+        EmbersPickedUp e => Event("EMBERS_PICKED_UP", actor: e.Player.Value, position: e.Tile, amount: e.Amount),
+        EnemyBribed e => Event("ENEMY_BRIBED", actor: e.Player.Value, target: EnemyRef(e.EnemyId), amount: e.Cost),
+        RoomShifted e => Event("ROOM_SHIFTED", actor: e.Player.Value, amount: e.Line, detail: $"{(e.Axis == ShiftAxis.Row ? "ROW" : "COLUMN")}_{Direction(e.Direction)}"),
+        BellRung e => Event("BELL_RUNG", actor: e.Player.Value, amount: e.ForRound),
+        BellExpired e => Event("BELL_EXPIRED", actor: e.Ringer.Value),
         _ => null,
     };
 
     internal static Dictionary<string, object> Event(
-        string type, string? actor = null, string? target = null, Position? position = null, int? amount = null, string? detail = null)
+        string type, string? actor = null, string? target = null, Position? position = null, int? amount = null, string? detail = null, IReadOnlyList<Position>? tiles = null)
     {
         var dto = new Dictionary<string, object> { ["type"] = type };
         if (actor is not null)
@@ -379,6 +492,11 @@ public static class RealtimeMapper
         if (detail is not null)
         {
             dto["detail"] = detail;
+        }
+
+        if (tiles is not null)
+        {
+            dto["tiles"] = tiles.Where(Room.IsInside).Select(t => new Dictionary<string, object> { ["x"] = t.X, ["y"] = t.Y }).ToList();
         }
 
         return dto;
@@ -412,7 +530,7 @@ public static class RealtimeMapper
         _ => "INTERACT",
     };
 
-    /// <summary>Mismo nombre que en el REST (YUNQUE, CHISPA, CUERVO, RAIZ): el del enum en mayúsculas.</summary>
+    /// <summary>Mismo nombre que en el REST (ERRATA, ANTEAYER, HILVAN…): el del enum en mayúsculas.</summary>
     public static string Hero(HeroClass hero) => hero.ToString().ToUpperInvariant();
 
     public static string HeroState(HeroStatus status) => status switch
@@ -478,7 +596,7 @@ public static class RealtimeMapper
         PactKind.NeverFall => "Terminar sin haber caído.",
         PactKind.OpenThreeChests => "Abrir 3 cofres.",
         PactKind.ReviveTwoAllies => "Levantar a 2 aliados.",
-        _ => "Golpear 2 veces a un aliado por la espalda sin que te descubra.",
+        _ => "Golpear 2 veces a un aliado por la espalda o con una traición anónima.",
     };
 
     public static string Outcome(OutcomeKind? kind) => kind switch
@@ -499,6 +617,23 @@ public static class RealtimeMapper
         EchoReason.AttackHindered => "ATTACK_HINDERED",
         EchoReason.BeaconKill => "BEACON_KILL",
         _ => "WARMTH",
+    };
+
+    private static string EmberLossCode(EmberReason reason) => reason switch
+    {
+        EmberReason.Bribe => "BRIBE",
+        EmberReason.DebtSettled => "DEBT_SETTLED",
+        _ => "HIT",
+    };
+
+    private static string DebtReasonCode(DebtReason reason) => reason switch
+    {
+        DebtReason.Loan => "LOAN",
+        DebtReason.Interest => "INTEREST",
+        DebtReason.Paid => "PAID",
+        DebtReason.Extinction => "EXTINCTION",
+        DebtReason.MatchEnd => "MATCH_END",
+        _ => "CANCELLED",
     };
 
     private static string EmberAbilityCode(EmberAbility ability) => ability switch

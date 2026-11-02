@@ -10,8 +10,6 @@ namespace Ascua.Domain.Tests;
 /// <summary>Caminos tras la extinción (planteamiento/04-caminos-tras-morir.md): elección, Brasa errante y Renegado.</summary>
 public sealed class PathTests
 {
-    private static readonly Position Stairs = MatchFactory.StairsPosition;
-
     // ───────────── Fórmulas ─────────────
 
     [Theory]
@@ -61,7 +59,7 @@ public sealed class PathTests
     [Fact]
     public void Choosing_a_path_is_private_until_the_round_resolves()
     {
-        var state = TwoRooms([ExtinctHero(A, saved: 5), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)]);
+        var state = TwoRooms([ExtinctHero(A, saved: 5), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)]);
 
         var result = MatchRules.ChoosePath(state, A, PathKind.Vengeance);
 
@@ -78,7 +76,7 @@ public sealed class PathTests
     [Fact]
     public void Only_the_first_choice_counts_and_only_an_extinct_bearer_can_choose()
     {
-        var state = TwoRooms([ExtinctHero(A), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)]);
+        var state = TwoRooms([ExtinctHero(A), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)]);
         var chosen = MatchRules.ChoosePath(state, A, PathKind.Friendship).State;
 
         Assert.Equal("NO_PATH_OFFER", MatchRules.ChoosePath(chosen, A, PathKind.Vengeance).Error?.Code);
@@ -91,7 +89,7 @@ public sealed class PathTests
     [Fact]
     public void When_the_deadline_expires_friendship_is_chosen()
     {
-        var state = TwoRooms([ExtinctHero(A), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)]);
+        var state = TwoRooms([ExtinctHero(A), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)]);
 
         var result = MatchRules.AutoChoosePaths(state);
 
@@ -102,7 +100,7 @@ public sealed class PathTests
     [Fact]
     public void An_unchosen_offer_becomes_friendship_when_the_round_resolves()
     {
-        var state = TwoRooms([ExtinctHero(A, saved: 6), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)]);
+        var state = TwoRooms([ExtinctHero(A, saved: 6), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)]);
 
         var (next, events) = Resolve(state, FixedRandom.Never);
 
@@ -118,7 +116,7 @@ public sealed class PathTests
     [Fact]
     public void Choosing_vengeance_reveals_a_renegade_that_waits_for_the_next_room_with_half_its_embers()
     {
-        var state = TwoRooms([ExtinctHero(A, saved: 5) with { PathChoice = PathKind.Vengeance }, Hero(B, HeroClass.Yunque, 0, 8, seat: 1)]);
+        var state = TwoRooms([ExtinctHero(A, saved: 5) with { PathChoice = PathKind.Vengeance }, Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)]);
 
         var (next, events) = Resolve(state, FixedRandom.Never);
 
@@ -139,7 +137,7 @@ public sealed class PathTests
     public void Drift_moves_up_to_two_tiles_through_walls_and_enemies_without_leaving_the_room()
     {
         var room = EmptyRoom(0).WithTerrain(new Position(4, 3), Terrain.Wall);
-        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)], [Enemy(1, EnemyKind.Totem, 4, 2)], room);
+        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)], [Enemy(1, EnemyKind.Totem, 4, 2)], room);
 
         var (next, events) = Resolve(state, (A, Move(Direction.North)));
         Assert.Equal(new Position(4, 2), next.H(A).Position);
@@ -152,7 +150,7 @@ public sealed class PathTests
     [Fact]
     public void Kindle_gives_one_shield_to_the_first_ally_in_line_up_to_two_from_embers()
     {
-        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Yunque, 4, 2, seat: 1)]);
+        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Mampostero, 4, 2, seat: 1)]);
 
         var (next, events) = Resolve(state, (A, Skill(Direction.North)));
 
@@ -168,9 +166,9 @@ public sealed class PathTests
     [Fact]
     public void Each_point_of_kindled_shield_that_absorbs_damage_is_an_echo()
     {
-        var yunque = Hero(B, HeroClass.Yunque, 4, 5, seat: 1) with { Shield = 1, EmberShieldBy = [A] };
+        var mampostero = Hero(B, HeroClass.Mampostero, 4, 5, seat: 1) with { Shield = 1, EmberShieldBy = [A] };
         var striker = Enemy(1, EnemyKind.Scavenger, 4, 4) with { Telegraph = [new Position(4, 5)] };
-        var state = TwoRooms([Ember(A, 0, 0), yunque], [striker]);
+        var state = TwoRooms([Ember(A, 0, 0), mampostero], [striker]);
 
         var (next, events) = Resolve(state, (B, Interact(Direction.East)));
 
@@ -187,8 +185,8 @@ public sealed class PathTests
     public void Rekindle_lifts_an_adjacent_fallen_ally_with_one_life_for_three_echoes()
     {
         // Sin la Calidez (que lo curaría al terminar la ronda junto a la Brasa) para ver la vida de Reavivar.
-        var fallen = Hero(B, HeroClass.Chispa, 4, 3, seat: 1) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1, WarmthCooldown = 3 };
-        var state = TwoRooms([Ember(A, 4, 4), fallen, Hero(C, HeroClass.Raiz, 8, 8, seat: 2)]);
+        var fallen = Hero(B, HeroClass.Usurera, 4, 3, seat: 1) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1, WarmthCooldown = 3 };
+        var state = TwoRooms([Ember(A, 4, 4), fallen, Hero(C, HeroClass.Campanero, 8, 8, seat: 2)]);
 
         var (next, events) = Resolve(state, (A, Interact(Direction.North)));
 
@@ -203,7 +201,7 @@ public sealed class PathTests
     public void Hinder_delays_an_announced_attack_by_one_round_and_earns_an_echo_if_it_would_hit_a_hero()
     {
         var striker = Enemy(1, EnemyKind.Scavenger, 4, 4) with { Telegraph = [new Position(4, 3)] };
-        var state = TwoRooms([Ember(A, 4, 6), Hero(B, HeroClass.Yunque, 4, 3, seat: 1)], [striker]);
+        var state = TwoRooms([Ember(A, 4, 6), Hero(B, HeroClass.Mampostero, 4, 3, seat: 1)], [striker]);
 
         var (delayed, events) = Resolve(state, (A, Attack(Direction.North)), (B, Interact(Direction.East)));
 
@@ -222,7 +220,7 @@ public sealed class PathTests
     public void Hinder_does_not_work_on_the_warden_in_phase_two()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 4), maxHp: 24) with { Hp = 10, Phase = 2 };
-        var state = State([Ember(A, 4, 6), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)], [warden]);
+        var state = State([Ember(A, 4, 6), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)], [warden]);
 
         var (next, _) = Resolve(state, (A, Attack(Direction.North)));
 
@@ -235,8 +233,8 @@ public sealed class PathTests
     public void Beacon_shares_a_radius_two_light_with_the_group_and_an_ally_kill_inside_it_is_an_echo()
     {
         var moth = Enemy(1, EnemyKind.Moth, 4, 5);
-        var renegade = PresentRenegade(C, HeroClass.Raiz, 8, 0, seat: 2);
-        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Yunque, 4, 6, seat: 1), renegade], [moth]);
+        var renegade = PresentRenegade(C, HeroClass.Campanero, 8, 0, seat: 2);
+        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Mampostero, 4, 6, seat: 1), renegade], [moth]);
 
         var (next, events) = Resolve(state, (B, Attack(Direction.North)));
 
@@ -252,7 +250,7 @@ public sealed class PathTests
     [Fact]
     public void Warmth_heals_an_adjacent_wounded_ally_once_every_three_rounds()
     {
-        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Yunque, 4, 5, seat: 1) with { Hp = 3 }]);
+        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Mampostero, 4, 5, seat: 1) with { Hp = 3 }]);
 
         var (first, events) = Resolve(state, FixedRandom.Never);
         Assert.Equal(4, first.H(B).Hp);
@@ -275,7 +273,7 @@ public sealed class PathTests
     public void Monsters_ignore_the_ember_and_nothing_hurts_it()
     {
         var striker = Enemy(1, EnemyKind.Scavenger, 4, 3) with { Telegraph = [new Position(4, 4)] };
-        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)], [striker]);
+        var state = TwoRooms([Ember(A, 4, 4), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)], [striker]);
 
         var (next, events) = Resolve(state, (A, Move(Direction.South)));
 
@@ -293,7 +291,7 @@ public sealed class PathTests
             SkillCooldown = 1,
             HinderCooldown = 2,
         };
-        var state = TwoRooms([ember, Hero(B, HeroClass.Chispa, 4, 1, seat: 1)]);
+        var state = TwoRooms([ember, Hero(B, HeroClass.Usurera, 4, 1, seat: 1)]);
 
         var (next, events) = Resolve(state, (B, Move(Direction.North)));
 
@@ -317,10 +315,10 @@ public sealed class PathTests
     public void In_the_warden_room_the_ember_stays_an_ember_and_can_win_with_the_rebirth_formula()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 1, Phase = 2 };
-        var yunque = Hero(A, HeroClass.Yunque, 4, 3, seat: 0) with { Pact = PactKind.OpenThreeChests };
+        var mampostero = Hero(A, HeroClass.Mampostero, 4, 3, seat: 0) with { Pact = PactKind.OpenThreeChests };
         var ember = Ember(B, 8, 8, seat: 1, saved: 10, echoes: 7) with { Pact = PactKind.ReviveTwoAllies };
 
-        var (next, _) = Resolve(State([yunque, ember], [warden]), (A, Attack(Direction.North)));
+        var (next, _) = Resolve(State([mampostero, ember], [warden]), (A, Attack(Direction.North)));
 
         Assert.Equal(OutcomeKind.Victory, next.Outcome!.Kind);
         Assert.Equal(B, Assert.Single(next.Outcome.Winners));
@@ -334,8 +332,8 @@ public sealed class PathTests
     public void A_renegade_appears_in_the_next_room_far_from_the_heroes_with_one_monster_less_and_a_shield_for_each_hero()
     {
         var second = EmptyRoom(1) with { InitialEnemies = [Enemy(7, EnemyKind.Scavenger, 4, 4), Enemy(8, EnemyKind.Moth, 2, 2)] };
-        var renegade = Hero(A, HeroClass.Yunque, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true, Embers = 3 };
-        var state = TwoRooms([renegade, Hero(B, HeroClass.Chispa, 4, 1, seat: 1), Hero(C, HeroClass.Raiz, 8, 8, seat: 2)], second: second);
+        var renegade = Hero(A, HeroClass.Mampostero, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true, Embers = 3 };
+        var state = TwoRooms([renegade, Hero(B, HeroClass.Usurera, 4, 1, seat: 1), Hero(C, HeroClass.Campanero, 8, 8, seat: 2)], second: second);
 
         var (next, events) = Resolve(state, (B, Move(Direction.North)));
 
@@ -357,8 +355,8 @@ public sealed class PathTests
     public void A_room_never_loses_its_last_monster_to_renegades()
     {
         var second = EmptyRoom(1) with { InitialEnemies = [Enemy(7, EnemyKind.Scavenger, 4, 4)] };
-        var renegade = Hero(A, HeroClass.Yunque, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true };
-        var state = TwoRooms([renegade, Hero(B, HeroClass.Chispa, 4, 1, seat: 1)], second: second);
+        var renegade = Hero(A, HeroClass.Mampostero, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true };
+        var state = TwoRooms([renegade, Hero(B, HeroClass.Usurera, 4, 1, seat: 1)], second: second);
 
         var (next, _) = Resolve(state, (B, Move(Direction.North)));
 
@@ -369,8 +367,8 @@ public sealed class PathTests
     public void In_the_warden_room_a_renegade_returns_two_rounds_later_next_to_the_warden_weakening_it()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24);
-        var chooser = ExtinctHero(A, HeroClass.Chispa, saved: 4) with { PathChoice = PathKind.Vengeance };
-        var state = State([chooser, Hero(B, HeroClass.Yunque, 8, 8, seat: 1), Hero(C, HeroClass.Raiz, 0, 8, seat: 2)], [warden], round: 5);
+        var chooser = ExtinctHero(A, HeroClass.Usurera, saved: 4) with { PathChoice = PathKind.Vengeance };
+        var state = State([chooser, Hero(B, HeroClass.Mampostero, 8, 8, seat: 1), Hero(C, HeroClass.Campanero, 0, 8, seat: 2)], [warden], round: 5);
 
         var (revealed, _) = Resolve(state, (B, Interact(Direction.East)), (C, Interact(Direction.East)));
         Assert.Equal(7, revealed.H(A).SpawnRound);
@@ -396,14 +394,14 @@ public sealed class PathTests
     public void The_warden_never_drops_below_twelve_maximum_life_and_summons_a_single_totem_with_renegades()
     {
         var weak = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 12);
-        var chooser = Hero(A, HeroClass.Chispa, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true, SpawnRound = 1 };
-        var (next, _) = Resolve(State([chooser, Hero(B, HeroClass.Yunque, 8, 8, seat: 1)], [weak]), (B, Interact(Direction.East)));
+        var chooser = Hero(A, HeroClass.Usurera, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true, SpawnRound = 1 };
+        var (next, _) = Resolve(State([chooser, Hero(B, HeroClass.Mampostero, 8, 8, seat: 1)], [weak]), (B, Interact(Direction.East)));
         Assert.Equal(12, next.E(1)!.MaxHp);
 
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 13 };
-        var yunque = Hero(B, HeroClass.Yunque, 4, 1, seat: 1, facing: Direction.South);
-        var renegade = PresentRenegade(A, HeroClass.Chispa, 8, 8);
-        var (enraged, _) = Resolve(State([renegade, yunque], [warden]), (B, Attack(Direction.South)));
+        var mampostero = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1, facing: Direction.South);
+        var renegade = PresentRenegade(A, HeroClass.Usurera, 8, 8);
+        var (enraged, _) = Resolve(State([renegade, mampostero], [warden]), (B, Attack(Direction.South)));
         Assert.Equal(2, enraged.E(1)!.Phase);
         Assert.Single(enraged.Enemies, e => e.Kind == EnemyKind.Totem);
     }
@@ -411,9 +409,9 @@ public sealed class PathTests
     [Fact]
     public void The_first_hit_of_a_renegade_on_each_hero_is_absorbed_and_later_hits_deal_at_most_one_and_steal_an_ember()
     {
-        var renegade = PresentRenegade(A, HeroClass.Cuervo, 4, 4) with { Blessings = [Blessing.StoneFist] };
-        var yunque = Hero(B, HeroClass.Yunque, 4, 3, seat: 1, facing: Direction.North) with { Embers = 3 };
-        var state = TwoRooms([renegade, yunque, Hero(C, HeroClass.Raiz, 8, 8, seat: 2)]);
+        var renegade = PresentRenegade(A, HeroClass.Errata, 4, 4) with { Blessings = [Blessing.StoneFist] };
+        var mampostero = Hero(B, HeroClass.Mampostero, 4, 3, seat: 1, facing: Direction.North) with { Embers = 3 };
+        var state = TwoRooms([renegade, mampostero, Hero(C, HeroClass.Campanero, 8, 8, seat: 2)]);
 
         var (warned, events) = Resolve(state, (A, Attack(Direction.North)), (B, Interact(Direction.East)));
         Assert.Equal(6, warned.H(B).Hp);
@@ -429,9 +427,9 @@ public sealed class PathTests
     [Fact]
     public void Downing_a_hero_gives_the_renegade_two_more_embers()
     {
-        var renegade = PresentRenegade(A, HeroClass.Yunque, 4, 4) with { WarnedHeroes = [B] };
-        var chispa = Hero(B, HeroClass.Chispa, 4, 3, seat: 1) with { Hp = 1, Embers = 2 };
-        var state = TwoRooms([renegade, chispa, Hero(C, HeroClass.Raiz, 8, 8, seat: 2)]);
+        var renegade = PresentRenegade(A, HeroClass.Mampostero, 4, 4) with { WarnedHeroes = [B] };
+        var usurera = Hero(B, HeroClass.Usurera, 4, 3, seat: 1) with { Hp = 1, Embers = 2 };
+        var state = TwoRooms([renegade, usurera, Hero(C, HeroClass.Campanero, 8, 8, seat: 2)]);
 
         var (next, _) = Resolve(state, (A, Attack(Direction.North)), (B, Interact(Direction.East)));
 
@@ -445,9 +443,9 @@ public sealed class PathTests
     {
         var chest = new Chest(1, new Position(5, 6), ChestLoot.Nothing, HasSilverKey: false);
         var room = EmptyRoom(0) with { Chests = [chest] };
-        var renegade = PresentRenegade(A, HeroClass.Chispa, 4, 6);
+        var renegade = PresentRenegade(A, HeroClass.Usurera, 4, 6);
         var scavenger = Enemy(1, EnemyKind.Scavenger, 4, 4) with { Telegraph = [new Position(4, 6)] };
-        var state = TwoRooms([renegade, Hero(B, HeroClass.Yunque, 0, 0, seat: 1)], [scavenger], room);
+        var state = TwoRooms([renegade, Hero(B, HeroClass.Mampostero, 0, 0, seat: 1)], [scavenger], room);
 
         var (shot, _) = Resolve(state, (A, Attack(Direction.North)));
         Assert.Equal(2, shot.E(1)!.Hp);
@@ -460,22 +458,21 @@ public sealed class PathTests
     [Fact]
     public void A_renegade_skill_cooldown_is_doubled()
     {
-        var renegade = PresentRenegade(A, HeroClass.Raiz, 4, 4) with { Hp = 2 };
-        var state = TwoRooms([renegade, Hero(B, HeroClass.Raiz, 0, 0, seat: 1)]);
+        var renegade = PresentRenegade(A, HeroClass.Campanero, 4, 4);
+        var state = TwoRooms([renegade, Hero(B, HeroClass.Campanero, 0, 0, seat: 1)]);
 
         var (next, _) = Resolve(state, (A, Skill(Direction.North)), (B, Skill(Direction.North)));
 
-        Assert.Equal((HeroCatalog.For(HeroClass.Raiz).SkillCooldown * 2) - 1, next.H(A).SkillCooldown);
-        Assert.Equal(HeroCatalog.For(HeroClass.Raiz).SkillCooldown - 1, next.H(B).SkillCooldown);
-        Assert.Equal(4, next.H(A).Hp);
+        Assert.Equal((HeroCatalog.For(HeroClass.Campanero).SkillCooldown * 2) - 1, next.H(A).SkillCooldown);
+        Assert.Equal(HeroCatalog.For(HeroClass.Campanero).SkillCooldown - 1, next.H(B).SkillCooldown);
     }
 
     [Fact]
     public void Defeating_a_renegade_gives_two_embers_and_it_chooses_again_and_can_turn_into_an_ember()
     {
-        var renegade = PresentRenegade(A, HeroClass.Chispa, 4, 3) with { Hp = 1, Embers = 4 };
-        var yunque = Hero(B, HeroClass.Yunque, 4, 4, seat: 1);
-        var state = TwoRooms([renegade, yunque]);
+        var renegade = PresentRenegade(A, HeroClass.Usurera, 4, 3) with { Hp = 1, Embers = 4 };
+        var mampostero = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
+        var state = TwoRooms([renegade, mampostero]);
 
         var (defeated, events) = Resolve(state, (B, Attack(Direction.North)), (A, Interact(Direction.East)));
 
@@ -498,10 +495,10 @@ public sealed class PathTests
     [Fact]
     public void A_hero_hitting_a_renegade_deals_full_damage_without_stealing()
     {
-        var renegade = PresentRenegade(A, HeroClass.Yunque, 4, 3) with { Embers = 2 };
-        var yunque = Hero(B, HeroClass.Yunque, 4, 4, seat: 1) with { Blessings = [Blessing.StoneFist] };
+        var renegade = PresentRenegade(A, HeroClass.Mampostero, 4, 3) with { Embers = 2 };
+        var mampostero = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1) with { Blessings = [Blessing.StoneFist] };
 
-        var (next, _) = Resolve(TwoRooms([renegade, yunque]), (B, Attack(Direction.North)), (A, Interact(Direction.East)));
+        var (next, _) = Resolve(TwoRooms([renegade, mampostero]), (B, Attack(Direction.North)), (A, Interact(Direction.East)));
 
         Assert.Equal(renegade.Hp - 2, next.H(A).Hp);
         Assert.Equal(2, next.H(A).Embers);
@@ -513,11 +510,11 @@ public sealed class PathTests
     [Fact]
     public void With_every_hero_down_and_a_renegade_standing_the_threshold_claims()
     {
-        var cuervo = Hero(B, HeroClass.Cuervo, 4, 5, seat: 1) with { Hp = 1 };
+        var errata = Hero(B, HeroClass.Errata, 4, 5, seat: 1) with { Hp = 1 };
         var striker = Enemy(1, EnemyKind.Scavenger, 4, 4) with { Telegraph = [new Position(4, 5)] };
-        var renegade = PresentRenegade(A, HeroClass.Raiz, 0, 0) with { Embers = 4 };
+        var renegade = PresentRenegade(A, HeroClass.Campanero, 0, 0) with { Embers = 4 };
 
-        var (next, events) = Resolve(TwoRooms([renegade, cuervo], [striker]), (B, Interact(Direction.East)));
+        var (next, events) = Resolve(TwoRooms([renegade, errata], [striker]), (B, Interact(Direction.East)));
 
         Assert.Equal(OutcomeKind.ThresholdClaimed, next.Outcome!.Kind);
         Assert.Equal(A, Assert.Single(next.Outcome.Winners));
@@ -527,12 +524,12 @@ public sealed class PathTests
     [Fact]
     public void Tied_renegades_share_the_threshold()
     {
-        var cuervo = Hero(C, HeroClass.Cuervo, 4, 5, seat: 2) with { Hp = 1 };
+        var errata = Hero(C, HeroClass.Errata, 4, 5, seat: 2) with { Hp = 1 };
         var striker = Enemy(1, EnemyKind.Scavenger, 4, 4) with { Telegraph = [new Position(4, 5)] };
-        var first = PresentRenegade(A, HeroClass.Raiz, 0, 0) with { Embers = 3 };
-        var second = PresentRenegade(B, HeroClass.Raiz, 8, 0, seat: 1) with { Embers = 3 };
+        var first = PresentRenegade(A, HeroClass.Campanero, 0, 0) with { Embers = 3 };
+        var second = PresentRenegade(B, HeroClass.Campanero, 8, 0, seat: 1) with { Embers = 3 };
 
-        var (next, _) = Resolve(TwoRooms([first, second, cuervo], [striker]), (C, Interact(Direction.East)));
+        var (next, _) = Resolve(TwoRooms([first, second, errata], [striker]), (C, Interact(Direction.East)));
 
         Assert.Equal(OutcomeKind.ThresholdClaimed, next.Outcome!.Kind);
         Assert.Equal(2, next.Outcome.Winners.Count);
@@ -542,10 +539,10 @@ public sealed class PathTests
     public void A_renegade_standing_when_the_warden_falls_can_win()
     {
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 1, Phase = 2 };
-        var yunque = Hero(A, HeroClass.Yunque, 4, 3) with { Pact = PactKind.OpenThreeChests };
-        var renegade = PresentRenegade(B, HeroClass.Raiz, 8, 8, seat: 1) with { Embers = 10, Pact = PactKind.ReviveTwoAllies };
+        var mampostero = Hero(A, HeroClass.Mampostero, 4, 3) with { Pact = PactKind.OpenThreeChests };
+        var renegade = PresentRenegade(B, HeroClass.Campanero, 8, 8, seat: 1) with { Embers = 10, Pact = PactKind.ReviveTwoAllies };
 
-        var (next, _) = Resolve(State([yunque, renegade], [warden]), (A, Attack(Direction.North)));
+        var (next, _) = Resolve(State([mampostero, renegade], [warden]), (A, Attack(Direction.North)));
 
         Assert.Equal(OutcomeKind.Victory, next.Outcome!.Kind);
         Assert.Equal(B, Assert.Single(next.Outcome.Winners));
@@ -556,8 +553,8 @@ public sealed class PathTests
     [Fact]
     public void Embers_and_present_renegades_give_orders_but_extinct_and_waiting_ones_do_not()
     {
-        var waiting = Hero(C, HeroClass.Raiz, 0, 0, seat: 2) with { Status = HeroStatus.Renegade, AwaitingSpawn = true };
-        var state = TwoRooms([Ember(A, 4, 4), PresentRenegade(B, HeroClass.Yunque, 6, 6, seat: 1), waiting, ExtinctHero(new PlayerId("dana"), seat: 3)]);
+        var waiting = Hero(C, HeroClass.Campanero, 0, 0, seat: 2) with { Status = HeroStatus.Renegade, AwaitingSpawn = true };
+        var state = TwoRooms([Ember(A, 4, 4), PresentRenegade(B, HeroClass.Mampostero, 6, 6, seat: 1), waiting, ExtinctHero(new PlayerId("dana"), seat: 3)]);
 
         Assert.Null(OrderValidator.Validate(state, A, 1, Move(Direction.North)));
         Assert.Null(OrderValidator.Validate(state, B, 1, Attack(Direction.North)));
@@ -568,7 +565,7 @@ public sealed class PathTests
     [Fact]
     public void The_ember_is_visible_to_the_group_but_not_to_a_distant_renegade()
     {
-        var state = TwoRooms([Ember(A, 8, 0, saved: 10, echoes: 3), Hero(B, HeroClass.Yunque, 0, 8, seat: 1), PresentRenegade(C, HeroClass.Raiz, 0, 0, seat: 2)]);
+        var state = TwoRooms([Ember(A, 8, 0, saved: 10, echoes: 3), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1), PresentRenegade(C, HeroClass.Campanero, 0, 0, seat: 2)]);
 
         var forB = PlayerViewProjector.For(state, B);
         var forC = PlayerViewProjector.For(state, C);
@@ -585,7 +582,7 @@ public sealed class PathTests
     [Fact]
     public void A_renegade_is_seen_as_an_enemy_only_inside_the_vision_and_sees_heroes_the_same_way()
     {
-        var state = TwoRooms([PresentRenegade(A, HeroClass.Cuervo, 8, 8), Hero(B, HeroClass.Yunque, 0, 0, seat: 1), Hero(C, HeroClass.Raiz, 7, 7, seat: 2)]);
+        var state = TwoRooms([PresentRenegade(A, HeroClass.Errata, 8, 8), Hero(B, HeroClass.Mampostero, 0, 0, seat: 1), Hero(C, HeroClass.Campanero, 7, 7, seat: 2)]);
 
         Assert.Null(PlayerViewProjector.For(state, B).Allies.Single(a => a.Player == A).Position);
         Assert.Equal(new Position(8, 8), PlayerViewProjector.For(state, C).Allies.Single(a => a.Player == A).Position);
@@ -598,7 +595,7 @@ public sealed class PathTests
     [Fact]
     public void An_ember_or_extinct_bearer_can_still_retire()
     {
-        var state = TwoRooms([Ember(A, 4, 4, saved: 8), Hero(B, HeroClass.Yunque, 0, 8, seat: 1)]);
+        var state = TwoRooms([Ember(A, 4, 4, saved: 8), Hero(B, HeroClass.Mampostero, 0, 8, seat: 1)]);
 
         var result = MatchRules.Retire(state, A);
 
@@ -606,36 +603,4 @@ public sealed class PathTests
         Assert.Equal(HeroStatus.Retired, result.State.H(A).Status);
         Assert.Equal(0, result.State.H(A).SavedEmbers);
     }
-
-    // ───────────── Ayudas ─────────────
-
-    private static Hero ExtinctHero(PlayerId player, HeroClass heroClass = HeroClass.Yunque, int seat = 0, int saved = 0) =>
-        Hero(player, heroClass, 2, 2, seat) with
-        {
-            Status = HeroStatus.Extinct,
-            Hp = 0,
-            SavedEmbers = saved,
-            Extinctions = 1,
-            PathOfferPending = true,
-        };
-
-    private static Hero Ember(PlayerId player, int x, int y, int seat = 0, int saved = 0, int echoes = 0) =>
-        Hero(player, HeroClass.Yunque, x, y, seat) with
-        {
-            Status = HeroStatus.EmberSpirit,
-            Hp = 0,
-            SavedEmbers = saved,
-            Echoes = echoes,
-            Extinctions = 1,
-        };
-
-    private static Hero PresentRenegade(PlayerId player, HeroClass heroClass, int x, int y, int seat = 0) =>
-        Hero(player, heroClass, x, y, seat) with { Status = HeroStatus.Renegade, Extinctions = 1 };
-
-    /// <summary>Dos salas normales (la primera con escalera) y la del Celador al final: ninguna de las dos es la final.</summary>
-    private static GameState TwoRooms(IEnumerable<Hero> heroes, IEnumerable<Enemy>? enemies = null, Room? first = null, Room? second = null) =>
-        State(heroes, enemies) with
-        {
-            Rooms = [(first ?? EmptyRoom(0)).WithTerrain(Stairs, Terrain.Stairs), second ?? EmptyRoom(1), EmptyRoom(2)],
-        };
 }

@@ -115,6 +115,40 @@ public static partial class RealtimeValidation
         return null;
     }
 
+    public static MatchError? SendSignal(SendSignalRequest? request, out Guid matchId, out QuickSignal? signal)
+    {
+        signal = null;
+        if (request is null)
+        {
+            matchId = Guid.Empty;
+            return Invalid("payload", "Falta el cuerpo del mensaje.");
+        }
+
+        if (Uuid(request.MatchId, "matchId", out matchId) is { } error)
+        {
+            return error;
+        }
+
+        if (RealtimeMapper.ParseSignal(request.Kind) is not { } kind)
+        {
+            return Invalid("kind", "kind debe ser HERE, DANGER, HELP o MINE.");
+        }
+
+        // La casilla la elige quien envía: solo se comprueba que esté en el tablero.
+        Position? tile = null;
+        if (request.Position is { } position)
+        {
+            tile = new Position(position.X, position.Y);
+            if (!Room.IsInside(tile.Value))
+            {
+                return Invalid("position", "position debe estar dentro de la sala (0-8).");
+            }
+        }
+
+        signal = new QuickSignal(kind, tile);
+        return null;
+    }
+
     public static MatchError? DraftPick(DraftPickRequest? request, out Guid matchId, out Guid offerId, out Blessing blessing)
     {
         offerId = Guid.Empty;

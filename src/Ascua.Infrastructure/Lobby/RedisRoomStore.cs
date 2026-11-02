@@ -45,7 +45,7 @@ internal static class LobbyKeys
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
-        Converters = { new HeroClassJsonConverter(), new JsonStringEnumConverter() },
+        Converters = { new JsonStringEnumConverter() },
     };
 }
 
@@ -57,7 +57,20 @@ public sealed class RedisRoomStore(IConnectionMultiplexer redis, LobbyPolicy pol
     public async Task<Room?> GetAsync(Guid roomId, CancellationToken cancellationToken)
     {
         var fields = await Db.HashGetAsync(LobbyKeys.Room(roomId), ["v", "data"]);
-        return fields[1].IsNull ? null : Deserialize(roomId, (long)fields[0], fields[1]!);
+        if (fields[1].IsNull)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Deserialize(roomId, (long)fields[0], fields[1]!);
+        }
+        catch (JsonException)
+        {
+            // Sala guardada con héroes que ya no existen (ADR-0008): para el lobby es como si no estuviera.
+            return null;
+        }
     }
 
     public async Task<Guid?> FindIdByInviteCodeAsync(string inviteCode, CancellationToken cancellationToken)

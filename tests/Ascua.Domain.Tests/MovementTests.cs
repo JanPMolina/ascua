@@ -8,7 +8,7 @@ namespace Ascua.Domain.Tests;
 public sealed class MovementTests
 {
     private static GameState TwoHeroes(int ax, int ay, int bx, int by, Room? room = null) =>
-        State([Hero(A, HeroClass.Yunque, ax, ay, seat: 0), Hero(B, HeroClass.Chispa, bx, by, seat: 1)], room: room);
+        State([Hero(A, HeroClass.Mampostero, ax, ay, seat: 0), Hero(B, HeroClass.Usurera, bx, by, seat: 1)], room: room);
 
     [Fact]
     public void Two_heroes_moving_to_the_same_tile_both_bounce()
@@ -50,13 +50,13 @@ public sealed class MovementTests
     [Fact]
     public void A_bounce_propagates_to_whoever_was_following()
     {
-        var yunque = Hero(A, HeroClass.Yunque, 2, 4, seat: 0);
-        var chispa = Hero(B, HeroClass.Chispa, 3, 4, seat: 1);
-        var raiz = Hero(C, HeroClass.Raiz, 5, 4, seat: 2);
+        var mampostero = Hero(A, HeroClass.Mampostero, 2, 4, seat: 0);
+        var usurera = Hero(B, HeroClass.Usurera, 3, 4, seat: 1);
+        var campanero = Hero(C, HeroClass.Campanero, 5, 4, seat: 2);
 
         // B y C chocan en (4,4); A iba a ocupar el sitio de B, que no se vacía.
         var (next, _) = Resolve(
-            State([yunque, chispa, raiz]),
+            State([mampostero, usurera, campanero]),
             (A, Move(Direction.East)),
             (B, Move(Direction.East)),
             (C, Move(Direction.West)));
@@ -80,7 +80,7 @@ public sealed class MovementTests
     [Fact]
     public void Enemies_block_movement()
     {
-        var state = State([Hero(A, HeroClass.Yunque, 4, 4)], [Enemy(1, EnemyKind.Totem, 4, 3)]);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 4)], [Enemy(1, EnemyKind.Totem, 4, 3)]);
 
         var (next, _) = Resolve(state, (A, Move(Direction.North)));
 
@@ -91,7 +91,7 @@ public sealed class MovementTests
     public void Falling_into_a_crack_extinguishes_the_hero_and_saves_its_embers()
     {
         var room = EmptyRoom().WithTerrain(new Position(4, 3), Terrain.Crack);
-        var state = State([Hero(A, HeroClass.Yunque, 4, 4, seat: 0) with { Embers = 5 }, Hero(B, HeroClass.Chispa, 0, 0, seat: 1)], room: room);
+        var state = State([Hero(A, HeroClass.Errata, 4, 4, seat: 0) with { Embers = 5 }, Hero(B, HeroClass.Usurera, 0, 0, seat: 1)], room: room);
 
         var (next, events) = Resolve(state, (A, Move(Direction.North)));
 

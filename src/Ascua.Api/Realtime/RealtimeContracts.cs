@@ -71,6 +71,20 @@ public sealed class ChoosePathRequest
     public string? Path { get; set; }
 }
 
+[MessagePackObject]
+public sealed class SendSignalRequest
+{
+    [Key("matchId")]
+    public string? MatchId { get; set; }
+
+    /// <summary><c>HERE</c>, <c>DANGER</c>, <c>HELP</c> o <c>MINE</c>.</summary>
+    [Key("kind")]
+    public string? Kind { get; set; }
+
+    [Key("position")]
+    public PositionDto? Position { get; set; }
+}
+
 // ───────────── ACK ─────────────
 
 [MessagePackObject]
@@ -158,6 +172,16 @@ public sealed class ChoosePathAck
     public string AcceptedAt { get; set; } = "";
 }
 
+[MessagePackObject]
+public sealed class SendSignalAck
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("sentAt")]
+    public string SentAt { get; set; } = "";
+}
+
 // ───────────── Vista del jugador ─────────────
 
 [MessagePackObject]
@@ -213,14 +237,32 @@ public sealed class SelfHeroDto
     [Key("embers")]
     public int Embers { get; set; }
 
-    [Key("charges")]
-    public int Charges { get; set; }
-
     [Key("abilityCooldown")]
     public int AbilityCooldown { get; set; }
 
-    [Key("stealthRoundsLeft")]
-    public int StealthRoundsLeft { get; set; }
+    /// <summary>Hilván: su segundo cuerpo.</summary>
+    [Key("secondBody")]
+    public PositionDto? SecondBody { get; set; }
+
+    /// <summary>Polizón: el enemigo en el que va. Solo lo ve él.</summary>
+    [Key("hostEnemyId")]
+    public int? HostEnemyId { get; set; }
+
+    /// <summary>Ascuas que debe a la Usurera.</summary>
+    [Key("debt")]
+    public int Debt { get; set; }
+
+    /// <summary>A quién le debe; <c>null</c> sin deuda.</summary>
+    [Key("debtTo")]
+    public string? DebtTo { get; set; }
+
+    /// <summary>Anteayer: adónde saltaría Volver en la ronda abierta; <c>null</c> sin 2 rondas de historia.</summary>
+    [Key("rewindTile")]
+    public PositionDto? RewindTile { get; set; }
+
+    /// <summary>Anteayer: vida que tenía allí.</summary>
+    [Key("rewindHp")]
+    public int? RewindHp { get; set; }
 
     [Key("downRoundsLeft")]
     public int? DownRoundsLeft { get; set; }
@@ -315,6 +357,58 @@ public sealed class OtherHeroDto
 
     [Key("decided")]
     public bool Decided { get; set; }
+
+    /// <summary>Hilván: su segundo cuerpo, con la misma regla de visibilidad que <c>position</c>.</summary>
+    [Key("secondBody")]
+    public PositionDto? SecondBody { get; set; }
+
+    /// <summary>Lo que te debe este jugador (solo si eres la Usurera a la que le debe).</summary>
+    [Key("debtToYou")]
+    public int? DebtToYou { get; set; }
+}
+
+/// <summary>Próximo Eco de Anteayer que se ve en el tablero.</summary>
+[MessagePackObject]
+public sealed class EchoDto
+{
+    [Key("ownerId")]
+    public string OwnerId { get; set; } = "";
+
+    [Key("position")]
+    public PositionDto Position { get; set; } = new();
+
+    [Key("direction")]
+    public string Direction { get; set; } = "";
+
+    [Key("fireRound")]
+    public int FireRound { get; set; }
+}
+
+/// <summary>Ascuas en el suelo: el primero que pise la casilla se las queda.</summary>
+[MessagePackObject]
+public sealed class GroundEmbersDto
+{
+    [Key("position")]
+    public PositionDto Position { get; set; } = new();
+
+    [Key("amount")]
+    public int Amount { get; set; }
+}
+
+/// <summary>Repique sonando en la ronda abierta.</summary>
+[MessagePackObject]
+public sealed class BellDto
+{
+    [Key("ringerId")]
+    public string RingerId { get; set; } = "";
+
+    /// <summary>Hasta cuándo pueden decidir los demás.</summary>
+    [Key("deadline")]
+    public string? Deadline { get; set; }
+
+    /// <summary>Ya venció el plazo reducido.</summary>
+    [Key("closed")]
+    public bool Closed { get; set; }
 }
 
 [MessagePackObject]
@@ -384,6 +478,23 @@ public sealed class PlayerViewDto
 
     [Key("tiles")]
     public IReadOnlyList<TileDto> Tiles { get; set; } = [];
+
+    /// <summary>Casillas anunciadas por enemigos que no ves (Errata y Ojo de búho): solo las casillas, sin autor.</summary>
+    [Key("hiddenTelegraphs")]
+    public IReadOnlyList<PositionDto> HiddenTelegraphs { get; set; } = [];
+
+    [Key("echoes")]
+    public IReadOnlyList<EchoDto> Echoes { get; set; } = [];
+
+    [Key("groundEmbers")]
+    public IReadOnlyList<GroundEmbersDto> GroundEmbers { get; set; } = [];
+
+    /// <summary>La Escucha: casillas donde oyó ruido en la última resolución.</summary>
+    [Key("noiseTiles")]
+    public IReadOnlyList<PositionDto> NoiseTiles { get; set; } = [];
+
+    [Key("bell")]
+    public BellDto? Bell { get; set; }
 }
 
 [MessagePackObject]
@@ -410,9 +521,32 @@ public sealed class PlayerViewDeltaDto
     [Key("tilesChanged")]
     public IReadOnlyList<TileDto> TilesChanged { get; set; } = [];
 
-    /// <summary>Eventos visibles <c>{type, actorId?, targetId?, position?, amount?}</c>.</summary>
+    /// <summary>Eventos visibles <c>{type, actorId?, targetId?, position?, amount?, detail?, tiles?}</c>.</summary>
     [Key("events")]
     public IReadOnlyList<IDictionary<string, object>> Events { get; set; } = [];
+
+    /// <summary>Lista completa: reemplaza la anterior.</summary>
+    [Key("hiddenTelegraphs")]
+    public IReadOnlyList<PositionDto> HiddenTelegraphs { get; set; } = [];
+
+    /// <summary>Lista completa: reemplaza la anterior.</summary>
+    [Key("echoes")]
+    public IReadOnlyList<EchoDto> Echoes { get; set; } = [];
+
+    /// <summary>Lista completa: reemplaza la anterior.</summary>
+    [Key("groundEmbers")]
+    public IReadOnlyList<GroundEmbersDto> GroundEmbers { get; set; } = [];
+
+    /// <summary>Lista completa: reemplaza la anterior.</summary>
+    [Key("noiseTiles")]
+    public IReadOnlyList<PositionDto> NoiseTiles { get; set; } = [];
+
+    [Key("bell")]
+    public BellDto? Bell { get; set; }
+
+    /// <summary>Plazo de este jugador en la ronda que abre (con el Repique, puede ser menor que el de los demás).</summary>
+    [Key("roundDeadline")]
+    public string? RoundDeadline { get; set; }
 }
 
 // ───────────── Servidor → cliente ─────────────
@@ -450,6 +584,13 @@ public sealed class RoundOpenedMessage
 
     [Key("expectedPlayers")]
     public int ExpectedPlayers { get; set; }
+
+    /// <summary>Con Repique: hasta cuándo pueden decidir todos menos <see cref="BellRingerId"/>.</summary>
+    [Key("bellDeadline")]
+    public string? BellDeadline { get; set; }
+
+    [Key("bellRingerId")]
+    public string? BellRingerId { get; set; }
 }
 
 [MessagePackObject]
@@ -548,6 +689,58 @@ public sealed class PathOfferMessage
     public bool WardenRoom { get; set; }
 }
 
+/// <summary>Una orden que oye el Campanero. Como Renegado, <see cref="Direction"/> no llega.</summary>
+[MessagePackObject]
+public sealed class HeardOrderDto
+{
+    [Key("playerId")]
+    public string PlayerId { get; set; } = "";
+
+    [Key("type")]
+    public string Type { get; set; } = "";
+
+    [Key("direction")]
+    public string? Direction { get; set; }
+}
+
+/// <summary>Último en hablar: privado para el Campanero cuando todos los demás ya decidieron.</summary>
+[MessagePackObject]
+public sealed class LastWordMessage
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("round")]
+    public int Round { get; set; }
+
+    [Key("orders")]
+    public IReadOnlyList<HeardOrderDto> Orders { get; set; } = [];
+
+    /// <summary>Como Renegado solo se oyen los tipos.</summary>
+    [Key("typesOnly")]
+    public bool TypesOnly { get; set; }
+}
+
+/// <summary>Señal rápida de alguien de tu bando. La casilla la eligió esa persona: puede mentir.</summary>
+[MessagePackObject]
+public sealed class SignalReceivedMessage
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("fromPlayerId")]
+    public string FromPlayerId { get; set; } = "";
+
+    [Key("kind")]
+    public string Kind { get; set; } = "";
+
+    [Key("position")]
+    public PositionDto? Position { get; set; }
+
+    [Key("sentAt")]
+    public string SentAt { get; set; } = "";
+}
+
 [MessagePackObject]
 public sealed class PlayerConnectionChangedMessage
 {
@@ -603,6 +796,20 @@ public sealed class StandingDto
     public RevealedPactDto? Pact { get; set; }
 }
 
+/// <summary>Traición anónima revelada al final: «Errata le costó 3 de vida a Ana».</summary>
+[MessagePackObject]
+public sealed class BetrayalDto
+{
+    [Key("traitorId")]
+    public string TraitorId { get; set; } = "";
+
+    [Key("victimId")]
+    public string VictimId { get; set; } = "";
+
+    [Key("damage")]
+    public int Damage { get; set; }
+}
+
 [MessagePackObject]
 public sealed class MatchFinishedMessage
 {
@@ -629,6 +836,10 @@ public sealed class MatchFinishedMessage
 
     [Key("replayUrl")]
     public string ReplayUrl { get; set; } = "";
+
+    /// <summary>Traiciones anónimas de la partida (vacío si no hubo o si no terminó con un resultado).</summary>
+    [Key("betrayals")]
+    public IReadOnlyList<BetrayalDto> Betrayals { get; set; } = [];
 }
 
 [MessagePackObject]

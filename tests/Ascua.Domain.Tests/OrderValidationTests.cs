@@ -8,7 +8,7 @@ namespace Ascua.Domain.Tests;
 
 public sealed class OrderValidationTests
 {
-    private static GameState Match() => State([Hero(A, HeroClass.Cuervo, 4, 4)], round: 5);
+    private static GameState Match() => State([Hero(A, HeroClass.Errata, 4, 4)], round: 5);
 
     [Fact]
     public void A_well_formed_order_for_the_open_round_is_accepted() =>

@@ -116,8 +116,8 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         var id = room.GetProperty("id").GetString();
         (await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/join", guest)).Dispose();
 
-        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "YUNQUE" });
-        using (var taken = await SendAsync(HttpMethod.Put, $"/api/v1/rooms/{id}/hero", guest, new { hero = "YUNQUE" }))
+        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "ERRATA" });
+        using (var taken = await SendAsync(HttpMethod.Put, $"/api/v1/rooms/{id}/hero", guest, new { hero = "ERRATA" }))
         {
             await AssertProblemAsync(taken, HttpStatusCode.Conflict, "hero-taken");
         }
@@ -127,7 +127,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
             await AssertProblemAsync(noHero, HttpStatusCode.Conflict, "hero-required");
         }
 
-        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "CUERVO" });
+        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "POLIZON" });
         await PutOkAsync(host, $"/api/v1/rooms/{id}/ready", new { ready = true });
         using (var notReady = await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/start", host))
         {
@@ -177,8 +177,8 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         var room = await CreateRoomAsync(host, "PUBLIC");
         var id = room.GetProperty("id").GetString();
         (await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/join", guest)).Dispose();
-        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "YUNQUE" });
-        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "CHISPA" });
+        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "ERRATA" });
+        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "HILVAN" });
         await PutOkAsync(host, $"/api/v1/rooms/{id}/ready", new { ready = true });
         await PutOkAsync(guest, $"/api/v1/rooms/{id}/ready", new { ready = true });
         using var started = await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/start", host);
@@ -208,8 +208,8 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         var room = await CreateRoomAsync(host, "PUBLIC");
         var id = room.GetProperty("id").GetString();
         (await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/join", guest)).Dispose();
-        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "RAIZ" });
-        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "CHISPA" });
+        await PutOkAsync(host, $"/api/v1/rooms/{id}/hero", new { hero = "CAMPANERO" });
+        await PutOkAsync(guest, $"/api/v1/rooms/{id}/hero", new { hero = "HILVAN" });
         await PutOkAsync(host, $"/api/v1/rooms/{id}/ready", new { ready = true });
         await PutOkAsync(guest, $"/api/v1/rooms/{id}/ready", new { ready = true });
 
@@ -246,11 +246,11 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         }
 
         var queued = await NewUserAsync();
-        using (var enqueue = await SendAsync(HttpMethod.Post, "/api/v1/matchmaking/queue", queued, new { preferredHero = "CHISPA" }))
+        using (var enqueue = await SendAsync(HttpMethod.Post, "/api/v1/matchmaking/queue", queued, new { preferredHero = "HILVAN" }))
         {
             var status = await ReadAsync(enqueue);
             Assert.Equal("QUEUED", status.GetProperty("status").GetString());
-            Assert.Equal("CHISPA", status.GetProperty("preferredHero").GetString());
+            Assert.Equal("HILVAN", status.GetProperty("preferredHero").GetString());
         }
 
         using (var create = await SendAsync(HttpMethod.Post, "/api/v1/rooms", queued, new { name = "Desde la cola" }))
@@ -269,7 +269,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
     {
         var users = await Task.WhenAll(Enumerable.Range(0, 4).Select(_ => NewUserAsync()));
 
-        foreach (var response in await Task.WhenAll(users.Select(u => SendAsync(HttpMethod.Post, "/api/v1/matchmaking/queue", u, new { preferredHero = "YUNQUE" }))))
+        foreach (var response in await Task.WhenAll(users.Select(u => SendAsync(HttpMethod.Post, "/api/v1/matchmaking/queue", u, new { preferredHero = "ERRATA" }))))
         {
             Assert.Equal(HttpStatusCode.OK, response.StatusCode);
             response.Dispose();
@@ -374,7 +374,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
 
         Assert.Contains("/api/v1/rooms/{roomId}/start", document, StringComparison.Ordinal);
         Assert.Contains("/api/v1/matchmaking/queue", document, StringComparison.Ordinal);
-        Assert.Contains("\"YUNQUE\"", document, StringComparison.Ordinal);
+        Assert.Contains("\"ERRATA\"", document, StringComparison.Ordinal);
     }
 
     private async Task<TestUser> NewUserAsync(HttpClient? client = null)

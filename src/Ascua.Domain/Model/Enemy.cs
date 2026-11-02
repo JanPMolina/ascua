@@ -67,6 +67,12 @@ public sealed record Enemy
     /// <summary>Estorbo de una Brasa: su ataque anunciado se ejecuta una ronda más tarde.</summary>
     public bool Delayed { get; init; }
 
+    /// <summary>Errata desvió su anuncio: al ejecutarse golpea todo lo que haya en esas casillas.</summary>
+    public PlayerId? DivertedBy { get; init; }
+
+    /// <summary>Ascuas que recibió del Avaro; las suelta al morir.</summary>
+    public int Bribes { get; init; }
+
     public int BurnRounds { get; init; }
     public int BurnDamage { get; init; }
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Ascua.Application.Matches;
 using Ascua.Domain.Model;
 using StackExchange.Redis;
@@ -69,7 +70,20 @@ public sealed class RedisMatchHotState(IConnectionMultiplexer redis, RealtimeOpt
     public async Task<MatchSnapshot?> GetAsync(Guid matchId, CancellationToken cancellationToken)
     {
         var json = await Db.HashGetAsync(Key(matchId, "snap"), "d");
-        return json.IsNullOrEmpty ? null : MatchJson.DeserializeSnapshot(json!);
+        if (json.IsNullOrEmpty)
+        {
+            return null;
+        }
+
+        try
+        {
+            return MatchJson.DeserializeSnapshot(json!);
+        }
+        catch (JsonException)
+        {
+            // Instantánea de otra versión (héroes viejos, ver ADR-0008): Redis no es la fuente de verdad.
+            return null;
+        }
     }
 
     public async Task SaveAsync(MatchSnapshot snapshot, CancellationToken cancellationToken)
@@ -159,6 +173,9 @@ public sealed class RedisMatchHotState(IConnectionMultiplexer redis, RealtimeOpt
         var entries = await Db.HashGetAllAsync(OrdersKey(matchId, round));
         return entries.ToDictionary(e => new PlayerId(e.Name!), e => DecodeOrder(e.Value!));
     }
+
+    public Task<bool> TryTakeSignalSlotAsync(Guid matchId, Guid userId, TimeSpan interval, CancellationToken cancellationToken) =>
+        Db.StringSetAsync(Key(matchId, $"signal:{userId:N}"), "1", interval, When.NotExists);
 
     public async Task<DraftAck?> FindDraftAckAsync(Guid matchId, Guid userId, Guid offerId, CancellationToken cancellationToken)
     {

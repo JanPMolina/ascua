@@ -13,7 +13,7 @@ public sealed record MatchHistoryItem(
     [property: Description("DRAFTING, IN_PROGRESS, FINISHED, ABANDONED, EXPIRED o FAULTED.")] string Status,
     [property: Description("Resultado global: WARDEN_DEFEATED, DRAW, EMBER_EXTINGUISHED, THRESHOLD_CLAIMED (ganan los Renegados), ABANDONED, EXPIRED, FAULTED; null si sigue en curso.")] string? Outcome,
     [property: Description("Resultado para quien consulta: VICTORY, DRAW, DEFEAT (otro ganó), COLLECTIVE_DEFEAT, ABANDONED; null sin resultado del juego.")] string? Result,
-    [property: Description("Héroe con el que jugó: YUNQUE, CHISPA, CUERVO o RAIZ.")] string Hero,
+    [property: Description("Héroe con el que jugó: ERRATA, ANTEAYER, HILVAN, POLIZON, ESCUCHA, USURERA, AVARO, MAMPOSTERO o CAMPANERO.")] string Hero,
     [property: Description("Puesto final (1 = más ascuas, empates comparten puesto); null sin resultado.")] int? Placement,
     [property: Description("Puntuación final (ascuas + pacto cumplido); null sin resultado.")] int? Embers,
     [property: Description("Rondas jugadas.")] int Rounds,
@@ -73,7 +73,10 @@ public sealed record FullHeroDto(
     IReadOnlyList<string> Blessings,
     IReadOnlyList<string> DraftOptions,
     string Pact,
-    int StealthRoundsLeft);
+    PositionDto? SecondBody,
+    int? HostEnemyId,
+    int Debt,
+    string? DebtTo);
 
 public sealed record FullEnemyDto(int EnemyId, string Kind, int Hp, int MaxHp, PositionDto Position, string Facing, IReadOnlyList<PositionDto> Telegraph);
 

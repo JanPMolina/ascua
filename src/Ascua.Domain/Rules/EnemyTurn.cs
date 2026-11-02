@@ -4,7 +4,7 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
-/// <summary>Fases 4 y 5: los enemigos ejecutan lo anunciado, luego se mueven y anuncian (telegraph).</summary>
+/// <summary>Fases 5 y 6: los enemigos ejecutan lo anunciado, luego se mueven y anuncian (telegraph). El huésped de Polizón no actúa.</summary>
 internal static class EnemyTurn
 {
     public const int WardenReach = 2;
@@ -21,7 +21,7 @@ internal static class EnemyTurn
 
             if (enemy.Frozen)
             {
-                ctx.Update(enemy with { Frozen = false, Telegraph = [] });
+                ctx.Update(enemy with { Frozen = false, Telegraph = [], DivertedBy = null });
                 ctx.SkippingEnemies.Add(id);
                 ctx.Emit(new ActionLost(EntityRef.ForEnemy(id)) { Audience = Audience.At(enemy.Position) });
                 continue;
@@ -40,12 +40,17 @@ internal static class EnemyTurn
                 continue;
             }
 
-            ctx.Update(enemy with { Telegraph = [] });
+            ctx.Update(enemy with { Telegraph = [], DivertedBy = null });
+            ctx.MakeNoise(enemy);
             foreach (var tile in enemy.Telegraph)
             {
-                if (ctx.HeroAt(tile) is { IsActive: true } hero)
+                if (enemy.DivertedBy is { } errata)
                 {
-                    Combat.HitHero(ctx, hero.Player, enemy.Stats.Damage, Attacker.FromEnemy(enemy));
+                    HeroSkills.DivertedStrike(ctx, enemy, tile, errata);
+                }
+                else if (ctx.HeroAt(tile) is { IsActive: true } hero)
+                {
+                    Combat.HitHero(ctx, hero.Player, enemy.Stats.Damage, Attacker.FromEnemy(enemy), tile);
                 }
             }
         }
@@ -56,7 +61,7 @@ internal static class EnemyTurn
         foreach (var id in ctx.Enemies.Select(e => e.Id).ToList())
         {
             var enemy = ctx.Enemy(id);
-            if (enemy is null || ctx.SkippingEnemies.Contains(id))
+            if (enemy is null || ctx.SkippingEnemies.Contains(id) || ctx.PassengerOf(id) is not null)
             {
                 continue;
             }
@@ -70,11 +75,11 @@ internal static class EnemyTurn
                 case EnemyKind.Warden:
                     WardenTurn(ctx, enemy, target);
                     break;
-                case EnemyKind.Crossbowman when target is not null:
-                    CrossbowmanTurn(ctx, enemy, target);
+                case EnemyKind.Crossbowman when target is { } shot:
+                    CrossbowmanTurn(ctx, enemy, shot);
                     break;
-                case EnemyKind.Scavenger or EnemyKind.Moth or EnemyKind.Slime or EnemyKind.Hopper when target is not null:
-                    MeleeTurn(ctx, enemy, target);
+                case EnemyKind.Scavenger or EnemyKind.Moth or EnemyKind.Slime or EnemyKind.Hopper when target is { } prey:
+                    MeleeTurn(ctx, enemy, prey);
                     break;
                 default:
                     break;
@@ -83,50 +88,58 @@ internal static class EnemyTurn
     }
 
     /// <summary>
-    /// Objetivo: el héroe activo y visible (no en sigilo) más cercano; en empate, menor asiento. Los Renegados
-    /// y las Brasas no son objetivo: los monstruos no los atacan.
+    /// Casilla objetivo: la Escucha si gritó esta ronda; si no, el cuerpo más cercano del héroe activo más cercano (en
+    /// empate, menor asiento). Los Renegados, las Brasas y Polizón dentro de un huésped no son objetivo.
     /// </summary>
-    private static Hero? FindTarget(RoundContext ctx, Enemy enemy) =>
-        ctx.Heroes
-            .Where(h => h.IsActive && !h.IsStealthed)
-            .OrderBy(h => h.Position.DistanceTo(enemy.Position))
-            .ThenBy(h => h.Seat)
-            .FirstOrDefault();
-
-    private static void MeleeTurn(RoundContext ctx, Enemy enemy, Hero target)
+    private static Position? FindTarget(RoundContext ctx, Enemy enemy)
     {
-        for (var step = 0; step < enemy.Stats.Speed && enemy.Position.DistanceTo(target.Position) > 1; step++)
+        if (ctx.Heroes.Find(h => h is { Shouting: true, IsActive: true }) is { } shouter)
         {
-            enemy = StepToward(ctx, enemy, target.Position);
+            return shouter.Position;
         }
 
-        if (enemy.Position.DistanceTo(target.Position) == 1)
+        return ctx.Heroes
+            .Where(h => h.IsActive && !h.IsInHost)
+            .OrderBy(h => h.DistanceTo(enemy.Position))
+            .ThenBy(h => h.Seat)
+            .FirstOrDefault()
+            ?.NearestBody(enemy.Position);
+    }
+
+    private static void MeleeTurn(RoundContext ctx, Enemy enemy, Position target)
+    {
+        for (var step = 0; step < enemy.Stats.Speed && enemy.Position.DistanceTo(target) > 1; step++)
         {
-            enemy = enemy with { Facing = enemy.Position.DirectionTo(target.Position) ?? enemy.Facing };
-            Announce(ctx, enemy, [target.Position]);
+            enemy = StepToward(ctx, enemy, target);
+        }
+
+        if (enemy.Position.DistanceTo(target) == 1)
+        {
+            enemy = enemy with { Facing = enemy.Position.DirectionTo(target) ?? enemy.Facing };
+            Announce(ctx, enemy, [target]);
         }
     }
 
     /// <summary>Ballestero: si está alineado, anuncia la línea completa; si no, se mueve para alinearse.</summary>
-    private static void CrossbowmanTurn(RoundContext ctx, Enemy enemy, Hero target)
+    private static void CrossbowmanTurn(RoundContext ctx, Enemy enemy, Position target)
     {
-        if (!IsAligned(enemy.Position, target.Position))
+        if (!IsAligned(enemy.Position, target))
         {
-            var dx = target.Position.X - enemy.Position.X;
-            var dy = target.Position.Y - enemy.Position.Y;
+            var dx = target.X - enemy.Position.X;
+            var dy = target.Y - enemy.Position.Y;
             var align = Math.Abs(dx) <= Math.Abs(dy)
                 ? (dx > 0 ? Direction.East : Direction.West)
                 : (dy > 0 ? Direction.South : Direction.North);
             var next = enemy.Position.Step(align);
-            enemy = ctx.IsFreeFor(next, enemy.Flies) ? MoveTo(ctx, enemy, next, align) : StepToward(ctx, enemy, target.Position);
+            enemy = ctx.IsFreeFor(next, enemy.Flies) ? MoveTo(ctx, enemy, next, align) : StepToward(ctx, enemy, target);
         }
 
-        if (!IsAligned(enemy.Position, target.Position))
+        if (!IsAligned(enemy.Position, target))
         {
             return;
         }
 
-        var direction = enemy.Position.DirectionTo(target.Position) ?? enemy.Facing;
+        var direction = enemy.Position.DirectionTo(target) ?? enemy.Facing;
         var line = ImmutableList.CreateBuilder<Position>();
         var position = enemy.Position.Step(direction);
         while (ctx.Room.TerrainAt(position) is not (Terrain.Wall or Terrain.Brazier))
@@ -147,6 +160,7 @@ internal static class EnemyTurn
             return;
         }
 
+        ctx.MakeNoise(totem);
         var free = ctx.FreeTilesNear(totem.Position);
         if (free.Count > 0)
         {
@@ -169,16 +183,16 @@ internal static class EnemyTurn
     /// Celador. Fase 1: mira al objetivo y anuncia el 3×3 delante de él. Fase 2: alterna ese 3×3
     /// con la cruz completa de la sala (su fila y su columna).
     /// </summary>
-    private static void WardenTurn(RoundContext ctx, Enemy warden, Hero? target)
+    private static void WardenTurn(RoundContext ctx, Enemy warden, Position? target)
     {
-        if (target is not null)
+        if (target is { } tile)
         {
-            if (warden.Position.DistanceTo(target.Position) > WardenReach)
+            if (warden.Position.DistanceTo(tile) > WardenReach)
             {
-                warden = StepToward(ctx, warden, target.Position);
+                warden = StepToward(ctx, warden, tile);
             }
 
-            warden = warden with { Facing = warden.Position.DirectionTo(target.Position) ?? warden.Facing };
+            warden = warden with { Facing = warden.Position.DirectionTo(tile) ?? warden.Facing };
         }
 
         var cross = warden.Phase == 2 && warden.CrossNext;
@@ -212,32 +226,64 @@ internal static class EnemyTurn
 
     private static void Announce(RoundContext ctx, Enemy enemy, ImmutableList<Position> tiles)
     {
-        ctx.Update(enemy with { Telegraph = tiles });
+        ctx.Update(enemy with { Telegraph = tiles, DivertedBy = null });
         if (!tiles.IsEmpty)
         {
             ctx.Emit(new AttackTelegraphed(enemy.Id, tiles) { Audience = Audience.At(enemy.Position) });
         }
     }
 
-    /// <summary>Un paso codicioso hacia el objetivo: primero el eje con más distancia; si está bloqueado, el otro.</summary>
+    /// <summary>
+    /// Un paso por el camino más corto hacia el objetivo, rodeando lo que estorba (ver 05-heroes.md, aclaraciones). En
+    /// campo abierto va primero por el eje con más distancia. Si no hay camino, se queda quieto.
+    /// </summary>
     private static Enemy StepToward(RoundContext ctx, Enemy enemy, Position target)
     {
-        foreach (var direction in CandidateDirections(enemy.Position, target))
+        var distances = DistancesFrom(ctx, target, enemy.Flies);
+        var best = int.MaxValue;
+        Direction? chosen = null;
+        foreach (var direction in CandidateDirections(enemy.Position, target).Concat(Directions.All))
         {
             var next = enemy.Position.Step(direction);
-            if (ctx.IsFreeFor(next, enemy.Flies))
+            if (ctx.IsFreeFor(next, enemy.Flies) && distances.TryGetValue(next, out var distance) && distance < best)
             {
-                return MoveTo(ctx, enemy, next, direction);
+                best = distance;
+                chosen = direction;
             }
         }
 
-        return enemy;
+        return chosen is { } step ? MoveTo(ctx, enemy, enemy.Position.Step(step), step) : enemy;
+    }
+
+    /// <summary>Distancia a pie hasta el objetivo por casillas libres (búsqueda en anchura).</summary>
+    private static Dictionary<Position, int> DistancesFrom(RoundContext ctx, Position target, bool flies)
+    {
+        var distances = new Dictionary<Position, int> { [target] = 0 };
+        var queue = new Queue<Position>();
+        queue.Enqueue(target);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            var distance = distances[current] + 1;
+            foreach (var direction in Directions.All)
+            {
+                var next = current.Step(direction);
+                if (!distances.ContainsKey(next) && ctx.IsFreeFor(next, flies))
+                {
+                    distances[next] = distance;
+                    queue.Enqueue(next);
+                }
+            }
+        }
+
+        return distances;
     }
 
     private static Enemy MoveTo(RoundContext ctx, Enemy enemy, Position next, Direction direction)
     {
         var moved = enemy with { Position = next, Facing = direction };
         ctx.Update(moved);
+        ctx.MakeNoise(moved);
         ctx.Emit(new EnemyMoved(enemy.Id, enemy.Position, next) { Audience = Audience.At(next) });
         return moved;
     }

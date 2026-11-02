@@ -68,6 +68,10 @@ public static class Directions
 {
     public static IReadOnlyList<Direction> All { get; } = [Direction.North, Direction.East, Direction.South, Direction.West];
 
+    /// <summary>Espejo de Hilván: norte y sur son iguales; este y oeste se invierten.</summary>
+    public static Direction Mirrored(this Direction direction) =>
+        direction is Direction.East or Direction.West ? direction.Opposite() : direction;
+
     public static Direction Opposite(this Direction direction) => direction switch
     {
         Direction.North => Direction.South,

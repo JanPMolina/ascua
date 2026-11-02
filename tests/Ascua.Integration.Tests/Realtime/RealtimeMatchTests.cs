@@ -257,7 +257,7 @@ public sealed class RealtimeMatchTests(AscuaApiFactory factory)
 
         // Versión no soportada: 400 y el ticket sigue sin usar.
         var badVersion = await Assert.ThrowsAnyAsync<Exception>(() =>
-            factory.Server.CreateWebSocketClient().ConnectAsync(RealtimeSetup.HubUri(factory, ticket, "2"), CancellationToken.None));
+            factory.Server.CreateWebSocketClient().ConnectAsync(RealtimeSetup.HubUri(factory, ticket, "1"), CancellationToken.None));
         Assert.Contains("400", badVersion.Message, StringComparison.Ordinal);
 
         await using (var first = RealtimeTestClient.Create(factory, ticket, a))
