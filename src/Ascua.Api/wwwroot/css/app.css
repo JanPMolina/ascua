@@ -27,10 +27,15 @@
   --bad: #ef6b5e;
   --info: #8fc3ff;
   /* Héroes */
-  --yunque: #8fa3b8;
-  --chispa: #f5a65b;
-  --cuervo: #b49cf0;
-  --raiz: #7cc47f;
+  --errata: #e0566e;
+  --anteayer: #6fd8c8;
+  --hilvan: #e8a0d0;
+  --polizon: #a8d85a;
+  --escucha: #b0a4f0;
+  --usurera: #e8c44a;
+  --avaro: #ff9a3a;
+  --mampostero: #b8aa98;
+  --campanero: #7fb0e8;
   /* Forma */
   --radius: 12px;
   --radius-sm: 8px;
@@ -359,10 +364,15 @@ form[aria-busy="true"] button[type="submit"]::after {
 .hero-mini img { width: 64px; height: 64px; border-radius: 12px; }
 .hero-mini small { color: var(--muted); }
 .hero-mini:hover { transform: translateY(-4px); border-color: var(--hero-color, var(--ember)); box-shadow: 0 8px 22px rgba(0, 0, 0, .4), 0 0 18px color-mix(in srgb, var(--hero-color, var(--ember)) 30%, transparent); }
-[data-hero="YUNQUE"] { --hero-color: var(--yunque); }
-[data-hero="CHISPA"] { --hero-color: var(--chispa); }
-[data-hero="CUERVO"] { --hero-color: var(--cuervo); }
-[data-hero="RAIZ"] { --hero-color: var(--raiz); }
+[data-hero="ERRATA"] { --hero-color: var(--errata); }
+[data-hero="ANTEAYER"] { --hero-color: var(--anteayer); }
+[data-hero="HILVAN"] { --hero-color: var(--hilvan); }
+[data-hero="POLIZON"] { --hero-color: var(--polizon); }
+[data-hero="ESCUCHA"] { --hero-color: var(--escucha); }
+[data-hero="USURERA"] { --hero-color: var(--usurera); }
+[data-hero="AVARO"] { --hero-color: var(--avaro); }
+[data-hero="MAMPOSTERO"] { --hero-color: var(--mampostero); }
+[data-hero="CAMPANERO"] { --hero-color: var(--campanero); }
 @keyframes rise-in { from { opacity: 0; transform: translateY(14px); } }
 .auth-forms .card h2::before { content: "✦ "; color: var(--ember); }
 

@@ -2,17 +2,35 @@
 // Un valor desconocido se muestra tal cual (el contrato permite enums extensibles).
 
 export const HEROES = {
-  YUNQUE: 'Yunque (tanque)',
-  CHISPA: 'Chispa (distancia)',
-  CUERVO: 'Cuervo (pícaro)',
-  RAIZ: 'Raíz (soporte)',
+  ERRATA: 'Errata',
+  ANTEAYER: 'Anteayer',
+  HILVAN: 'Hilván',
+  POLIZON: 'Polizón',
+  ESCUCHA: 'La Escucha',
+  USURERA: 'La Usurera',
+  AVARO: 'El Avaro',
+  MAMPOSTERO: 'El Mampostero',
+  CAMPANERO: 'El Campanero',
 };
 
 export const ABILITIES = {
-  YUNQUE: 'Muralla',
-  CHISPA: 'Descarga',
-  CUERVO: 'Paso sombrío',
-  RAIZ: 'Brote',
+  ERRATA: 'Corregir',
+  ANTEAYER: 'Volver',
+  HILVAN: 'Tensar',
+  POLIZON: 'Abordar',
+  ESCUCHA: 'Grito',
+  USURERA: 'Préstamo',
+  AVARO: 'Soborno',
+  MAMPOSTERO: 'Corrimiento',
+  CAMPANERO: 'Repique',
+};
+
+/** Señales rápidas (SendSignal): frases fijas para el propio bando. */
+export const SIGNALS = {
+  HERE: { text: '¡Aquí!', icon: '📍' },
+  DANGER: { text: '¡Cuidado!', icon: '⚠' },
+  HELP: { text: 'Ayuda', icon: '🆘' },
+  MINE: { text: 'Es mía', icon: '✋' },
 };
 
 export const HERO_STATES = {
@@ -59,8 +77,8 @@ export const BLESSINGS = {
 export const BLESSING_EFFECTS = {
   BRASA_VIVA: 'Al atacar: 20% de quemar (1 de daño por ronda, 2 rondas).',
   PASO_IGNEO: 'Al moverte: 15% de dejar fuego en la casilla anterior.',
-  PUNO_DE_PIEDRA: '+1 de daño, pero −1 de vida máxima.',
-  CORAZON_DOBLE: '+2 de vida máxima, pero −10% de bloqueo.',
+  PUNO_DE_PIEDRA: '+1 de daño, pero −1 de vida máxima (al Avaro, −1 ascua).',
+  CORAZON_DOBLE: '+2 de vida máxima (al Avaro, +2 ascuas).',
   HOJA_HAMBRIENTA: 'Al matar: te curas 1.',
   ESPEJO_ROTO: 'Al recibir un golpe: 25% de devolver 1 de daño.',
   LAMPARA: '+1 de visión.',
@@ -98,6 +116,11 @@ export const EVENTS = {
   EMBER_REBORN: 'renació en la escalera', RENEGADE_SPAWNED: 'apareció como Renegado', RENEGADE_DEFEATED: 'derrotó a un Renegado',
   ECHO_GAINED: 'ganó ecos', SHIELD_KINDLED: 'avivó a un aliado', ATTACK_HINDERED: 'estorbó a un enemigo',
   BEACON_LIT: 'encendió un Faro', WARMTH_HEALED: 'calentó a un aliado',
+  ECHO_FIRED: 'disparó un Eco', ATTACK_CORRECTED: 'un golpe anunciado se desvió', BETRAYAL_RECORDED: 'traicionó en secreto',
+  BETRAYAL_REVEALED: 'traición revelada', HOST_BOARDED: 'abordó a un monstruo', HOST_EXITED: 'reapareció', HOST_DRAINED: 'drenó a su huésped',
+  WARDEN_TURNED: 'el Celador giró', SHOUTED: 'gritó', DEBT_CHANGED: 'la deuda cambió', EMBERS_DROPPED: 'cayeron ascuas al suelo',
+  EMBERS_PICKED_UP: 'recogió ascuas', EMBERS_LOST: 'perdió ascuas', ENEMY_BRIBED: 'sobornó a un enemigo', ROOM_SHIFTED: 'la sala se corrió',
+  BELL_RUNG: 'tocó el Repique', BELL_EXPIRED: 'venció el plazo del Repique',
 };
 
 export const ERROR_CODES = {
@@ -105,6 +128,7 @@ export const ERROR_CODES = {
   INVALID_ORDER: 'Orden ilegal en este momento',
   STALE_ROUND: 'La ronda ya cerró',
   ORDER_ALREADY_SUBMITTED: 'Ya enviaste otra orden en esta ronda',
+  ORDER_TOO_LATE: 'Se te acabó el plazo del Repique: guardas esta ronda',
   NOT_PARTICIPANT: 'No participas en esta partida',
   NOT_JOINED: 'La conexión no está unida a la partida',
   PLAYER_DOWN: 'Tu héroe no puede actuar',

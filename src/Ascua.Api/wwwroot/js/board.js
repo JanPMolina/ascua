@@ -12,16 +12,22 @@
 //
 // Caminos tras la extinción: la Brasa errante es una llama azul translúcida sin barra de vida (drawSpirit), el
 // Renegado lleva aura roja y marca de enemigo (drawEntity), y los Faros iluminan su zona hasta la resolución siguiente.
-import { on } from './bus.js';
+//
+// Lo propio de cada uno de los nueve héroes (vistas previas, capas y efectos) está en board-heroes.js.
+import { emit, on } from './bus.js';
 import { getSettings } from './settings.js';
 import { HERO_COLORS, dangerIcon, glow, grayCopy, makeCanvas, paintTile, sprite } from './sprites.js';
 import { Floaters, Particles, Timeline, clamp01, ease } from './fx.js';
+import { heroInfo } from './heroes.js';
+import {
+  applyHeroEvent, correctedTiles, drawEchoes, drawGroundEmbers, drawHiddenTelegraphs, drawHostMark, drawLastWord, drawNoise, drawRewind,
+  drawShiftPreview, drawSignalMark, drawThreads, isBlind, mirrored, onShiftLine, shiftFromEvent, shiftFromOrder, shiftText, shiftedPos, signalFx, tensarCells,
+} from './board-heroes.js';
 
 export const SIZE = 9;
 
 const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const DIR_NAMES = Object.keys(DIRS);
-const OPPOSITE = { N: 'S', S: 'N', E: 'W', W: 'E' };
 const MODE_COLORS = { MOVE: '#8fd0ff', ATTACK: '#ff6a5a', ABILITY: '#e8c15a', INTERACT: '#6cc28a', GUARD: '#8fd0ff' };
 const STOPS_SHOTS = new Set(['WALL', 'BRAZIER']);
 const OBJECTS = new Set(['CHEST', 'CHEST_OPENED', 'BRAZIER', 'ALTAR']);
@@ -30,6 +36,8 @@ const ACTIONS = new Set(['ATTACKED', 'ABILITY_USED', 'GUARDED', 'DEFAULT_GUARD_A
   'SHIELD_KINDLED', 'ATTACK_HINDERED', 'BEACON_LIT']);
 /** Sucesos de los caminos que se ven al final de la ronda (pasivas, ecos, apariciones). */
 const LATE_PATH = new Set(['WARMTH_HEALED', 'ECHO_GAINED', 'EMBER_REBORN', 'RENEGADE_SPAWNED']);
+/** Sucesos de los héroes que también se ven al final (fase de limpieza). */
+const LATE_HERO = new Set(['DEBT_CHANGED', 'HOST_DRAINED', 'EMBERS_LOST', 'BETRAYAL_RECORDED', 'BETRAYAL_REVEALED', 'BELL_RUNG', 'SHOUTED']);
 const DASH = [6, 5];
 const NO_DASH = [];
 const EMBER_COLORS = ['#ff9a3a', '#ffcf6a', '#ff6a2a'];
@@ -37,9 +45,10 @@ const SPIRIT_COLORS = ['#6fc8ff', '#c8ecff', '#3f9ae8'];
 const BLOOD_COLORS = ['#ff4a3a', '#a8160e', '#ff8a6a'];
 const BEACON_RADIUS = 2;
 
-/** Radio de visión (Manhattan): 3 (4 la Brasa errante), +1 con Lámpara. */
+/** Radio de visión (Manhattan): 3 (4 la Brasa errante, 1 La Escucha), +1 con Lámpara. */
 export function visionRadius(me) {
-  return (me?.state === 'EMBER_SPIRIT' ? 4 : 3) + (me?.blessings?.includes('LAMPARA') ? 1 : 0);
+  const base = me?.state === 'EMBER_SPIRIT' ? 4 : isBlind(me) ? 1 : 3;
+  return base + (me?.blessings?.includes('LAMPARA') ? 1 : 0);
 }
 
 const inBounds = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
@@ -47,15 +56,28 @@ const tileKey = (x, y) => `${x},${y}`;
 const isHeroId = (id) => Boolean(id) && !id.startsWith('enemy:');
 const isSpirit = (d) => d?.state === 'EMBER_SPIRIT';
 const isRenegade = (d) => d?.state === 'RENEGADE';
-/** El Renegado propio que todavía no apareció no tiene casilla (su `position` es la vieja). */
-const offBoard = (d) => isRenegade(d) && Boolean(d.path?.awaitingSpawn);
+/**
+ * Sin cuerpo propio en el tablero: el Renegado que todavía no apareció (su `position` es la vieja) y Polizón dentro de
+ * su huésped, que se ve como el monstruo.
+ */
+const offBoard = (d) => (isRenegade(d) && Boolean(d.path?.awaitingSpawn)) || d?.hostEnemyId != null;
 const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const secondId = (playerId) => `second:${playerId}`;
+/** Segundo cuerpo de Hilván como una entidad más: comparte vida y mira al revés en este y oeste. */
+const secondData = (d) => (d?.secondBody && !isSpirit(d)
+  ? { ...d, position: d.secondBody, facing: d.facing ? mirrored(d.facing) : d.facing, secondary: true }
+  : null);
 
 function entityMap(snap) {
   const map = new Map();
   if (!snap) return map;
-  if (snap.me) map.set(snap.me.playerId, { type: 'hero', d: offBoard(snap.me) ? { ...snap.me, position: null } : snap.me, isMe: true });
-  for (const a of snap.allies ?? []) map.set(a.playerId, { type: 'hero', d: a, isMe: false });
+  const addHero = (d, isMe) => {
+    map.set(d.playerId, { type: 'hero', d, isMe });
+    const second = secondData(d);
+    if (second) map.set(secondId(d.playerId), { type: 'hero', d: second, isMe, ownerId: d.playerId });
+  };
+  if (snap.me) addHero(offBoard(snap.me) ? { ...snap.me, position: null } : snap.me, true);
+  for (const a of snap.allies ?? []) addHero(a, false);
   for (const e of snap.enemies ?? []) map.set(`enemy:${e.enemyId}`, { type: 'enemy', d: e, isMe: false });
   return map;
 }
@@ -103,6 +125,10 @@ export class BoardRenderer {
     this.fade = 0;
     this.banner = null;
     this.beacons = []; // Faros encendidos en la última resolución: zona iluminada hasta la siguiente
+    // Capas de los héroes que se dibujan: siguen al estado lógico solo al terminar la animación de la resolución.
+    this.overlay = { hidden: [], echoes: [], ground: [], noise: [] };
+    this.shout = false; // Grito de este bando: se ve la sala entera hasta la próxima resolución
+    this.shiftAnim = null; // corrimiento en curso { axis, index, sign, p }
     this.pending = null;
     this.pendingFloor = null;
     this.hoverDir = null;
@@ -124,7 +150,17 @@ export class BoardRenderer {
       on('settings:changed', (s) => { this.settings = s; }),
       on('ui:screen', ({ name }) => { this.screenOn = name === 'match'; this.updateLoop(); }),
       on('match:stop', () => this.dispose()),
+      on('signal:received', (s) => signalFx(this, s)),
     ];
+    // Clic en el tablero: casilla para la próxima señal rápida.
+    this.onCanvasClick = (e) => {
+      const box = canvas.getBoundingClientRect();
+      if (!box.width) return;
+      const x = Math.floor(((e.clientX - box.left) / box.width) * SIZE);
+      const y = Math.floor(((e.clientY - box.top) / box.height) * SIZE);
+      if (inBounds(x, y)) emit('board:tile', { x, y });
+    };
+    canvas.addEventListener('click', this.onCanvasClick);
     this.onVisibility = () => this.updateLoop();
     this.onHover = (e) => {
       const btn = e.target?.closest?.('.dir[data-dir]');
@@ -151,6 +187,7 @@ export class BoardRenderer {
     this.disposed = true;
     this.updateLoop();
     this.offs.forEach((off) => off());
+    this.canvas.removeEventListener('click', this.onCanvasClick);
     document.removeEventListener('visibilitychange', this.onVisibility);
     document.removeEventListener('pointerover', this.onHover);
     document.removeEventListener('pointerout', this.onLeave);
@@ -254,12 +291,32 @@ export class BoardRenderer {
     };
   }
 
+  /** Héroe de un jugador (para sus Ecos). */
+  heroOf(playerId) {
+    const { me, allies } = this.state;
+    return me?.playerId === playerId ? me.hero : allies?.find((a) => a.playerId === playerId)?.hero;
+  }
+
+  /** Lo que el jugador tiene en el tablero: su héroe o, si va de polizón, su huésped. */
+  meEnt() {
+    const me = this.state.me;
+    if (!me) return null;
+    return me.hostEnemyId != null ? this.ents.get(`enemy:${me.hostEnemyId}`) ?? null : this.ents.get(me.playerId) ?? null;
+  }
+
+  /** Casilla desde la que actúa el jugador. */
+  origin() {
+    const me = this.state.me;
+    return (me?.hostEnemyId != null ? this.state.enemies?.get(me.hostEnemyId)?.position : null) ?? me?.position ?? null;
+  }
+
   upsert(id, type, d, isMe) {
     let v = this.ents.get(id);
     if (!v) {
       v = this.newEnt(id, type, d, isMe);
       this.ents.set(id, v);
     }
+    if (d.secondary) v.ownerId = d.playerId;
     v.d = d;
     v.isMe = isMe;
     v.seen = true;
@@ -278,8 +335,13 @@ export class BoardRenderer {
   syncEntities() {
     const { me, allies, enemies } = this.state;
     for (const v of this.ents.values()) v.seen = false;
-    if (me?.position && !offBoard(me)) this.upsert(me.playerId, 'hero', me, true);
-    for (const a of allies ?? []) if (a.position) this.upsert(a.playerId, 'hero', a, false);
+    const addHero = (d, isMe) => {
+      this.upsert(d.playerId, 'hero', d, isMe);
+      const second = secondData(d);
+      if (second) this.upsert(secondId(d.playerId), 'hero', second, isMe);
+    };
+    if (me?.position && !offBoard(me)) addHero(me, true);
+    for (const a of allies ?? []) if (a.position) addHero(a, false);
     for (const e of enemies?.values() ?? []) if (e.position) this.upsert(`enemy:${e.enemyId}`, 'enemy', e, false);
     for (const v of this.ents.values()) {
       if (!v.seen && !v.locked) { v.leaving = true; v.alphaTarget = 0; }
@@ -299,6 +361,9 @@ export class BoardRenderer {
     this.teleKeys = keys;
     this.teleSet = set;
     if (fadeIn && changed) this.teleAlpha = 0;
+    // Las capas de los héroes siguen al estado lógico en el mismo momento que los anuncios.
+    const s = this.state;
+    this.overlay = { hidden: (s.hiddenTelegraphs ?? []).filter((p) => !set.has(tileKey(p.x, p.y))), echoes: s.echoes ?? [], ground: s.groundEmbers ?? [], noise: s.noiseTiles ?? [] };
   }
 
   // ───────────── vista previa de la orden ─────────────
@@ -307,35 +372,63 @@ export class BoardRenderer {
   affected(type, dir, out) {
     out.length = 0;
     const me = this.state.me;
-    if (!me?.position || !(me.state === 'ALIVE' || isSpirit(me) || (isRenegade(me) && !offBoard(me)))) return out;
-    const { x, y } = me.position;
+    const origin = this.origin();
+    const hosted = me?.hostEnemyId != null;
+    if (!origin || !(me.state === 'ALIVE' || isSpirit(me) || (isRenegade(me) && !(me.path?.awaitingSpawn)))) return out;
+    const { x, y } = origin;
     if (isSpirit(me)) return this.spiritAffected(type, dir, x, y, out);
     const blocked = (px, py) => !inBounds(px, py) || STOPS_SHOTS.has(this.tiles.get(tileKey(px, py)));
-    const ray = (d, len) => {
+    const ray = (from, d, len) => {
       const [dx, dy] = DIRS[d];
       for (let i = 1; i <= len; i++) {
-        const px = x + dx * i;
-        const py = y + dy * i;
+        const px = from.x + dx * i;
+        const py = from.y + dy * i;
         if (blocked(px, py)) break;
         out.push({ x: px, y: py });
       }
     };
+    const second = isSpirit(me) ? null : me.secondBody;
+    if (type === 'GUARD') {
+      if (!hosted) out.push({ x, y });
+      if (second) out.push(second);
+      return out;
+    }
+    if (type === 'ABILITY' && me.hero === 'ANTEAYER') {
+      if (me.rewindTile) out.push(me.rewindTile);
+      return out;
+    }
+    if (type === 'ABILITY' && me.hero === 'HILVAN') {
+      out.push(...tensarCells(me.position, second, this.tiles));
+      return out;
+    }
     const v = DIRS[dir];
-    if (type === 'GUARD') { out.push({ x, y }); return out; }
     if (!v) return out;
-    const step = { x: x + v[0], y: y + v[1] };
+    const stepFrom = (from, d) => {
+      const [dx, dy] = DIRS[d];
+      if (inBounds(from.x + dx, from.y + dy)) out.push({ x: from.x + dx, y: from.y + dy });
+    };
+    if (hosted) {
+      // Dentro del huésped: mover lo mueve, atacar golpea con su alcance, la habilidad sale. Guardar e interactuar no hacen nada.
+      if (type === 'MOVE' || type === 'ABILITY') stepFrom(origin, dir);
+      else if (type === 'ATTACK') ray(origin, dir, this.state.enemies?.get(me.hostEnemyId)?.kind === 'BALLESTERO' ? 8 : 1);
+      return out;
+    }
     if (type === 'MOVE' || type === 'INTERACT') {
-      if (inBounds(step.x, step.y)) out.push(step);
+      stepFrom(origin, dir);
+      if (second) stepFrom(second, mirrored(dir));
     } else if (type === 'ATTACK') {
-      if (me.hero === 'CHISPA') ray(dir, 3); else if (inBounds(step.x, step.y)) out.push(step);
+      const range = heroInfo(me.hero).range ?? 1;
+      ray(origin, dir, range);
+      if (second) ray(second, mirrored(dir), range);
     } else if (type === 'ABILITY') {
-      if (me.hero === 'CHISPA') { for (const d of DIR_NAMES) ray(d, 3); } else if (me.hero === 'YUNQUE') ray(OPPOSITE[dir], 8);
-      else if (me.hero === 'CUERVO') ray(dir, 2);
-      else if (me.hero === 'RAIZ') {
-        for (let dy = -2; dy <= 2; dy++) {
-          for (let dx = -2; dx <= 2; dx++) if (Math.abs(dx) + Math.abs(dy) <= 2 && inBounds(x + dx, y + dy)) out.push({ x: x + dx, y: y + dy });
-        }
-      }
+      if (me.hero === 'ERRATA') correctedTiles(origin, dir, this.state.enemies, this.state.hiddenTelegraphs, this.tiles, out);
+      else if (me.hero === 'POLIZON') stepFrom(origin, dir);
+      else if (me.hero === 'USURERA') ray(origin, dir, 2);
+      else if (me.hero === 'AVARO') ray(origin, dir, 3);
+      else if (me.hero === 'MAMPOSTERO') {
+        const s = shiftFromOrder(origin, dir);
+        for (let i = 0; i < SIZE; i++) out.push(s.axis === 'row' ? { x: i, y: s.index } : { x: s.index, y: i });
+      } else out.push({ x, y }); // Grito y Repique no apuntan a ninguna parte.
     }
     return out;
   }
@@ -367,7 +460,10 @@ export class BoardRenderer {
     if (s.pendingOrder || !s.me?.position || this.timeline.running) return;
     const mode = s.armedMode ?? s.mode ?? 'MOVE';
     this.previewMode = mode;
-    if (this.hoverDir) {
+    if (mode === 'ABILITY' && (s.me.hero === 'ANTEAYER' || s.me.hero === 'HILVAN') && !isSpirit(s.me) && s.me.hostEnemyId == null) {
+      // Volver y Tensar no dependen de la dirección: se ven en cuanto se elige la habilidad.
+      this.affected(mode, null, this.preview);
+    } else if (this.hoverDir) {
       this.affected(mode, this.hoverDir, this.preview);
     } else if (s.armedMode) {
       const tmp = this.previewTmp;
@@ -384,8 +480,13 @@ export class BoardRenderer {
     const detail = this.pending;
     this.pending = null;
     this.timeline.finish();
-    // Los Faros duran hasta la resolución siguiente.
+    // Los Faros duran hasta la resolución siguiente; el Grito, también.
     this.beacons = [];
+    const me = this.state.me;
+    const sideOf = (d) => (isRenegade(d) ? 'dungeon' : 'group');
+    const shouter = (detail.events ?? []).find((ev) => ev.type === 'SHOUTED')?.actorId;
+    const shouterData = shouter === me?.playerId ? me : detail.after?.allies?.find((a) => a.playerId === shouter);
+    this.shout = Boolean(shouterData) && sideOf(shouterData) === sideOf(detail.after?.me ?? me);
     if (this.pendingFloor !== null) {
       const floor = this.pendingFloor;
       this.pendingFloor = null;
@@ -436,6 +537,9 @@ export class BoardRenderer {
     const events = detail.events ?? [];
     const B = entityMap(detail.before);
     const A = entityMap(detail.after);
+    // Corrimiento del Mampostero: ocurre antes de los movimientos, y lo que se mueve después parte de la casilla corrida.
+    const shift = shiftFromEvent(events.find((ev) => ev.type === 'ROOM_SHIFTED'));
+    const startOf = (d) => (shift && d?.position && !isSpirit(d) ? shiftedPos(shift, d.position) : d?.position);
 
     // 1) Estado visual de partida: el "antes".
     const ids = new Set([...B.keys(), ...A.keys()]);
@@ -449,6 +553,7 @@ export class BoardRenderer {
         if (!pos) continue;
         v = this.newEnt(id, src.type, { ...src.d, position: pos }, src.isMe);
         v.alpha = b?.d.position ? 1 : 0;
+        if (src.ownerId) v.ownerId = src.ownerId;
         this.ents.set(id, v);
       }
       v.locked = true;
@@ -473,17 +578,20 @@ export class BoardRenderer {
     }
 
     // Casillas que cambian: se ve lo de antes hasta su momento (cofre que se abre, fuego que prende…).
-    for (const c of tileChanges) if (c.from !== undefined) this.tileShown.set(c.key, c.from);
+    // Lo de la línea corrida no cuenta: esas casillas ya se ven deslizarse.
+    const onLine = (k) => { const [x, y] = k.split(',').map(Number); return onShiftLine(shift, x, y); };
+    for (const c of tileChanges) if (c.from !== undefined && !onLine(c.key)) this.tileShown.set(c.key, c.from);
 
     // Ataques anunciados de la ronda que se resuelve: siguen a la vista hasta que golpean. Un enemigo
-    // estorbado por una Brasa conserva el anuncio pero no golpea esta ronda.
-    const hinderedIds = new Set(events.filter((ev) => ev.type === 'ATTACK_HINDERED' && ev.targetId).map((ev) => ev.targetId));
+    // estorbado por una Brasa o sobornado conserva el anuncio pero no golpea; uno corregido golpea donde cayó el anuncio.
+    const hinderedIds = new Set(events.filter((ev) => (ev.type === 'ATTACK_HINDERED' || ev.type === 'ENEMY_BRIBED') && ev.targetId).map((ev) => ev.targetId));
+    const corrected = new Map(events.filter((ev) => ev.type === 'ATTACK_CORRECTED' && ev.targetId).map((ev) => [ev.targetId, ev.tiles ?? []]));
     const strikes = [];
     const oldTele = [];
     const oldSet = new Set();
     for (const [id, b] of B) {
       if (b.type !== 'enemy' || !b.d.telegraph?.length) continue;
-      if (!hinderedIds.has(id)) strikes.push({ id, d: b.d });
+      if (!hinderedIds.has(id)) strikes.push({ id, d: corrected.has(id) ? { ...b.d, telegraph: corrected.get(id) } : b.d });
       for (const p of b.d.telegraph) {
         const k = tileKey(p.x, p.y);
         if (!oldSet.has(k)) { oldSet.add(k); oldTele.push(p); }
@@ -506,7 +614,7 @@ export class BoardRenderer {
     const appearsLate = new Set(events.filter((ev) => ev.type === 'EMBER_REBORN' || ev.type === 'RENEGADE_SPAWNED').map((ev) => ev.actorId));
     for (const ev of events) {
       switch (ev.type) {
-        case 'MOVED': break;
+        case 'MOVED': case 'ROOM_SHIFTED': case 'ATTACK_CORRECTED': break;
         case 'BOUNCED': bounces.push(ev); break;
         case 'DAMAGED': case 'BLOCKED': case 'ENEMY_KILLED': case 'RENEGADE_DEFEATED':
           if (isHeroId(ev.actorId)) addTo(ev.actorId, ev); else envEvents.push(ev);
@@ -517,10 +625,14 @@ export class BoardRenderer {
         case 'HEALED': {
           // La Calidez de una Brasa cura al final de la ronda, junto a su propio suceso.
           if (warmed.has(ev.targetId)) { lateEvents.push(ev); break; }
-          const healer = [...groups.keys()].find((id) => heroKind(id) === 'RAIZ' && groups.get(id).some((e) => e.type === 'ABILITY_USED'));
+          const healer = [...groups.keys()].find((id) => heroKind(id) === 'USURERA' && groups.get(id).some((e) => e.type === 'ABILITY_USED'));
           if (healer) addTo(healer, ev); else envEvents.push(ev);
           break;
         }
+        case 'ENEMY_BRIBED': case 'HOST_BOARDED': case 'WARDEN_TURNED':
+          // La causa es una habilidad: va con la acción de quien la usó.
+          if (isHeroId(ev.actorId)) addTo(ev.actorId, ev); else envEvents.push(ev);
+          break;
         case 'BOSS_PHASE_CHANGED': case 'EMBERS_STOLEN': case 'FLOOR_ENTERED':
           lateEvents.push(ev);
           break;
@@ -528,7 +640,7 @@ export class BoardRenderer {
           pathEvents.push(ev);
           break;
         default:
-          if (LATE_PATH.has(ev.type)) lateEvents.push(ev);
+          if (LATE_PATH.has(ev.type) || LATE_HERO.has(ev.type)) lateEvents.push(ev);
           else if (ACTIONS.has(ev.type) && isHeroId(ev.actorId)) addTo(ev.actorId, ev);
           else envEvents.push(ev);
       }
@@ -536,37 +648,54 @@ export class BoardRenderer {
 
     // 2b) Al inicio de la resolución se revelan los caminos elegidos.
     pathEvents.forEach((ev, i) => tl.at(i * 260 * S, () => this.applyEvent(ev)));
-    const t0 = pathEvents.length ? (520 + (pathEvents.length - 1) * 260) * S : 0;
+    const tPaths = pathEvents.length ? (520 + (pathEvents.length - 1) * 260) * S : 0;
 
-    // 3) Movimientos de héroes (la Brasa deriva atravesando todo).
+    // 2c) Corrimiento: la línea entera se desliza (mapa y criaturas), y quien cruza el borde entra por el otro lado.
+    if (shift) this.playShift(shift, ids, B, A, startOf, tPaths, S);
+    const t0 = tPaths + (shift ? 560 * S : 0);
+
+    // Anuncios desviados por Errata: se ven saltar antes de que nadie se mueva.
+    const corrections = events.filter((ev) => ev.type === 'ATTACK_CORRECTED');
+    if (corrections.length) {
+      tl.at(tPaths, () => {
+        const kept = [...corrected.keys()].flatMap((id) => B.get(id)?.d.telegraph ?? []);
+        const gone = new Set(kept.map((p) => tileKey(p.x, p.y)));
+        const moved2 = corrections.flatMap((ev) => ev.tiles ?? []);
+        this.teleKeys = [...this.teleKeys.filter((p) => !gone.has(tileKey(p.x, p.y))), ...moved2];
+        this.teleSet = new Set(this.teleKeys.map((p) => tileKey(p.x, p.y)));
+        corrections.forEach((ev) => this.applyEvent(ev));
+      });
+    }
+
+    // 3) Movimientos de héroes (la Brasa deriva atravesando todo; Anteayer salta a su pasado).
     let moved = false;
     for (const id of ids) {
       const b = B.get(id);
       const a = A.get(id);
       const v = this.ents.get(id);
       if (!v || (b ?? a).type !== 'hero') continue;
-      const shadow = heroKind(id) === 'CUERVO' && groups.get(id)?.some((e) => e.type === 'ABILITY_USED');
-      if (b?.d.position && a?.d.position && (b.d.position.x !== a.d.position.x || b.d.position.y !== a.d.position.y)) {
+      const ownerId = v.ownerId ?? id;
+      const rewinds = heroKind(ownerId) === 'ANTEAYER' && groups.get(ownerId)?.some((e) => e.type === 'ABILITY_USED');
+      const from = startOf(b?.d);
+      if (from && a?.d.position && (from.x !== a.d.position.x || from.y !== a.d.position.y)) {
         moved = true;
-        if (shadow) this.shadowStep(v, b.d.position, a.d.position, t0, S, a.isMe);
+        if (rewinds) this.rewindStep(v, from, a.d.position, t0, S);
         else if (isSpirit(a.d) && isSpirit(b.d)) this.driftTween(v, b.d.position, a.d.position, t0, 420 * S);
-        else this.moveTween(v, b.d.position, a.d.position, t0, 340 * S, rm ? 0 : 0.28);
+        else this.moveTween(v, from, a.d.position, t0, 340 * S, rm ? 0 : 0.28);
       } else if (b?.d.position && !a?.d.position) {
-        // Se volvió invisible (sigilo), dejó de verse o se fue como Renegado.
-        tl.at(t0, () => {
-          if (shadow) this.smoke(v.x + 0.5, v.y + 0.5);
-          v.alphaTarget = 0; v.leaving = true;
-        });
+        // Dejó de verse, abordó a un monstruo o se fue como Renegado.
+        tl.at(t0, () => { v.alphaTarget = 0; v.leaving = true; });
         moved = true;
-      } else if (!b?.d.position && a?.d.position && !appearsLate.has(id)) {
-        tl.at(t0 + 120 * S, () => { v.alphaTarget = 1; if (shadow) this.smoke(v.x + 0.5, v.y + 0.5); });
+      } else if (!b?.d.position && a?.d.position && !appearsLate.has(ownerId)) {
+        tl.at(t0 + 120 * S, () => { v.alphaTarget = 1; });
       }
     }
     for (const ev of bounces) {
-      const v = this.ents.get(ev.actorId);
+      const bodyId = ev.detail === 'SECOND_BODY' ? secondId(ev.actorId) : ev.actorId;
+      const v = this.ents.get(bodyId);
       if (!v) continue;
       moved = true;
-      const after = A.get(ev.actorId)?.d;
+      const after = A.get(bodyId)?.d;
       let dir = DIRS[after?.facing] ?? [0, 0];
       if (ev.position && (ev.position.x !== v.x || ev.position.y !== v.y)) dir = [Math.sign(ev.position.x - v.x), Math.sign(ev.position.y - v.y)];
       if (after?.facing) tl.at(t0, () => { v.facing = after.facing; });
@@ -593,7 +722,7 @@ export class BoardRenderer {
 
     // 5) Enemigos: golpean lo anunciado, luego se mueven.
     const tStrike = endB + (groups.size ? 120 * S : 0);
-    tl.at(tStrike, () => { this.teleKeys = []; this.teleSet = new Set(); });
+    tl.at(tStrike, () => { this.teleKeys = []; this.teleSet = new Set(); this.overlay.hidden = []; this.overlay.noise = []; });
     strikes.forEach((s, i) => this.enemyStrike(s, tStrike + Math.min(i, 5) * 50 * S, S));
     const tHit = tStrike + (strikes.length ? 170 * S : 0);
     envEvents.forEach((ev, i) => tl.at(tHit + i * 110 * S, () => this.applyEvent(ev)));
@@ -605,11 +734,12 @@ export class BoardRenderer {
       const a = A.get(id);
       const v = this.ents.get(id);
       if (!v || (b ?? a).type !== 'enemy') continue;
-      if (b?.d.position && a?.d.position && (b.d.position.x !== a.d.position.x || b.d.position.y !== a.d.position.y)) {
+      const from = startOf(b?.d);
+      if (from && a?.d.position && (from.x !== a.d.position.x || from.y !== a.d.position.y)) {
         enemyMoved = true;
         const kind = a.d.kind;
         const hop = rm ? 0 : kind === 'SALTASAPO' ? 0.6 : kind === 'POLILLA' ? 0 : 0.14;
-        this.moveTween(v, b.d.position, a.d.position, tMove, (kind === 'SALTASAPO' ? 440 : 340) * S, hop);
+        this.moveTween(v, from, a.d.position, tMove, (kind === 'SALTASAPO' ? 440 : 340) * S, hop);
         tl.at(tMove, () => { v.facing = a.d.facing ?? v.facing; });
       } else if (b?.d.position && !a?.d.position) {
         tl.at(tMove, () => { if (!v.dead) { v.alphaTarget = 0; v.leaving = true; } });
@@ -632,6 +762,96 @@ export class BoardRenderer {
       this.syncTelegraphs(true);
     });
     tl.start(this.now);
+  }
+
+  /** Corrimiento: mueve la línea del mapa (drawTiles y drawObjects la dibujan desplazada) y a quienes están encima. */
+  playShift(shift, ids, B, A, startOf, t, S) {
+    const tl = this.timeline;
+    const dur = 480 * S;
+    const anim = { ...shift, p: 0 };
+    tl.at(t, () => {
+      this.shiftAnim = anim;
+      this.shake(0.4);
+      let sub = shiftText(shift);
+      const stairs = [...this.tiles].some(([k, kind]) => { const [x, y] = k.split(',').map(Number); return kind === 'STAIRS' && onShiftLine(shift, x, y); });
+      if (stairs) sub += ': ¡la escalera se mueve!';
+      this.banner = { text: 'La sala tiembla', sub, start: this.now, dur: 1700, color: '#d8ccb8' };
+      for (let i = 0; i < SIZE; i++) {
+        const x = shift.axis === 'row' ? i : shift.index;
+        const y = shift.axis === 'row' ? shift.index : i;
+        if (!this.rm && i % 2 === 0) this.particles.burst(x + 0.5, y + 0.9, 4, { speed: 1, life: 0.5, size: 0.05, colors: ['#8a7e70', '#6a5e50'], drag: 4, up: 0.3 });
+      }
+    });
+    tl.tween(t, dur, (p) => { anim.p = ease.inOutQuad(p); }, () => { if (this.shiftAnim === anim) this.shiftAnim = null; });
+    const axisKey = shift.axis === 'row' ? 'x' : 'y';
+    for (const id of ids) {
+      const v = this.ents.get(id);
+      const d = B.get(id)?.d;
+      if (!v || !d?.position || isSpirit(d) || !onShiftLine(shift, d.position.x, d.position.y)) continue;
+      const from = d.position;
+      const to = startOf(d);
+      const wraps = Math.abs(to[axisKey] - from[axisKey]) > 1;
+      const baseAlpha = v.alphaTarget;
+      tl.tween(t, dur, (p) => {
+        const k = ease.inOutQuad(p);
+        const raw = from[axisKey] + shift.sign * k;
+        // Quien cruza el borde se desvanece en uno y aparece por el otro.
+        v[axisKey] = wraps && k > 0.5 ? raw - shift.sign * SIZE : raw;
+        if (wraps) v.alpha = Math.abs(1 - 2 * k);
+      }, () => {
+        v[axisKey] = to[axisKey];
+        if (wraps) { v.alpha = 1; v.alphaTarget = baseAlpha || 1; }
+      });
+    }
+  }
+
+  /** Desplazamiento con que se dibuja ahora una casilla: las de la línea corrida vienen de la casilla anterior. */
+  shiftOffset(x, y) {
+    const s = this.shiftAnim;
+    if (!s || !onShiftLine(s, x, y)) return [0, 0];
+    const k = (1 - s.p) * s.sign;
+    return s.axis === 'row' ? [-k, 0] : [0, -k];
+  }
+
+  /** Volver: se deshace en luz fría y reaparece donde estaba hace 2 rondas. */
+  rewindStep(v, from, to, t, S) {
+    const tl = this.timeline;
+    const colors = ['#6fd8c8', '#c8fff4', '#2f7f76'];
+    tl.at(t, () => {
+      this.particles.vortex(from.x + 0.5, from.y + 0.5, this.rm ? 6 : 22, { radius: 0.7, life: 0.5, colors, inward: true });
+      v.alphaTarget = 0.1;
+    });
+    tl.tween(t + 120 * S, 200 * S, (p) => {
+      v.x = from.x + (to.x - from.x) * ease.inOutQuad(p);
+      v.y = from.y + (to.y - from.y) * ease.inOutQuad(p);
+    }, () => {
+      v.x = to.x; v.y = to.y;
+      v.alphaTarget = 1;
+      this.ring(to.x + 0.5, to.y + 0.5, '#6fd8c8', 0.9, 500);
+      this.particles.vortex(to.x + 0.5, to.y + 0.5, this.rm ? 6 : 22, { radius: 0.2, life: 0.6, colors, inward: false });
+      this.floaters.add('¡anteayer!', to.x + 0.5, to.y + 0.05, { color: '#c8fff4', size: 0.2 });
+    });
+  }
+
+  /** Tensar: el hilo entre los dos cuerpos se vuelve una línea de luz que corta lo que haya en medio. */
+  tensarFx(a, b) {
+    this.addFx(520, (g, p, cell) => {
+      g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = 1 - p;
+      g.lineCap = 'round';
+      for (const [w, c] of [[0.2, HERO_COLORS.HILVAN], [0.07, '#ffffff']]) {
+        g.strokeStyle = c;
+        g.lineWidth = cell * w * (1 - p * 0.5);
+        g.beginPath();
+        g.moveTo((a.x + 0.5) * cell, (a.y + 0.55) * cell);
+        g.lineTo((b.x + 0.5) * cell, (b.y + 0.55) * cell);
+        g.stroke();
+      }
+      g.lineCap = 'butt';
+      g.globalCompositeOperation = 'source-over';
+      g.globalAlpha = 1;
+    });
+    this.shake(0.25);
   }
 
   moveTween(v, from, to, t, dur, hop) {
@@ -683,22 +903,6 @@ export class BoardRenderer {
     });
   }
 
-  /** Paso sombrío de Cuervo: se deshace en humo, cruza y reaparece en sigilo. */
-  shadowStep(v, from, to, t, S, isMe) {
-    const tl = this.timeline;
-    tl.at(t, () => { this.smoke(from.x + 0.5, from.y + 0.5); v.alphaTarget = 0.1; });
-    tl.tween(t + 80 * S, 240 * S, (p) => {
-      v.x = from.x + (to.x - from.x) * ease.inOutQuad(p);
-      v.y = from.y + (to.y - from.y) * ease.inOutQuad(p);
-      if (!this.rm && Math.random() < 0.6) this.particles.spawn(v.x + 0.3 + Math.random() * 0.4, v.y + 0.4 + Math.random() * 0.4, 0, -0.3, 0.6, 0.08, '#3a2850', 0, 1);
-    }, () => {
-      v.x = to.x; v.y = to.y;
-      this.smoke(to.x + 0.5, to.y + 0.5);
-      v.alphaTarget = isMe ? 1 : 0;
-      if (!isMe) v.leaving = true;
-    });
-  }
-
   smoke(x, y) {
     this.particles.burst(x, y, this.rm ? 6 : 18, { speed: 1.2, life: 0.8, size: 0.14, colors: ['#3a2850', '#4c3a66', '#241a30'], drag: 3, up: 0.5 });
   }
@@ -723,30 +927,48 @@ export class BoardRenderer {
     if (action) tl.at(t0, () => { v.facing = facing; });
 
     switch (action?.type) {
-      case 'ATTACKED':
-        if (actor.hero === 'CHISPA') {
+      case 'ATTACKED': {
+        const range = heroInfo(actor.hero).range ?? 1;
+        if (range > 1) {
+          // A distancia: la nota de La Escucha o el tañido del Campanero.
           const target = firstTarget ? this.ents.get(firstTarget.targetId) : null;
-          const end = target ? { x: target.x, y: target.y } : this.rayEnd(pos, dir, 3);
+          const end = target ? { x: target.x, y: target.y } : this.rayEnd(pos, dir, range);
           const dist = Math.abs(end.x - pos.x) + Math.abs(end.y - pos.y);
           const dur = (90 + dist * 70) * S;
-          tl.at(t0, () => this.bolt(pos, end, dur, '#ffcf4a', '#ff7a2a', !target));
+          const [core, trail] = actor.hero === 'ESCUCHA' ? ['#dff0ff', '#8a7ed8'] : ['#ffe9a0', '#d8a040'];
+          tl.at(t0, () => this.bolt(pos, end, dur, core, trail, !target));
           impact = t0 + dur;
         } else {
           this.lunge(v, dir, t0, S);
           tl.at(t0 + 100 * S, () => this.slash(pos.x + dir[0] + 0.5, pos.y + dir[1] + 0.5, facing, HERO_COLORS[actor.hero]));
+          // Hilván ataca con los dos cuerpos, en espejo.
+          const second = this.ents.get(secondId(actorId));
+          if (second && !isSpirit(actor)) {
+            const mirrorFacing = mirrored(facing);
+            const mirrorDir = DIRS[mirrorFacing] ?? dir;
+            const at = A.get(secondId(actorId))?.d.position ?? { x: second.x, y: second.y };
+            this.lunge(second, mirrorDir, t0, S);
+            tl.at(t0 + 100 * S, () => this.slash(at.x + mirrorDir[0] + 0.5, at.y + mirrorDir[1] + 0.5, mirrorFacing, HERO_COLORS.HILVAN));
+          }
           impact = t0 + 110 * S;
         }
         break;
+      }
       case 'ABILITY_USED':
-        if (actor.hero === 'CHISPA') {
-          tl.at(t0, () => this.discharge(pos));
-          impact = t0 + 170 * S;
-        } else if (actor.hero === 'YUNQUE') {
-          tl.at(t0, () => this.wall(pos, facing));
-          impact = t0 + 200 * S;
-        } else if (actor.hero === 'RAIZ') {
-          tl.at(t0, () => this.sprout(pos));
-          impact = t0 + 220 * S;
+        if (actor.hero === 'HILVAN' && actor.secondBody) {
+          tl.at(t0, () => this.tensarFx(actor.position, actor.secondBody));
+          impact = t0 + 180 * S;
+        } else if (actor.hero === 'USURERA') {
+          // La moneda vuela hasta quien se endeuda.
+          const healed = rest.find((e) => (e.type === 'HEALED' || e.type === 'REVIVED') && e.targetId);
+          const target = healed ? this.ents.get(healed.targetId) : null;
+          const end = target ? { x: target.x, y: target.y } : this.rayEnd(pos, dir, 2);
+          const dur = 240 * S;
+          tl.at(t0, () => this.wisp(pos, end, dur, ['#ffe07a', '#e8c44a', '#ff9a3a']));
+          impact = t0 + dur;
+        } else if (actor.hero === 'ERRATA') {
+          tl.at(t0, () => this.ring(pos.x + 0.5, pos.y + 0.5, '#c58bff', 2.4, 500));
+          impact = t0 + 120 * S;
         } else {
           impact = t0 + 60 * S;
         }
@@ -854,6 +1076,7 @@ export class BoardRenderer {
     const actor = ev.actorId ? this.ents.get(ev.actorId) : null;
     const rm = this.rm;
     if (this.applyPathEvent(ev, target, actor, fromFloor, aim)) return;
+    if (applyHeroEvent(this, ev, target, actor)) return;
     switch (ev.type) {
       case 'DAMAGED': {
         if (!target) return;
@@ -1277,7 +1500,7 @@ export class BoardRenderer {
     });
   }
 
-  /** Proyectil con estela: el orbe de Chispa o el virote del Ballestero. */
+  /** Proyectil con estela: el golpe a distancia (La Escucha, El Campanero) o el virote del Ballestero. */
   bolt(from, to, dur, core, trail, fizzle, arrow = false) {
     const fx = from.x + 0.5;
     const fy = from.y + 0.45;
@@ -1332,90 +1555,6 @@ export class BoardRenderer {
       g.stroke();
       g.globalAlpha = 1;
     });
-  }
-
-  /** Descarga de Chispa: rayos en cruz desde el héroe. */
-  discharge(pos) {
-    const cx = pos.x + 0.5;
-    const cy = pos.y + 0.45;
-    const ends = Object.values(DIRS).map((d) => this.rayEnd(pos, d, 3));
-    this.addFx(520, (g, p, cell) => {
-      const grow = Math.min(1, p * 4);
-      g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = 1 - p;
-      g.lineCap = 'round';
-      for (const e of ends) {
-        const ex = cx + (e.x + 0.5 - cx) * grow;
-        const ey = cy + (e.y + 0.45 - cy) * grow;
-        for (const [w, c] of [[0.16, '#ff8a2a'], [0.06, '#fff3b0']]) {
-          g.strokeStyle = c;
-          g.lineWidth = cell * w;
-          g.beginPath();
-          g.moveTo(cx * cell, cy * cell);
-          const segs = 5;
-          for (let i = 1; i <= segs; i++) {
-            const k = i / segs;
-            const jitter = this.rm || i === segs ? 0 : (Math.random() - 0.5) * 0.25;
-            const nx = (ey - cy) !== 0 ? jitter : 0;
-            const ny = (ex - cx) !== 0 ? jitter : 0;
-            g.lineTo((cx + (ex - cx) * k + nx) * cell, (cy + (ey - cy) * k + ny) * cell);
-          }
-          g.stroke();
-        }
-      }
-      const r = cell * (0.6 + p);
-      g.drawImage(glow('#ffcf4a'), cx * cell - r, cy * cell - r, r * 2, r * 2);
-      g.globalCompositeOperation = 'source-over';
-      g.globalAlpha = 1;
-      g.lineCap = 'butt';
-    });
-    this.screenFlash('#ffcf4a', 0.35);
-    this.shake(0.25);
-  }
-
-  /** Muralla de Yunque: una pared de luz delante y la línea protegida detrás. */
-  wall(pos, facing) {
-    const [dx, dy] = DIRS[facing] ?? [0, 1];
-    const behind = [];
-    for (let i = 1; i <= 8; i++) {
-      const x = pos.x - dx * i;
-      const y = pos.y - dy * i;
-      if (!inBounds(x, y) || this.tiles.get(tileKey(x, y)) === 'WALL') break;
-      behind.push({ x, y });
-    }
-    const dur = this.timeline.length ? Math.max(900, this.timeline.length - (this.now - this.timeline.origin)) : 1200;
-    this.addFx(dur, (g, p, cell) => {
-      const appear = ease.outBack(Math.min(1, p * 5));
-      const a = p > 0.8 ? (1 - p) / 0.2 : 1;
-      const cx = (pos.x + 0.5 + dx * 0.55) * cell;
-      const cy = (pos.y + 0.5 + dy * 0.55) * cell;
-      const len = cell * 1.05 * appear;
-      const th = cell * 0.14;
-      g.globalAlpha = a * 0.85;
-      g.fillStyle = '#ffd36a';
-      if (dx) g.fillRect(cx - th / 2, cy - len / 2, th, len); else g.fillRect(cx - len / 2, cy - th / 2, len, th);
-      g.globalCompositeOperation = 'lighter';
-      g.globalAlpha = a * (0.5 + 0.2 * Math.sin(this.t * 12));
-      g.drawImage(glow('#ffcf4a'), cx - cell * 0.7, cy - cell * 0.7, cell * 1.4, cell * 1.4);
-      g.globalCompositeOperation = 'source-over';
-      g.globalAlpha = a * 0.22;
-      g.fillStyle = '#a9c1d9';
-      for (const q of behind) g.fillRect(q.x * cell + cell * 0.1, q.y * cell + cell * 0.1, cell * 0.8, cell * 0.8);
-      g.globalAlpha = 1;
-    });
-    this.shake(0.2);
-    this.floaters.add('¡Muralla!', pos.x + 0.5, pos.y - 0.1, { color: '#ffd36a', size: 0.24 });
-  }
-
-  /** Brote de Raíz: anillo verde y hojas. */
-  sprout(pos) {
-    const cx = pos.x + 0.5;
-    const cy = pos.y + 0.6;
-    this.ring(cx, cy, '#7dff9a', 2.4, 700);
-    for (let i = 0; i < (this.rm ? 6 : 22); i++) {
-      const a = Math.random() * Math.PI * 2;
-      this.particles.spawn(cx, cy, Math.cos(a) * 2, Math.sin(a) * 1.4 - 0.4, 0.9, 0.07, i % 2 ? '#7fd69a' : '#c8ff8a', 0.6, 2, i % 3 === 0);
-    }
   }
 
   guardBubble(v, faint, color = '#8fd0ff') {
@@ -1497,10 +1636,14 @@ export class BoardRenderer {
     }
 
     // Visión (color) y casillas conocidas (niebla), con transición suave. Los Faros del grupo también dan visión.
-    const meV = this.state.me ? this.ents.get(this.state.me.playerId) : null;
+    const meV = this.meEnt();
     const mx = meV ? Math.round(meV.x) : this.state.me?.position?.x;
     const my = meV ? Math.round(meV.y) : this.state.me?.position?.y;
-    const radius = visionRadius(this.state.me);
+    const radius = this.shout ? SIZE * 2 : visionRadius(this.state.me);
+    // Hilván ve con los dos cuerpos.
+    const meB = this.state.me ? this.ents.get(secondId(this.state.me.playerId)) : null;
+    const bx = meB ? Math.round(meB.x) : undefined;
+    const by = meB ? Math.round(meB.y) : undefined;
     const beacons = isRenegade(this.state.me) ? [] : this.beacons;
     const kv = Math.min(1, dt * 5);
     for (let y = 0; y < SIZE; y++) {
@@ -1508,7 +1651,8 @@ export class BoardRenderer {
         const i = y * SIZE + x;
         const isKnown = this.tiles.has(tileKey(x, y));
         const lit = beacons.some((b) => Math.abs(x - b.x) + Math.abs(y - b.y) <= BEACON_RADIUS);
-        const target = isKnown && ((mx !== undefined && Math.abs(x - mx) + Math.abs(y - my) <= radius) || lit) ? 1 : 0;
+        const seen = (mx !== undefined && Math.abs(x - mx) + Math.abs(y - my) <= radius) || (bx !== undefined && Math.abs(x - bx) + Math.abs(y - by) <= radius);
+        const target = isKnown && (seen || lit) ? 1 : 0;
         this.vision[i] += (target - this.vision[i]) * kv;
         const kt = isKnown ? 1 : 0;
         if (this.known[i] !== kt) {
@@ -1566,11 +1710,20 @@ export class BoardRenderer {
     this.drawObjects(g, cell);
     this.drawLighting(g, cell);
     this.drawFog(g);
+    this.drawBlindness(g, cell);
     this.drawBeacons(g, cell);
+    drawNoise(this, g, cell);
+    drawGroundEmbers(this, g, cell);
+    drawHiddenTelegraphs(this, g, cell);
     this.drawTelegraphs(g, cell);
+    drawEchoes(this, g, cell);
+    drawRewind(this, g, cell, (this.state.armedMode ?? this.state.mode) === 'ABILITY');
     this.drawPreview(g, cell);
     this.drawOrder(g, cell);
+    drawThreads(this, g, cell);
     this.drawEntities(g, cell);
+    drawLastWord(this, g, cell);
+    drawSignalMark(this, g, cell);
     this.drawEffects(g, cell);
     this.particles.draw(g, cell);
     this.floaters.draw(g, cell);
@@ -1579,27 +1732,53 @@ export class BoardRenderer {
   }
 
   drawTiles(g, cell) {
-    for (const k of this.tiles.keys()) {
-      const [x, y] = k.split(',').map(Number);
-      const i = y * SIZE + x;
-      const vis = this.vision[i];
+    const paint = (x, y, ox, oy) => {
+      const vis = this.vision[y * SIZE + x];
       const sx = x * cell;
       const sy = y * cell;
-      if (vis < 0.99) g.drawImage(this.grayLayer, sx, sy, cell, cell, sx, sy, cell, cell);
+      const dx = (x + ox) * cell;
+      const dy = (y + oy) * cell;
+      if (vis < 0.99) g.drawImage(this.grayLayer, sx, sy, cell, cell, dx, dy, cell, cell);
       if (vis > 0.01) {
         g.globalAlpha = vis;
-        g.drawImage(this.layer, sx, sy, cell, cell, sx, sy, cell, cell);
+        g.drawImage(this.layer, sx, sy, cell, cell, dx, dy, cell, cell);
         g.globalAlpha = 1;
       }
+    };
+    for (const k of this.tiles.keys()) {
+      const [x, y] = k.split(',').map(Number);
+      if (!onShiftLine(this.shiftAnim, x, y)) paint(x, y, 0, 0);
     }
+    this.drawShiftingLine(g, cell, paint);
+  }
+
+  /** La línea del Corrimiento: cada casilla se dibuja donde va ahora, y una copia entra por el borde contrario. */
+  drawShiftingLine(g, cell, paint) {
+    const s = this.shiftAnim;
+    if (!s) return;
+    g.save();
+    g.beginPath();
+    if (s.axis === 'row') g.rect(0, s.index * cell, this.W, cell); else g.rect(s.index * cell, 0, cell, this.W);
+    g.clip();
+    for (let i = 0; i < SIZE; i++) {
+      const x = s.axis === 'row' ? i : s.index;
+      const y = s.axis === 'row' ? s.index : i;
+      if (!this.tiles.has(tileKey(x, y))) continue;
+      const [ox, oy] = this.shiftOffset(x, y);
+      paint(x, y, ox, oy);
+      paint(x, y, ox + (s.axis === 'row' ? s.sign * SIZE : 0), oy + (s.axis === 'col' ? s.sign * SIZE : 0));
+    }
+    g.restore();
   }
 
   drawObjects(g, cell) {
     const t = this.t;
-    for (const [k, real] of this.tiles) {
-      const kind = this.tileShown.get(k) ?? real;
-      const [x, y] = k.split(',').map(Number);
-      const vis = this.vision[y * SIZE + x];
+    const paint = (tx, ty, ox, oy) => {
+      const k = tileKey(tx, ty);
+      const kind = this.tileShown.get(k) ?? this.tiles.get(k);
+      const x = tx + ox;
+      const y = ty + oy;
+      const vis = this.vision[ty * SIZE + tx];
       const lit = 0.35 + vis * 0.65;
       if (OBJECTS.has(kind)) {
         const sp = sprite(kind);
@@ -1620,7 +1799,12 @@ export class BoardRenderer {
         g.globalCompositeOperation = 'source-over';
         g.globalAlpha = 1;
       }
+    };
+    for (const k of this.tiles.keys()) {
+      const [x, y] = k.split(',').map(Number);
+      if (!onShiftLine(this.shiftAnim, x, y)) paint(x, y, 0, 0);
     }
+    this.drawShiftingLine(g, cell, paint);
   }
 
   /** Llamas pixeladas: lenguas que suben y bajan a distinto ritmo. */
@@ -1686,10 +1870,13 @@ export class BoardRenderer {
     l.fillRect(0, 0, W, W);
     l.globalCompositeOperation = 'destination-out';
     const white = glow('#ffffff', 0.62);
-    const meV = this.state.me ? this.ents.get(this.state.me.playerId) : null;
-    if (meV) {
-      const r = (visionRadius(this.state.me) + 1.7) * cell * flick;
-      const [cx, cy] = this.center(meV);
+    const meV = this.meEnt();
+    const meB = this.state.me ? this.ents.get(secondId(this.state.me.playerId)) : null;
+    const torchRadius = this.shout ? SIZE * 1.5 : visionRadius(this.state.me) + 1.7;
+    for (const body of [meV, meB]) {
+      if (!body) continue;
+      const r = torchRadius * cell * flick;
+      const [cx, cy] = this.center(body);
       l.drawImage(white, cx * cell - r, cy * cell - r, r * 2, r * 2);
     }
     for (const lt of this.lightTiles) {
@@ -1699,6 +1886,7 @@ export class BoardRenderer {
     }
     for (const v of this.ents.values()) {
       if (v.type !== 'hero' || v.isMe || v.alpha < 0.1) continue;
+      if (isBlind(this.state.me) && !this.shout) continue; // a oscuras: los aliados no dan luz
       const r = cell * (isSpirit(v.d) ? 1.4 : 1.1);
       l.globalAlpha = 0.6 * v.alpha;
       l.drawImage(white, (v.x + 0.5) * cell - r, (v.y + 0.5) * cell - r, r * 2, r * 2);
@@ -1719,7 +1907,7 @@ export class BoardRenderer {
       const r = (visionRadius(this.state.me) + 0.5) * cell * flick;
       const [cx, cy] = this.center(meV);
       g.globalAlpha = 0.13;
-      g.drawImage(isSpirit(meV.d) ? glow('#4aa8ff') : isRenegade(meV.d) ? glow('#ff3a2a') : warm, cx * cell - r, cy * cell - r, r * 2, r * 2);
+      g.drawImage(isSpirit(this.state.me) ? glow('#4aa8ff') : isRenegade(this.state.me) ? glow('#ff3a2a') : warm, cx * cell - r, cy * cell - r, r * 2, r * 2);
     }
     for (const v of this.ents.values()) {
       if (v.type !== 'hero' || v.alpha < 0.1 || !(isSpirit(v.d) || isRenegade(v.d))) continue;
@@ -1740,6 +1928,21 @@ export class BoardRenderer {
     }
     g.globalAlpha = 1;
     g.globalCompositeOperation = 'source-over';
+  }
+
+  /** La Escucha conoce el terreno, pero lo que no está a su alcance queda a oscuras (el Grito lo enciende). */
+  drawBlindness(g, cell) {
+    if (!isBlind(this.state.me)) return;
+    g.fillStyle = '#04030c';
+    for (let y = 0; y < SIZE; y++) {
+      for (let x = 0; x < SIZE; x++) {
+        const dark = 1 - this.vision[y * SIZE + x];
+        if (dark < 0.02) continue;
+        g.globalAlpha = dark * 0.62;
+        g.fillRect(x * cell, y * cell, cell, cell);
+      }
+    }
+    g.globalAlpha = 1;
   }
 
   /** Niebla: máscara de 4 px por casilla escalada con suavizado, para bordes difuminados. */
@@ -1797,7 +2000,7 @@ export class BoardRenderer {
     const rm = this.rm;
     const pulse = rm ? 0.5 : 0.5 + 0.5 * Math.sin(this.t * 5.5);
     const icon = dangerIcon(cell * 0.3);
-    const meV = this.state.me ? this.ents.get(this.state.me.playerId) : null;
+    const meV = this.state.me?.hostEnemyId == null ? this.meEnt() : null; // a Polizón no lo atacan dentro de su huésped
     const meKey = meV ? tileKey(Math.round(meV.x), Math.round(meV.y)) : null;
     g.globalAlpha = this.teleAlpha;
     for (const p of this.teleKeys) {
@@ -1844,9 +2047,14 @@ export class BoardRenderer {
     };
     tilesFill(this.previewFaint, 0.1, true);
     tilesFill(this.preview, 0.26, true);
-    // Modo armado: marco dorado alrededor del héroe propio.
     const s = this.state;
-    const meV = s.me ? this.ents.get(s.me.playerId) : null;
+    // Corrimiento: flechas a lo largo de la línea y adónde iría la escalera.
+    if (this.previewMode === 'ABILITY' && s.me?.hero === 'MAMPOSTERO' && !isSpirit(s.me) && !s.pendingOrder && s.me.position && !this.timeline.running) {
+      if (this.hoverDir) drawShiftPreview(this, g, cell, shiftFromOrder(s.me.position, this.hoverDir), 1);
+      else if (s.armedMode) for (const d of DIR_NAMES) drawShiftPreview(this, g, cell, shiftFromOrder(s.me.position, d), 0.4);
+    }
+    // Modo armado: marco dorado alrededor del héroe propio.
+    const meV = this.meEnt();
     if (meV && s.armedMode && !s.pendingOrder) {
       const [cx, cy] = this.center(meV);
       g.strokeStyle = MODE_COLORS[s.armedMode] ?? '#e8c15a';
@@ -1863,7 +2071,7 @@ export class BoardRenderer {
     const s = this.state;
     const order = s.pendingOrder;
     if (!order || !s.me || this.orderHidden) return;
-    const meV = this.ents.get(s.me.playerId);
+    const meV = this.meEnt();
     if (!meV) return;
     const [cx, cy] = this.center(meV);
     const color = MODE_COLORS[order.type] ?? '#ffffff';
@@ -1893,6 +2101,17 @@ export class BoardRenderer {
     g.globalAlpha = 0.12 + pulse * 0.06;
     for (const p of tiles) g.fillRect(p.x * cell + 2, p.y * cell + 2, cell - 4, cell - 4);
     g.globalAlpha = 1;
+    if (order.type === 'ABILITY' && s.me.hero === 'MAMPOSTERO' && !isSpirit(s.me) && s.me.position) drawShiftPreview(this, g, cell, shiftFromOrder(s.me.position, order.direction), 0.8);
+    this.drawOrderArrow(g, cell, cx, cy, v, color, pulse);
+    // Hilván: la misma orden, en espejo, en el otro cuerpo.
+    const meB = this.ents.get(secondId(s.me.playerId));
+    if (meB && order.type !== 'ABILITY') {
+      const [bx, by] = this.center(meB);
+      this.drawOrderArrow(g, cell, bx, by, DIRS[mirrored(order.direction)], color, pulse);
+    }
+  }
+
+  drawOrderArrow(g, cell, cx, cy, v, color, pulse) {
     const len = 0.62 + pulse * 0.08;
     const sx = (cx + v[0] * 0.3) * cell;
     const sy = (cy + v[1] * 0.3) * cell;
@@ -2040,8 +2259,8 @@ export class BoardRenderer {
     const renegade = v.type === 'hero' && isRenegade(d);
     const sp = sprite(kind);
     const boss = kind === 'CELADOR';
-    const stealth = v.isMe && d.stealthRoundsLeft > 0;
-    let alpha = v.alpha * (stealth ? 0.45 + (rm ? 0 : 0.1 * Math.sin(t * 6)) : 1);
+    const alpha = v.alpha;
+    const hosting = v.type === 'enemy' && this.state.me?.hostEnemyId === d.enemyId;
     const jx = v.jolt > 0 ? Math.sin(t * 80) * v.jolt * 0.12 : 0;
     const cx = (v.x + 0.5 + v.ox + jx) * cell;
     const cy = (v.y + 0.5 + v.oy) * cell;
@@ -2094,6 +2313,7 @@ export class BoardRenderer {
       g.ellipse(cx, feet, cell * (boss ? 0.44 : 0.32), cell * 0.11, 0, 0, Math.PI * 2);
       g.stroke();
     }
+    if (hosting) drawHostMark(this, g, cell, v, cx, cy, feet, alpha);
     if (boss && d.phase === 2) {
       g.globalCompositeOperation = 'lighter';
       g.globalAlpha = alpha * (0.35 + (rm ? 0 : 0.2 * Math.sin(t * 7)));
@@ -2156,7 +2376,13 @@ export class BoardRenderer {
       g.globalAlpha = 1;
     }
 
-    this.drawHp(g, cell, v, cx, feet, boss, alpha);
+    // Una sola barra aunque Hilván tenga dos cuerpos; el Avaro no tiene: sus ascuas son su vida.
+    if (v.type === 'hero' && d.hero === 'AVARO') this.drawEmberLife(g, cell, v, cx, feet, alpha);
+    else if (!d.secondary) this.drawHp(g, cell, v, cx, feet, boss, alpha);
+    // El Celador descansa una ronda entre golpes: no es un fallo, no anuncia ni se mueve.
+    if (boss && !d.telegraph?.length && !this.timeline.running) this.drawBadge(g, cell, cx + cell * 0.46, cy - cell * 0.5, '⏸', '#c8c0b0', alpha);
+    // La Usurera ve en cada aliado lo que le debe; nadie más.
+    if (d.debtToYou && !d.secondary) this.drawBadge(g, cell, cx + cell * 0.36, cy - cell * 0.34, String(d.debtToYou), '#e8c44a', alpha);
 
     // Quién es quién: marca dorada sobre el propio; nombre sobre los aliados. El Renegado lleva además una
     // calavera roja de enemigo (la ve también él mismo).
@@ -2227,6 +2453,23 @@ export class BoardRenderer {
     }
   }
 
+  /** Avaro: en lugar de barra, las ascuas que le quedan (son su vida). */
+  drawEmberLife(g, cell, v, cx, feet, alpha) {
+    if (v.d.state === 'EXTINCT' || isSpirit(v.d)) return;
+    const text = `✦${v.d.embers ?? 0}`;
+    g.globalAlpha = alpha;
+    g.font = `900 ${Math.round(cell * 0.22)}px system-ui, sans-serif`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.lineWidth = Math.max(2, cell * 0.05);
+    g.strokeStyle = '#120806';
+    const y = feet + cell * 0.1;
+    g.strokeText(text, cx, y);
+    g.fillStyle = (v.d.embers ?? 0) <= 1 ? '#ff8a6a' : '#ffd36a';
+    g.fillText(text, cx, y);
+    g.globalAlpha = 1;
+  }
+
   /** Barra de vida con segmentos y un rastro claro que se encoge tras un golpe. */
   drawHp(g, cell, v, cx, feet, boss, alpha) {
     if (!v.maxHp) return;
@@ -2285,6 +2528,16 @@ export class BoardRenderer {
       v.fillRect(0, 0, W, W);
     }
     g.drawImage(this.vignette, 0, 0);
+    // Repique sonando: el borde late hasta que vence el plazo de los demás.
+    const bell = this.state.bell;
+    if (bell && !bell.closed) {
+      const k = this.rm ? 0.5 : 0.5 + 0.5 * Math.sin(this.t * 8);
+      g.globalAlpha = 0.45 + k * 0.45;
+      g.strokeStyle = '#ffd98a';
+      g.lineWidth = cell * 0.09;
+      g.strokeRect(0, 0, W, W);
+      g.globalAlpha = 1;
+    }
     if (this.flashA > 0.01) {
       g.globalAlpha = this.flashA * 0.3;
       g.fillStyle = this.flashColor;
