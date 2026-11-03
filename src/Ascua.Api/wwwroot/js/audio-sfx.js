@@ -126,34 +126,181 @@ export const SFX = {
     noise({ t: t + 0.05, dur: 0.25, attack: 0.02, peak: 0.05, filter: BP(1800), out });
     return 0.3;
   },
-  /** Yunque: martillazo sordo con resonancia de yunque. */
-  attackYunque(t, out) {
-    tone({ freq: 140, freqEnd: 45, t, dur: 0.28, attack: 0.003, peak: 0.6, out });
-    noise({ t, dur: 0.18, peak: 0.45, filter: LP(900, 200), out });
-    bell({ freq: 310, t: t + 0.01, dur: 0.6, peak: 0.05, metal: true, out });
-    return 0.6;
+  /** Errata: un plumazo seco que rasga el papel. */
+  attackErrata(t, out) {
+    noise({ t, dur: 0.14, attack: 0.01, peak: 0.4, filter: BP(3400, 1200, 3), out });
+    tone({ freq: 900, freqEnd: 2200, t, dur: 0.1, peak: 0.05, out });
+    return 0.25;
   },
-  /** Chispa: disparo de brasa que chisporrotea. */
-  attackChispa(t, out) {
-    tone({ type: 'sawtooth', freq: 1900, freqEnd: 220, t, dur: 0.2, peak: 0.12, filter: LP(5000, 800), out });
-    tone({ freq: 2600, freqEnd: 3600, t, dur: 0.08, peak: 0.06, out });
-    noise({ t, dur: 0.12, peak: 0.12, filter: BP(1200, 4000), out });
-    crackles(t + 0.04, out, { count: 7, span: 0.3, peak: 0.22 });
-    return 0.4;
+  /** Anteayer: golpe opaco con un eco que se aleja. */
+  attackAnteayer(t, out) {
+    for (let i = 0; i < 3; i++) {
+      tone({ type: 'triangle', freq: 320, freqEnd: 150, t: t + i * 0.11, dur: 0.14, peak: 0.32 / (i * 1.8 + 1), filter: LP(1500), out });
+    }
+    return 0.5;
   },
-  /** Cuervo: tajo de hoja con brillo metálico. */
-  attackCuervo(t, out) {
-    noise({ t, dur: 0.16, attack: 0.025, peak: 0.45, filter: BP(4200, 900, 2), out });
-    tone({ freq: 3150, t: t + 0.03, dur: 0.28, peak: 0.04, out });
-    tone({ freq: 4730, t: t + 0.04, dur: 0.22, peak: 0.03, out });
+  /** Hilván: dos pinchazos de aguja, uno para cada cuerpo. */
+  attackHilvan(t, out) {
+    for (let i = 0; i < 2; i++) {
+      noise({ t: t + i * 0.07, dur: 0.05, peak: 0.35, filter: BP(5200, null, 3), out });
+      tone({ freq: 2100 - i * 300, t: t + i * 0.07, dur: 0.1, peak: 0.05, out });
+    }
+    return 0.3;
+  },
+  /** Polizón: zarpazo corto y húmedo. */
+  attackPolizon(t, out) {
+    noise({ t, dur: 0.1, attack: 0.008, peak: 0.45, filter: BP(1700, 500, 2), out });
+    tone({ type: 'sawtooth', freq: 240, freqEnd: 90, t, dur: 0.14, peak: 0.12, filter: LP(900), out });
+    return 0.2;
+  },
+  /** La Escucha: una nota aguda que cruza la sala a tientas. */
+  attackEscucha(t, out) {
+    tone({ freq: 1300, freqEnd: 2500, t, dur: 0.22, peak: 0.1, out });
+    tone({ type: 'triangle', freq: 650, freqEnd: 1250, t, dur: 0.22, peak: 0.08, out });
+    noise({ t: t + 0.15, dur: 0.06, peak: 0.18, filter: BP(2800, null, 2), out });
+    return 0.35;
+  },
+  /** La Usurera: bastonazo seco con tintineo de monedas. */
+  attackUsurera(t, out) {
+    tone({ freq: 220, freqEnd: 80, t, dur: 0.12, peak: 0.34, out });
+    for (let i = 0; i < 3; i++) bell({ freq: rand(2600, 3400), t: t + 0.03 + i * 0.03, dur: 0.16, peak: 0.03, metal: true, out });
     return 0.32;
   },
-  /** Raíz: latigazo de raíces, crujido de madera y hojas. */
-  attackRaiz(t, out) {
-    tone({ type: 'triangle', freq: 190, freqEnd: 115, t, dur: 0.35, peak: 0.28, filter: LP(650, null, 8), out });
-    tone({ freq: 90, freqEnd: 55, t, dur: 0.2, peak: 0.35, out });
-    for (let i = 0; i < 6; i++) noise({ t: t + 0.02 + i * 0.035, dur: 0.03, peak: 0.12 * rand(0.5, 1), filter: BP(rand(1100, 2400), null, 2), out });
+  /** El Avaro: puñetazo con el saco, que suena a monedas y brasas. */
+  attackAvaro(t, out) {
+    tone({ freq: 110, freqEnd: 50, t, dur: 0.2, peak: 0.5, out });
+    noise({ t, dur: 0.1, peak: 0.25, filter: LP(1000), out });
+    crackles(t + 0.03, out, { count: 4, span: 0.2, peak: 0.16 });
+    return 0.32;
+  },
+  /** El Mampostero: mazazo sobre piedra. */
+  attackMampostero(t, out) {
+    tone({ freq: 140, freqEnd: 45, t, dur: 0.28, attack: 0.003, peak: 0.6, out });
+    noise({ t, dur: 0.18, peak: 0.45, filter: LP(900, 200), out });
+    for (let i = 0; i < 4; i++) noise({ t: t + 0.05 + i * 0.03, dur: 0.03, peak: 0.1, filter: BP(rand(900, 1900), null, 2), out });
+    return 0.5;
+  },
+  /** El Campanero: un tañido corto que llega lejos. */
+  attackCampanero(t, out) {
+    bell({ freq: 520, t, dur: 0.7, peak: 0.12, metal: true, out });
+    tone({ freq: 160, freqEnd: 100, t, dur: 0.12, peak: 0.18, out });
+    return 0.7;
+  },
+
+  // ───── eventos de los nueve héroes ─────
+  /** Eco de Anteayer: el golpe repetido, sin cuerpo, con mucha cola. */
+  echoFired(t, out) {
+    for (let i = 0; i < 4; i++) tone({ freq: 760 - i * 90, freqEnd: 380 - i * 40, t: t + i * 0.09, dur: 0.16, peak: 0.1 / (i + 1), filter: LP(2400), out });
+    noise({ t, dur: 0.3, attack: 0.04, peak: 0.08, filter: BP(2600, 700, 2), out });
+    return 0.7;
+  },
+  /** Volver: el tiempo va al revés, con un ataque que crece en lugar de caer. */
+  rewind(t, out) {
+    tone({ type: 'triangle', freq: 300, freqEnd: 1400, t, dur: 0.45, attack: 0.35, peak: 0.12, out });
+    noise({ t, dur: 0.45, attack: 0.38, peak: 0.12, filter: BP(1200, 5200, 2), out });
+    bell({ freq: 880, t: t + 0.42, dur: 0.5, peak: 0.05, out });
+    return 0.95;
+  },
+  /** Corregir: pluma que tacha, y el anuncio se va de lado. */
+  correct(t, out) {
+    noise({ t, dur: 0.22, attack: 0.02, peak: 0.28, filter: BP(2200, 5200, 4), out });
+    tone({ freq: 700, freqEnd: 1300, t: t + 0.05, dur: 0.18, peak: 0.07, out });
     return 0.4;
+  },
+  /** Tensar: un hilo que se pone tirante y corta. */
+  tense(t, out) {
+    tone({ type: 'sawtooth', freq: 180, freqEnd: 1500, t, dur: 0.2, attack: 0.15, peak: 0.08, filter: LP(3600), out });
+    noise({ t: t + 0.2, dur: 0.1, peak: 0.42, filter: BP(4200, null, 2), out });
+    return 0.4;
+  },
+  /** Abordar: se cuela con un sorbo viscoso. */
+  board(t, out) {
+    tone({ freq: 420, freqEnd: 120, t, dur: 0.3, peak: 0.25, filter: LP(1100, null, 6), out });
+    noise({ t, dur: 0.24, attack: 0.05, peak: 0.16, filter: LP(1000, 300), out });
+    return 0.35;
+  },
+  /** Polizón reaparece: el monstruo lo escupe. */
+  unboard(t, out) {
+    tone({ freq: 130, freqEnd: 460, t, dur: 0.2, peak: 0.24, filter: LP(1200, null, 6), out });
+    noise({ t: t + 0.12, dur: 0.1, peak: 0.2, filter: BP(1500), out });
+    return 0.3;
+  },
+  drain(t, out) {
+    tone({ type: 'triangle', freq: 240, freqEnd: 150, t, dur: 0.5, attack: 0.1, peak: 0.14, filter: LP(800, null, 5), out });
+    return 0.5;
+  },
+  /** El Celador gira, piedra contra piedra. */
+  wardenTurn(t, out) {
+    noise({ t, dur: 0.6, attack: 0.08, peak: 0.26, filter: LP(420, 1200), out });
+    tone({ freq: 58, freqEnd: 44, t, dur: 0.6, peak: 0.3, out });
+    return 0.65;
+  },
+  /** Grito de La Escucha: alarido que llena la sala. */
+  shout(t, out) {
+    for (const [f, peak] of [[620, 0.12], [940, 0.09], [1420, 0.06]]) tone({ type: 'sawtooth', freq: f, freqEnd: f * 1.25, t, dur: 0.75, attack: 0.05, peak, filter: LP(4200), detune: rand(-8, 8), out });
+    noise({ t, dur: 0.7, attack: 0.04, peak: 0.14, filter: BP(2400, null, 2), out });
+    return 0.9;
+  },
+  /** Préstamo: una moneda que cae en la mano equivocada. */
+  loan(t, out) {
+    bell({ freq: 2400, t, dur: 0.3, peak: 0.08, metal: true, out });
+    bell({ freq: 1600, t: t + 0.11, dur: 0.4, peak: 0.08, metal: true, out });
+    tone({ freq: 90, freqEnd: 70, t: t + 0.11, dur: 0.2, peak: 0.2, out });
+    return 0.5;
+  },
+  /** Cobro: cascada de monedas hacia la Usurera. */
+  collect(t, out, { amount = 1 } = {}) {
+    const n = clamp(3 + amount * 2, 3, 10);
+    for (let i = 0; i < n; i++) bell({ freq: rand(2200, 3800), t: t + i * 0.05, dur: 0.18, peak: 0.05, metal: true, out });
+    return 0.2 + n * 0.05;
+  },
+  /** Ascuas que caen al suelo y rebotan. */
+  embersDrop(t, out, { amount = 1 } = {}) {
+    const n = clamp(amount * 3, 3, 9);
+    for (let i = 0; i < n; i++) tone({ freq: rand(1400, 2600), t: t + i * 0.055 + i * i * 0.004, dur: 0.05, peak: 0.08 / (1 + i * 0.25), out });
+    crackles(t, out, { count: 4, span: 0.3, peak: 0.12 });
+    return 0.6;
+  },
+  /** Recoger ascuas del suelo. */
+  embersPickup(t, out) {
+    for (let i = 0; i < 3; i++) tone({ type: 'triangle', freq: 880 * 1.26 ** i, t: t + i * 0.055, dur: 0.1, peak: 0.08, out });
+    return 0.3;
+  },
+  /** Soborno: moneda lanzada y un gruñido que se calla. */
+  bribe(t, out) {
+    bell({ freq: 2800, t, dur: 0.25, peak: 0.07, metal: true, out });
+    tone({ type: 'sawtooth', freq: 150, freqEnd: 70, t: t + 0.1, dur: 0.3, peak: 0.1, filter: LP(600), out });
+    return 0.45;
+  },
+  /** Corrimiento: toda una línea de piedra se arrastra. */
+  roomShift(t, out) {
+    noise({ t, dur: 0.75, attack: 0.1, peak: 0.42, filter: LP(520, 1500), out });
+    tone({ freq: 52, freqEnd: 40, t, dur: 0.8, peak: 0.42, out });
+    for (let i = 0; i < 7; i++) noise({ t: t + 0.08 + i * 0.09, dur: 0.05, peak: 0.1 * rand(0.5, 1), filter: BP(rand(500, 1500), null, 2), out });
+    noise({ t: t + 0.74, dur: 0.12, peak: 0.36, filter: LP(600), out });
+    return 0.95;
+  },
+  /** Repique: campana grande, dos tañidos. */
+  bellRing(t, out) {
+    for (let i = 0; i < 2; i++) {
+      bell({ freq: 330, t: t + i * 0.55, dur: 1.7, peak: 0.2, metal: true, out });
+      bell({ freq: 660, t: t + i * 0.55, dur: 1, peak: 0.07, out });
+      tone({ freq: 90, freqEnd: 70, t: t + i * 0.55, dur: 0.18, peak: 0.25, out });
+    }
+    return 2.2;
+  },
+  /** Último en hablar: el Campanero oye a los demás. */
+  lastWord(t, out) {
+    bell({ freq: 990, t, dur: 0.5, peak: 0.05, out });
+    bell({ freq: 1320, t: t + 0.1, dur: 0.6, peak: 0.04, out });
+    return 0.7;
+  },
+  /** Señal rápida: pitido distinto si es un aviso de peligro. */
+  signal(t, out, { danger = false } = {}) {
+    const f = danger ? 620 : 1040;
+    tone({ type: 'triangle', freq: f, t, dur: 0.08, peak: 0.12, out });
+    tone({ type: 'triangle', freq: danger ? f * 0.8 : f * 1.34, t: t + 0.09, dur: 0.1, peak: 0.1, out });
+    return 0.22;
   },
   attackEnemy(t, out, { boss = false } = {}) {
     const f = boss ? 80 : 160;

@@ -5,15 +5,19 @@ import { BoardRenderer } from './board.js';
 import { logMessage, setLastSeq } from './log.js';
 import { NO_RECONNECT } from './hub.js';
 import { uuidv7 } from './uuid.js';
-import { emit } from './bus.js';
+import { emit, on } from './bus.js';
 import { BLESSING_ICONS, heroAvatar, heroInfo } from './heroes.js';
 import { settingsOpen } from './settings-panel.js';
+import { shiftFromEvent, shiftText, shiftedPos } from './board-heroes.js';
 import {
   BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ECHO_REASONS, EMBER_ORDERS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
-  MATCH_STATUS, ORDER_TYPES, OUTCOMES, PATHS, label,
+  MATCH_STATUS, ORDER_TYPES, OUTCOMES, PATHS, SIGNALS, label,
 } from './labels.js';
 
 const KEY_DIRS = { ArrowUp: 'N', ArrowDown: 'S', ArrowLeft: 'W', ArrowRight: 'E' };
+const KEY_SIGNALS = { 1: 'HERE', 2: 'DANGER', 3: 'HELP', 4: 'MINE' };
+const SIGNAL_INTERVAL_MS = 3000;
+const SIGNAL_FEED_MAX = 3;
 const RETRYABLE = new Set(['RATE_LIMITED', 'INTERNAL_ERROR']);
 const FATAL_JOIN = new Set(['NOT_PARTICIPANT', 'MATCH_NOT_FOUND', 'MATCH_NOT_ACTIVE', 'ALREADY_IN_ANOTHER_MATCH']);
 
@@ -29,7 +33,20 @@ const EVENT_STYLE = {
   PATH_OFFERED: ['🕯', 'bad'], PATH_SELECTED: ['✔', 'info'], PATH_CHOSEN: ['⚖', 'info'], EMBER_REBORN: ['↺', 'ember'],
   RENEGADE_SPAWNED: ['☠', 'renegade'], RENEGADE_DEFEATED: ['⚔', 'gold'], ECHO_GAINED: ['❖', 'ember'],
   SHIELD_KINDLED: ['❂', 'ember'], ATTACK_HINDERED: ['⧖', 'ember'], BEACON_LIT: ['☼', 'ember'], WARMTH_HEALED: ['♨', 'ember'],
+  // Los nueve héroes.
+  ECHO_FIRED: ['❖', 'info'], ATTACK_CORRECTED: ['✎', 'info'], BETRAYAL_RECORDED: ['🗡', 'bad'], BETRAYAL_REVEALED: ['🗡', 'bad'],
+  HOST_BOARDED: ['◉', 'good'], HOST_EXITED: ['◉', ''], HOST_DRAINED: ['◉', 'good'], WARDEN_TURNED: ['↻', 'info'], SHOUTED: ['📢', 'info'],
+  DEBT_CHANGED: ['⚖', 'gold'], EMBERS_DROPPED: ['✦', 'bad'], EMBERS_PICKED_UP: ['✦', 'gold'], EMBERS_LOST: ['✦', 'bad'], ENEMY_BRIBED: ['✦', 'gold'],
+  ROOM_SHIFTED: ['⇄', 'info'], BELL_RUNG: ['🔔', 'info'], BELL_EXPIRED: ['🔔', ''],
 };
+
+/** Por qué cambió una deuda (DEBT_CHANGED.detail). */
+const DEBT_REASONS = {
+  LOAN: 'préstamo', INTEREST: 'interés', PAID: 'pago', EXTINCTION: 'cobro por extinción', MATCH_END: 'cobro final', CANCELLED: 'cancelada',
+};
+
+/** Habilidades a las que la dirección no les importa. */
+const NO_AIM = new Set(['ANTEAYER', 'HILVAN', 'ESCUCHA', 'CAMPANERO']);
 
 const ARMED_TEXT = {
   ABILITY: 'Habilidad armada: elige una dirección (flecha o d-pad). Esc cancela.',
@@ -100,6 +117,9 @@ class MatchController {
     this.order = null; // { payload, status: sending|waiting|acked|error, ack, error }
     this.draft = null;
     this.pathOffer = null; // oferta de camino abierta { offerId, deadlineLocal, savedEmbers, …, sending }
+    this.signalMark = null; // casilla marcada para la próxima señal
+    this.signalReadyAt = 0;
+    this.signalFeed = [];
     this.resetView();
 
     this.onKey = (e) => this.handleKey(e);
@@ -117,6 +137,13 @@ class MatchController {
     this.allies = [];
     this.enemies = new Map();
     this.tiles = new Map();
+    this.hiddenTelegraphs = [];
+    this.echoes = [];
+    this.groundEmbers = [];
+    this.noiseTiles = [];
+    this.bell = null; // Repique sonando { ringerId, deadlineLocal, closed }
+    this.lastWord = null; // órdenes que oye el Campanero en esta ronda
+    this.nextDeadline = null; // plazo propio que trajo la resolución, para la ronda que abre
     this.deadlineLocal = null;
     this.durationMs = 20000;
     this.decidedCount = 0;
@@ -124,7 +151,7 @@ class MatchController {
     this.events = [];
     this.clockOffset = 0; // hora del servidor − hora local (ms)
     // Lo último que se pintó, para animar solo lo que cambia.
-    this.shown = { hp: null, embers: null, echoes: null, blessings: null, pact: null, events: null, hero: null, orders: null, decided: new Set() };
+    this.shown = { hp: null, embers: null, echoes: null, blessings: null, pact: null, events: null, hero: null, orders: null, decided: new Set(), legend: null };
   }
 
   // ───────────── ciclo de vida ─────────────
@@ -136,7 +163,7 @@ class MatchController {
     $('btn-demo-finish').hidden = !demo;
     $('demo-paths').hidden = !demo;
     this.bindUi();
-    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer',
+    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer', 'LastWord', 'SignalReceived',
       'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error']) {
       this.transport.on(type, (payload) => {
         if (this.disposed) return;
@@ -191,6 +218,8 @@ class MatchController {
     listen($('btn-demo-extinct'), 'click', () => toast(this.transport.simulateExtinction()));
     listen($('btn-demo-renegade'), 'click', () => toast(this.transport.simulateRenegadeAlly()));
     listen($('btn-demo-floor'), 'click', () => toast(this.transport.simulateDescend()));
+    document.querySelectorAll('.signal').forEach((btn) => listen(btn, 'click', () => this.sendSignal(btn.dataset.signal)));
+    this.cleanups.push(on('board:tile', (p) => this.markTile(p)));
     document.querySelectorAll('.path-card').forEach((btn) => listen(btn, 'click', () => this.choosePath(btn.dataset.path)));
     // En el diálogo de caminos las flechas pasan de una carta a la otra (Enter o Espacio eligen).
     listen($('path'), 'keydown', (e) => {
@@ -326,10 +355,15 @@ class MatchController {
     this.allies = v.allies ?? [];
     this.enemies = new Map((v.enemies ?? []).map((e) => [e.enemyId, e]));
     this.tiles = new Map((v.tiles ?? []).map((t) => [`${t.x},${t.y}`, t.kind]));
+    this.hiddenTelegraphs = v.hiddenTelegraphs ?? [];
+    this.echoes = v.echoes ?? [];
+    this.groundEmbers = v.groundEmbers ?? [];
+    this.noiseTiles = v.noiseTiles ?? [];
     // El plazo se traduce al reloj local con el desfase que informa el servidor.
     const offset = Date.parse(snap.serverTime) - Date.now();
     this.clockOffset = Number.isFinite(offset) ? offset : 0;
     this.deadlineLocal = v.roundDeadline ? Date.parse(v.roundDeadline) - this.clockOffset : null;
+    this.setBell(v.bell);
     this.decidedCount = [this.me, ...this.allies].filter((h) => h?.decided).length;
     // Dan orden los héroes vivos, las Brasas y los Renegados presentes (un aliado Renegado se cuenta si se le ve).
     this.expectedPlayers = (canAct(this.me) ? 1 : 0) + this.allies.filter((a) => a.state === 'ALIVE' || a.state === 'EMBER_SPIRIT'
@@ -373,9 +407,16 @@ class MatchController {
     if (m.round < this.round) return;
     this.status = 'IN_PROGRESS';
     this.round = m.round;
-    this.durationMs = m.durationMs;
-    // Se usa la duración (no la hora absoluta) para no depender del reloj del cliente.
-    this.deadlineLocal = Date.now() + m.durationMs;
+    // Se usa la duración (no la hora absoluta) para no depender del reloj del cliente. Con el Repique, el plazo de cada
+    // jugador (roundDeadline; si no llegó, bellDeadline salvo para quien lo tocó) es menor que el de la ronda.
+    const ringing = Boolean(m.bellDeadline);
+    const mine = this.nextDeadline ?? (ringing && m.bellRingerId !== this.playerId ? m.bellDeadline : m.deadline);
+    const short = (iso) => Math.max(0, Date.parse(m.deadline) - Date.parse(iso)) || 0;
+    this.durationMs = Math.max(1000, m.durationMs - short(mine));
+    this.nextDeadline = null;
+    this.deadlineLocal = Date.now() + this.durationMs;
+    this.bell = ringing ? { ringerId: m.bellRingerId, deadlineLocal: Date.now() + m.durationMs - short(m.bellDeadline), closed: false } : null;
+    this.lastWord = null;
     this.decidedCount = 0;
     this.expectedPlayers = m.expectedPlayers;
     if (this.me) { this.me.decided = false; this.me.pendingOrder = null; }
@@ -412,6 +453,8 @@ class MatchController {
       this.tiles = new Map();
       this.enemies = new Map();
     }
+    // Corrimiento: lo recordado fuera de la visión se corre aquí; lo visible llega abajo en tilesChanged.
+    for (const ev of d.events ?? []) if (ev.type === 'ROOM_SHIFTED') this.shiftKnownTiles(ev);
     this.me = d.me;
     for (const ally of d.alliesChanged ?? []) {
       const i = this.allies.findIndex((a) => a.playerId === ally.playerId);
@@ -420,13 +463,151 @@ class MatchController {
     for (const enemy of d.enemiesUpserted ?? []) this.enemies.set(enemy.enemyId, enemy);
     for (const id of d.enemiesRemoved ?? []) this.enemies.delete(id);
     for (const t of d.tilesChanged ?? []) this.tiles.set(`${t.x},${t.y}`, t.kind);
+    // Estas listas son completas y, si faltan, no cambiaron (contrato: PlayerViewDelta).
+    this.hiddenTelegraphs = d.hiddenTelegraphs ?? this.hiddenTelegraphs;
+    this.echoes = d.echoes ?? this.echoes;
+    this.groundEmbers = d.groundEmbers ?? this.groundEmbers;
+    this.noiseTiles = d.noiseTiles ?? this.noiseTiles;
+    this.lastWord = null;
+    this.bell = null;
+    this.nextDeadline = d.roundDeadline ?? null;
     this.events = d.events ?? [];
+    for (const ev of this.events) {
+      if (ev.type === 'BETRAYAL_RECORDED') toast(`Nadie lo sabe todavía: le costaste ${ev.amount ?? '?'} de vida a ${this.nameOf(ev.targetId)}. Se revelará al final.`, 'info', 5000);
+    }
     this.seq = m.seq;
     this.deadlineLocal = null;
     setLastSeq(this.seq);
     if (d.floorChanged) emit('floor:changed', { floor: d.floorChanged });
     emit('round:resolved', { round: m.round, events: this.events, before, after: this.entities(), myId: this.playerId });
     this.syncPathOffer();
+  }
+
+  /** Rota la línea corrida en las casillas recordadas. Si no se sabía qué había en el origen, se deja lo que había. */
+  shiftKnownTiles(ev) {
+    const shift = shiftFromEvent(ev);
+    if (!shift) return;
+    const next = new Map(this.tiles);
+    for (let i = 0; i < 9; i++) {
+      const from = shift.axis === 'row' ? { x: i, y: shift.index } : { x: shift.index, y: i };
+      const to = shiftedPos(shift, from);
+      const kind = this.tiles.get(`${from.x},${from.y}`);
+      if (kind !== undefined) next.set(`${to.x},${to.y}`, kind);
+    }
+    this.tiles = next;
+  }
+
+  /** Repique según la vista: se traduce el plazo público al reloj local. */
+  setBell(bell) {
+    const wasOpen = this.bell && !this.bell.closed;
+    if (!bell) {
+      this.bell = null;
+      return;
+    }
+    const deadlineLocal = bell.deadline ? Date.parse(bell.deadline) - this.clockOffset : this.bell?.deadlineLocal ?? null;
+    this.bell = { ringerId: bell.ringerId, deadlineLocal, closed: Boolean(bell.closed) };
+    if (wasOpen && bell.closed && bell.ringerId !== this.playerId && canAct(this.me) && !this.me?.decided) {
+      toast('Se acabó tu plazo del Repique: guardas esta ronda.', 'info', 5000);
+    }
+  }
+
+  /** Nombre de un jugador para los textos. */
+  nameOf(id) {
+    if (id === this.playerId) return this.me?.displayName ?? 'Tú';
+    return this.allies.find((a) => a.playerId === id)?.displayName ?? 'Alguien';
+  }
+
+  // ───────────── señales y Último en hablar ─────────────
+
+  onLastWord(m) {
+    if (m.round !== this.round) return;
+    this.lastWord = m;
+    emit('lastword:heard', { typesOnly: Boolean(m.typesOnly) });
+  }
+
+  onSignalReceived(m) {
+    this.signalFeed = [{ ...m, shownAt: Date.now() }, ...this.signalFeed].slice(0, SIGNAL_FEED_MAX);
+    emit('signal:received', m);
+  }
+
+  markTile(p) {
+    const same = this.signalMark?.x === p.x && this.signalMark?.y === p.y;
+    this.signalMark = same ? null : p;
+    this.render();
+  }
+
+  async sendSignal(kind) {
+    if (this.status !== 'IN_PROGRESS' || !this.transport.connected) return;
+    if (Date.now() < this.signalReadyAt) return;
+    this.signalReadyAt = Date.now() + SIGNAL_INTERVAL_MS;
+    const payload = { matchId: this.matchId, kind };
+    if (this.signalMark) payload.position = this.signalMark;
+    this.signalMark = null;
+    this.render();
+    try {
+      const res = await this.invoke('SendSignal', payload);
+      if (res?.error) {
+        if (res.error.code === 'RATE_LIMITED') this.signalReadyAt = Date.now() + (res.error.retryAfterMs ?? SIGNAL_INTERVAL_MS);
+        else toast(`Señal: ${label(ERROR_CODES, res.error.code)}`, 'bad');
+      }
+    } catch {
+      toast('Sin conexión: la señal no salió.', 'bad');
+    }
+    this.render();
+  }
+
+  renderSignals() {
+    const off = this.status !== 'IN_PROGRESS' || !this.transport.connected;
+    const cooling = Date.now() < this.signalReadyAt;
+    document.querySelectorAll('.signal').forEach((b) => {
+      b.disabled = off || cooling;
+      b.classList.toggle('cooling', cooling);
+    });
+    const p = this.signalMark;
+    setText('signal-hint', p ? `Casilla (${p.x},${p.y}) marcada · Esc la quita` : 'Clic en el tablero: marca casilla');
+    $('signal-hint').classList.toggle('marked', Boolean(p));
+    const key = this.signalFeed.map((s) => s.shownAt).join();
+    if (this.shown.signals !== key) {
+      this.shown.signals = key;
+      $('signal-feed').replaceChildren(...this.signalFeed.map((s) => {
+        const phrase = SIGNALS[s.kind] ?? { text: s.kind, icon: '•' };
+        return el('li', { class: s.fromPlayerId === this.playerId ? 'mine' : '' },
+          el('span', { 'aria-hidden': 'true' }, phrase.icon), ' ', el('b', {}, this.nameOf(s.fromPlayerId)), `: ${phrase.text}`,
+          s.position ? el('small', {}, ` (${s.position.x},${s.position.y})`) : null);
+      }));
+    }
+  }
+
+  /** Órdenes que oye el Campanero: lista privada (el tablero las dibuja sobre cada aliado). */
+  renderLastWord() {
+    const box = $('last-word');
+    const heard = this.lastWord;
+    box.hidden = !heard;
+    if (!heard) {
+      this.shown.lastWord = null;
+      return;
+    }
+    if (this.shown.lastWord === heard) return;
+    this.shown.lastWord = heard;
+    setText('last-word-title', heard.typesOnly ? '🔔 Último en hablar: solo oyes los tipos' : '🔔 Último en hablar: esto harán');
+    $('last-word-list').replaceChildren(...heard.orders.map((o) => el('li', {},
+      el('b', {}, this.nameOf(o.playerId)), `: ${o.direction ? `${label(ORDER_TYPES, o.type)} ${label(DIRECTIONS, o.direction)}` : label(ORDER_TYPES, o.type)}`)));
+  }
+
+  /** Repique: cuenta regresiva pública en la barra de arriba. */
+  renderBell() {
+    const chip = $('m-bell');
+    const bell = this.bell;
+    chip.hidden = !bell;
+    if (!bell) return;
+    const who = bell.ringerId === this.playerId ? 'Tu Repique' : `Repique de ${this.nameOf(bell.ringerId)}`;
+    if (bell.closed || bell.deadlineLocal === null || bell.deadlineLocal <= Date.now()) {
+      chip.textContent = `🔔 ${who}: plazo vencido`;
+      chip.className = 'badge bell over';
+      return;
+    }
+    chip.textContent = `🔔 ${who}: ${Math.ceil((bell.deadlineLocal - Date.now()) / 1000)} s`;
+    chip.className = 'badge bell ringing';
   }
 
   /** Copia de lo que se ve del tablero, para que las animaciones interpolen entre el antes y el después. */
@@ -611,10 +792,14 @@ class MatchController {
       this.sendDirected(type, dir);
       return;
     }
+    if (KEY_SIGNALS[e.key]) {
+      this.sendSignal(KEY_SIGNALS[e.key]);
+      return;
+    }
     switch (e.key.toLowerCase()) {
       case 'q': this.armedMode = this.armedMode === 'ABILITY' ? null : 'ABILITY'; break;
       case 'e': this.armedMode = this.armedMode === 'INTERACT' ? null : 'INTERACT'; break;
-      case 'escape': this.armedMode = null; break;
+      case 'escape': this.armedMode = null; this.signalMark = null; break;
       case ' ': e.preventDefault(); this.guard(); return;
       default: return;
     }
@@ -639,7 +824,13 @@ class MatchController {
     if (!me) return null;
     if (me.state === 'EXTINCT') return me.path?.choice ? 'Ya elegiste camino: se revela al resolver la ronda.' : 'Te extinguiste: elige tu camino.';
     if (awaitingSpawn(me)) return 'Todavía no apareciste como Renegado.';
-    if (me.state !== 'EMBER_SPIRIT') return null;
+    if (this.bell && this.bell.ringerId !== this.playerId && (this.bell.closed || this.deadlineLocal <= Date.now())) return 'Se acabó tu plazo del Repique: guardas esta ronda.';
+    if (me.state !== 'EMBER_SPIRIT') {
+      const cd = me.abilityCooldown ?? 0;
+      const name = me.hostEnemyId != null ? 'Salir' : heroInfo(me.hero).ability || 'La habilidad';
+      if (order.type === 'ABILITY' && cd > 0 && me.hostEnemyId == null) return `${name} se enfría: lista en ${cd} ronda${cd === 1 ? '' : 's'}.`;
+      return null;
+    }
     if (order.type === 'ABILITY' && me.abilityCooldown > 0) return `Avivar se enfría: lista en ${me.abilityCooldown} ronda${me.abilityCooldown === 1 ? '' : 's'}.`;
     const hinder = me.path?.hinderCooldown ?? 0;
     if (order.type === 'ATTACK' && hinder > 0) return `Estorbo se enfría: listo en ${hinder} ronda${hinder === 1 ? '' : 's'}.`;
@@ -699,6 +890,7 @@ class MatchController {
           o.status = 'error';
           o.error = res.error;
           emit('order:rejected', { order: o.payload.order, code: res.error.code });
+          if (res.error.code === 'ORDER_TOO_LATE') toast(label(ERROR_CODES, 'ORDER_TOO_LATE'), 'info', 5000);
           if (res.error.code === 'STALE_ROUND' && res.error.details?.currentRound) this.round = res.error.details.currentRound;
         }
       } else {
@@ -771,10 +963,18 @@ class MatchController {
     const armed = $('order-armed');
     armed.hidden = !this.armedMode;
     armed.textContent = this.armedMode ? (ember ? EMBER_ARMED_TEXT : ARMED_TEXT)[this.armedMode] ?? '' : '';
+    if (this.armedMode === 'ABILITY' && !ember && me?.hostEnemyId == null && NO_AIM.has(me?.hero)) armed.textContent = `${heroInfo(me.hero).ability} armado: pulsa cualquier flecha, la dirección no importa. Esc cancela.`;
     document.querySelector('.dpad').classList.toggle('armed', Boolean(this.armedMode));
     this.renderOrderNote(me, mode);
     this.renderOrderStatus();
+    this.renderLastWord();
+    this.renderSignals();
+    this.renderBell();
     $('legend-paths').hidden = ![me, ...this.allies].some((p) => p?.state === 'EMBER_SPIRIT' || p?.state === 'RENEGADE');
+    $('legend-hidden').hidden = !this.hiddenTelegraphs.length;
+    $('legend-echo').hidden = !this.echoes.length;
+    $('legend-noise').hidden = !this.noiseTiles.length;
+    $('legend-ground').hidden = !this.groundEmbers.length;
 
     // Eventos de la última ronda (se rehacen solo cuando llega una ronda nueva, para no repetir la animación).
     if (this.shown.events !== this.events) {
@@ -793,6 +993,14 @@ class MatchController {
         ? this.order.payload.order : me?.pendingOrder ?? null,
       armedMode: this.armedMode,
       mode,
+      round: this.round,
+      hiddenTelegraphs: this.hiddenTelegraphs,
+      echoes: this.echoes,
+      groundEmbers: this.groundEmbers,
+      noiseTiles: this.noiseTiles,
+      bell: this.bell,
+      lastWord: this.lastWord,
+      signalMark: this.signalMark,
     });
     this.renderTimer();
   }
@@ -824,6 +1032,9 @@ class MatchController {
     let stats;
     if (p.state === 'EMBER_SPIRIT') {
       stats = [el('span', { class: 'p-tag ember' }, '❂ Brasa')];
+    } else if (p.hero === 'AVARO') {
+      // Sus ascuas son su vida: no hay barra (el número de ascuas va al final de la fila).
+      stats = [p.state === 'RENEGADE' ? el('span', { class: 'p-tag renegade' }, '☠ Renegado') : el('span', { class: 'p-tag' }, 'vive de sus ascuas')];
     } else {
       const hp = el('span', { class: pct <= 34 ? 'mini-hp low' : 'mini-hp', 'aria-hidden': 'true' }, el('i'));
       hp.firstChild.style.width = `${pct}%`;
@@ -838,25 +1049,30 @@ class MatchController {
         el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' })),
       el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`)),
       state,
-      el('span', { class: 'p-stats' }, ...stats, el('span', { class: 'em' }, `✦ ${p.embers}`)));
+      el('span', { class: 'p-stats' }, ...stats, el('span', { class: 'em' }, `✦ ${p.embers}`),
+        // Lo que te debe solo llega si eres su Usurera; un aliado sin posición puede ir de polizón o no oírse.
+        p.debtToYou ? el('span', { class: 'p-tag debt', title: 'Solo tú lo ves' }, `⚖ te debe ${p.debtToYou}`) : null,
+        !p.isMe && !p.position && p.hero === 'POLIZON' && p.state === 'ALIVE' ? el('span', { class: 'p-tag ghost' }, 'sin rastro') : null,
+        !p.isMe && !p.position && p.hero !== 'POLIZON' && p.state === 'ALIVE' && isBlindMe(this.me) ? el('span', { class: 'p-tag ghost' }, 'no lo oyes') : null));
   }
 
   /** Botones de orden: los de la Brasa cambian de nombre e ícono y muestran su enfriamiento. */
   renderOrderModes(me) {
     const ember = me?.state === 'EMBER_SPIRIT';
-    const cooldowns = ember ? { ABILITY: me.abilityCooldown ?? 0, ATTACK: me.path?.hinderCooldown ?? 0 } : {};
-    const key = `${ember}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}`;
+    const hosted = me?.hostEnemyId != null;
+    const cooldowns = ember ? { ABILITY: me.abilityCooldown ?? 0, ATTACK: me.path?.hinderCooldown ?? 0 } : { ABILITY: hosted ? 0 : me?.abilityCooldown ?? 0 };
+    const key = `${ember}|${hosted}|${me?.hero}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}`;
     const card = document.querySelector('.card-orders');
     card.dataset.path = pathClass(me?.state) || 'hero';
     card.classList.toggle('inactive', Boolean(me) && !canAct(me));
     if (this.shown.orders === key) return;
     this.shown.orders = key;
-    const names = ember ? EMBER_ORDERS : HERO_ORDERS;
+    const names = ember ? EMBER_ORDERS : heroOrders(me);
     document.querySelectorAll('.mode').forEach((b) => {
       const type = b.dataset.mode;
       b.querySelector('.mode-name').textContent = names[type].name;
       b.querySelector('.mode-ico').textContent = names[type].icon;
-      b.title = ember ? `${names[type].name}: ${names[type].text}` : '';
+      b.title = names[type].text ? `${names[type].name}: ${names[type].text}` : '';
       const cd = cooldowns[type] ?? 0;
       const badge = b.querySelector('.mode-cd');
       badge.hidden = cd <= 0;
@@ -890,6 +1106,15 @@ class MatchController {
     } else if (me?.state === 'DOWN') {
       kind = 'wait';
       parts = ['Estás caído: un aliado (o una Brasa) puede levantarte con Interactuar.'];
+    } else if (me?.hostEnemyId != null) {
+      kind = 'host';
+      const o = heroOrders(me)[mode] ?? heroOrders(me).MOVE;
+      parts = [el('b', {}, `Dentro de ${this.hostName(me)}: `), o.text ?? 'Nadie te ve.'];
+    } else if (me && mode === 'ABILITY') {
+      const info = heroInfo(me.hero);
+      parts = [el('b', {}, `${info.ability}: `), info.abilityText];
+    } else if (me?.hero === 'HILVAN' && (mode === 'MOVE' || mode === 'ATTACK' || mode === 'INTERACT')) {
+      parts = [el('b', {}, 'Espejo: '), 'norte y sur van igual; este y oeste, al revés. Cada cuerpo rebota por su cuenta.'];
     }
     note.hidden = !parts;
     note.className = kind ? `order-note ${kind}` : 'order-note';
@@ -897,6 +1122,37 @@ class MatchController {
     if (note.dataset.text !== text) {
       note.dataset.text = text;
       note.replaceChildren(...(parts ?? []));
+    }
+  }
+
+  /** Nombre del huésped de Polizón. */
+  hostName(me) {
+    const host = this.enemies.get(me.hostEnemyId);
+    return host ? label(ENEMIES, host.kind) : 'tu huésped';
+  }
+
+  /** Lo que cada héroe necesita tener a la vista; solo con datos de su propia vista. */
+  heroNote(me) {
+    if (me.state === 'EMBER_SPIRIT' || me.state === 'EXTINCT') return null;
+    switch (me.hero) {
+      case 'ANTEAYER':
+        if (me.rewindTile) return `Volver: a (${me.rewindTile.x},${me.rewindTile.y}) con ${me.rewindHp ?? '?'} de vida. Ecos pendientes: ${this.echoes.filter((e) => e.ownerId === me.playerId).length}.`;
+        return `Volver: sin 2 rondas de historia en esta sala. Ecos pendientes: ${this.echoes.filter((e) => e.ownerId === me.playerId).length}.`;
+      case 'HILVAN':
+        return me.secondBody ? `Segundo cuerpo en (${me.secondBody.x},${me.secondBody.y}). Una sola vida: un golpe a cada cuerpo son dos golpes.` : null;
+      case 'POLIZON': {
+        if (me.hostEnemyId == null) return 'A la vista. Aborda a un enemigo vecino para desaparecer.';
+        const host = this.enemies.get(me.hostEnemyId);
+        return host ? `A bordo de ${label(ENEMIES, host.kind)} (${host.hp}/${host.maxHp}). Nadie te ve.` : 'A bordo. Nadie te ve.';
+      }
+      case 'ESCUCHA':
+        return `A oscuras más allá de 1 casilla. Oíste ${this.noiseTiles.length} ruido${this.noiseTiles.length === 1 ? '' : 's'} en la última resolución.`;
+      case 'AVARO':
+        return me.embers <= 1 ? 'Te queda 1 ascua o menos: otro golpe y caes.' : 'Cada punto de daño tira 1 ascua al suelo. Pisa la casilla para recuperarla.';
+      case 'CAMPANERO':
+        return this.lastWord ? 'Ya oíste a los demás: responde con lo que quede de reloj.' : 'Si esperas a que todos decidan, oirás sus órdenes.';
+      default:
+        return null;
     }
   }
 
@@ -926,10 +1182,14 @@ class MatchController {
     setText('me-role', `${info.name} · ${roles[kind] ?? info.role}`);
     if (kind) card.dataset.path = kind; else delete card.dataset.path;
     const ember = kind === 'ember';
+    const miser = me.hero === 'AVARO';
     $('me-hearts').hidden = ember;
-    $('me-hpwrap').hidden = ember;
+    $('me-hpwrap').hidden = ember || miser;
     $('me-tiles').hidden = ember;
     this.renderPathPanel(me, kind);
+    const note = this.heroNote(me);
+    $('me-note').hidden = !note;
+    setText('me-note', note ?? '');
 
     // Vida: corazones + barra; si bajó, sacudida y corazones perdidos.
     const prev = this.shown.hp;
@@ -937,16 +1197,22 @@ class MatchController {
     const gained = prev !== null && me.hp > prev;
     this.shown.hp = me.hp;
     const hearts = [];
-    for (let i = 0; i < me.maxHp; i++) {
-      const full = i < me.hp;
-      let cls = full ? 'heart' : 'heart empty';
-      if (lost && i >= me.hp && i < prev) cls += ' lost';
-      if (gained && i < me.hp && i >= prev) cls += ' gained';
-      hearts.push(el('span', { class: cls }));
+    if (miser) {
+      // Sin barra de vida: se dibujan sus ascuas, una a una.
+      for (let i = 0; i < Math.min(me.embers, 12); i++) hearts.push(el('span', { class: 'heart ember-life' }));
+      if (me.embers > 12) hearts.push(el('span', { class: 'ember-more' }, `+${me.embers - 12}`));
+    } else {
+      for (let i = 0; i < me.maxHp; i++) {
+        const full = i < me.hp;
+        let cls = full ? 'heart' : 'heart empty';
+        if (lost && i >= me.hp && i < prev) cls += ' lost';
+        if (gained && i < me.hp && i >= prev) cls += ' gained';
+        hearts.push(el('span', { class: cls }));
+      }
     }
     for (let i = 0; i < (me.shield ?? 0); i++) hearts.push(el('span', { class: 'heart shield' }));
     $('me-hearts').replaceChildren(...hearts);
-    if (lost) replay(card, 'hit');
+    if (lost || (miser && this.shown.embers !== null && me.embers < this.shown.embers)) replay(card, 'hit');
     const pct = Math.max(0, Math.min(100, (me.hp / me.maxHp) * 100));
     const hpbar = $('me-hpbar');
     hpbar.style.width = `${pct}%`;
@@ -966,18 +1232,26 @@ class MatchController {
     this.shown.embers = me.embers;
     setText('me-embers', me.embers);
 
-    // Cargas (pips), enfriamiento de la habilidad y sigilo.
-    setText('me-charges', me.charges);
-    $('me-charge-pips').replaceChildren(...Array.from({ length: Math.min(6, Math.max(me.charges, me.hero === 'CHISPA' ? 3 : 0)) },
-      (_, i) => el('i', { class: i < me.charges ? 'on' : '' })));
-    $('tile-charges').classList.toggle('dim', me.charges === 0 && me.hero !== 'CHISPA');
+    // Deuda propia (y con quién) o, para la Usurera, lo que le deben. Nadie más lo ve.
+    const owed = this.allies.reduce((sum, a) => sum + (a.debtToYou ?? 0), 0);
+    const debtTile = $('tile-debt');
+    debtTile.hidden = !me.debt && !owed;
+    if (me.debt) {
+      setText('me-debt', me.debt);
+      setText('me-debt-label', `Debes a ${this.nameOf(me.debtTo)}`);
+      debtTile.title = 'Cada ascua que ganes le llega hasta saldar la deuda. Cada 5 rondas sube 1.';
+    } else if (owed) {
+      setText('me-debt', owed);
+      setText('me-debt-label', 'Te deben');
+      debtTile.title = 'Solo tú lo ves. Cobras cada ascua que ganen y, al final, lo que quede.';
+    }
+
+    // Enfriamiento de la habilidad.
     const ready = !me.abilityCooldown;
     setText('me-cooldown', ready ? 'Lista' : me.abilityCooldown);
     setText('me-ability', info.ability || 'Habilidad');
     $('tile-ability').className = `tile tile-ability ${ready ? 'ready' : 'cooling'}`;
     $('tile-ability').title = ready ? `${info.ability}: lista para usar` : `${info.ability}: faltan ${me.abilityCooldown} rondas`;
-    setText('me-stealth', me.stealthRoundsLeft);
-    document.querySelector('.tile-stealth').classList.toggle('dim', !me.stealthRoundsLeft);
 
     const downNote = me.state === 'DOWN' && me.downRoundsLeft !== null ? ` (${me.downRoundsLeft} rondas)` : '';
     setText('me-state', `${label(HERO_STATES, me.state)}${downNote}`);
@@ -1070,6 +1344,7 @@ class MatchController {
   }
 
   eventItem(ev) {
+    if (!EVENTS[ev.type] && !EVENT_STYLE[ev.type]) return el('li', {}, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, '•'), el('span', {}, String(ev.type)));
     const [icon, tone] = EVENT_STYLE[ev.type] ?? ['•', ''];
     let cls = tone;
     if (ev.type === 'DAMAGED') cls = ev.targetId === this.playerId ? 'bad' : ev.actorId === this.playerId ? 'good' : '';
@@ -1130,6 +1405,8 @@ class MatchController {
       bar.style.width = `${Math.min(100, (left / this.durationMs) * 100)}%`;
       bar.className = left < 5000 ? 'low' : '';
     }
+    this.renderBell();
+    this.renderSignals();
     if (this.draft) {
       const left = Math.max(0, Date.parse(this.draft.deadline) - Date.now());
       setText('draft-timer', `${Math.ceil(left / 1000)} s`);
@@ -1191,6 +1468,44 @@ class MatchController {
         return `${who(ev.actorId)} encendió un Faro${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
       case 'WARMTH_HEALED':
         return `La calidez de ${who(ev.actorId)} curó a ${who(ev.targetId)}`;
+      case 'ECHO_FIRED':
+        return `Disparó un Eco de ${who(ev.actorId)}${ev.position ? ` desde (${ev.position.x},${ev.position.y})` : ''}`;
+      case 'ATTACK_CORRECTED':
+        return ev.targetId ? `El anuncio de ${who(ev.targetId)} se desvió: nadie sabe quién fue` : 'Un golpe anunciado se desvió: nadie sabe quién fue';
+      case 'BETRAYAL_RECORDED':
+        return `En secreto, le costaste ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
+      case 'BETRAYAL_REVEALED':
+        return `${who(ev.actorId)} le costó ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
+      case 'HOST_BOARDED':
+        return `Entraste en ${who(ev.targetId)}: nadie te ve`;
+      case 'HOST_EXITED':
+        return `${who(ev.actorId)} reapareció${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
+      case 'HOST_DRAINED':
+        return `Drenaste a ${who(ev.targetId)}`;
+      case 'WARDEN_TURNED':
+        return `${who(ev.targetId) || 'El Celador'} giró${ev.detail ? ` hacia el ${label(DIRECTIONS, ev.detail)}` : ''}: ahora se le puede golpear de espaldas`;
+      case 'SHOUTED':
+        return `${who(ev.actorId)} gritó: su bando ve toda la sala y los monstruos van por ella`;
+      case 'DEBT_CHANGED': {
+        const delta = ev.amount ?? 0;
+        return `Deuda de ${who(ev.targetId)} con ${who(ev.actorId)}: ${delta > 0 ? '+' : ''}${delta} (${DEBT_REASONS[ev.detail] ?? 'cambio'})`;
+      }
+      case 'EMBERS_DROPPED':
+        return `Cayeron ${plural(ev.amount ?? 1, 'ascua', 'ascuas')} al suelo${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
+      case 'EMBERS_PICKED_UP':
+        return `${who(ev.actorId)} recogió ${plural(ev.amount ?? 1, 'ascua', 'ascuas')} del suelo`;
+      case 'EMBERS_LOST':
+        return `Perdiste ${plural(Math.abs(ev.amount ?? 1), 'ascua', 'ascuas')}`;
+      case 'ENEMY_BRIBED':
+        return `${who(ev.actorId)} sobornó a ${who(ev.targetId)} con ${plural(ev.amount ?? 1, 'ascua', 'ascuas')}`;
+      case 'ROOM_SHIFTED': {
+        const shift = shiftFromEvent(ev);
+        return shift ? `${who(ev.actorId)}: ${shiftText(shift).toLowerCase()}` : `${who(ev.actorId)} corrió la sala`;
+      }
+      case 'BELL_RUNG':
+        return `${who(ev.actorId)} tocó el Repique: en la próxima ronda los demás tienen solo 8 s`;
+      case 'BELL_EXPIRED':
+        return `Venció el plazo del Repique de ${who(ev.actorId)}`;
       case 'BLOCKED':
         if (ev.detail === 'WARNING_SHIELD') return `El escudo de aviso de ${who(ev.targetId)} absorbió el golpe del Renegado ${who(ev.actorId)}`;
         if (ev.targetId) return `${who(ev.targetId)} bloqueó el golpe${ev.actorId ? ` de ${who(ev.actorId)}` : ''}`;
@@ -1208,6 +1523,27 @@ class MatchController {
     if (ev.position) parts.push(`en (${ev.position.x},${ev.position.y})`);
     return parts.filter(Boolean).join(' ');
   }
+}
+
+const isBlindMe = (me) => me?.hero === 'ESCUCHA' && me?.state !== 'EMBER_SPIRIT';
+
+/** Nombres de los botones de orden según el héroe; dentro de un huésped, lo que hace cada orden allí. */
+function heroOrders(me) {
+  const info = heroInfo(me?.hero);
+  if (me?.hostEnemyId != null) {
+    return {
+      MOVE: { name: 'Mover huésped', icon: '➜', text: 'mover lo mueve a su velocidad.' },
+      ATTACK: { name: 'Golpear', icon: '⚔', text: 'golpea ya, sin anunciar, con su daño y su alcance. Si le das a un aliado, nadie sabrá que fuiste tú.' },
+      ABILITY: { name: 'Salir', icon: '◉', text: 'sales a esa casilla o a la libre más cercana, y el huésped no actúa esta ronda.' },
+      INTERACT: { name: 'Interactuar', icon: '✋', text: 'dentro de un huésped no hace nada.' },
+      GUARD: { name: 'Guardar', icon: '⛨', text: 'dentro de un huésped no hace nada.' },
+    };
+  }
+  return {
+    ...HERO_ORDERS,
+    ATTACK: me?.hero === 'ESCUCHA' && me.state !== 'RENEGADE' ? { name: 'A tientas', icon: '⚔' } : HERO_ORDERS.ATTACK,
+    ABILITY: { name: info.ability || 'Habilidad', icon: '✺' },
+  };
 }
 
 function describeOrder(order) {
@@ -1254,6 +1590,21 @@ function showFinished(m, myPlayerId, onBack) {
         el('small', {}, `${label(HEROES, s.hero)} · ${stateIcon}${label(HERO_STATES, s.finalState)}`)),
       el('span', { class: 'em' }, String(s.embers), el('small', {}, 'ascuas')));
     li.style.animationDelay = `${0.9 + i * 0.08}s`;
+    return li;
+  }));
+
+  // Traiciones anónimas: aquí se sabe quién fue («Errata le costó 3 de vida a Ana»).
+  const byId = new Map(m.standings.map((s) => [s.playerId, s]));
+  const betrayals = (m.betrayals ?? []).filter((b) => b.damage > 0);
+  $('fin-betrayal-box').hidden = !betrayals.length;
+  $('fin-betrayals').replaceChildren(...betrayals.map((b, i) => {
+    const traitor = byId.get(b.traitorId);
+    const victim = byId.get(b.victimId);
+    const li = el('li', { dataset: traitor ? { hero: traitor.hero } : {} },
+      traitor ? heroAvatar(traitor.hero, 'sm') : null,
+      el('span', {}, el('b', {}, label(HEROES, traitor?.hero ?? '—')), ` le costó ${b.damage} de vida a `, el('b', {}, `${victim?.displayName ?? 'alguien'}${victim ? you(victim) : ''}`),
+        traitor ? el('small', {}, ` (${traitor.displayName}${you(traitor)})`) : null));
+    li.style.animationDelay = `${1 + i * 0.2}s`;
     return li;
   }));
 
