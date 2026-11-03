@@ -93,6 +93,7 @@ Proyecto3.pdf            Enunciado
 - [Modelo de amenazas](docs/modelo-de-amenazas.md)
 - [Pendientes hacia v1.0.0](docs/pendientes.md)
 - [Rendimiento y prueba de carga](docs/rendimiento.md)
+- [Glosario: nombres en pantalla y en el código](docs/glosario.md)
 - [Decisiones de arquitectura (ADR)](docs/adr/README.md)
 - API por área: [autenticación](docs/api/autenticacion.md), [salas](docs/api/salas.md), [tiempo real](docs/api/tiempo-real.md), [historial](docs/api/historial.md), [administración](docs/api/administracion.md)
 - [Runbooks de operación](docs/runbooks/README.md)

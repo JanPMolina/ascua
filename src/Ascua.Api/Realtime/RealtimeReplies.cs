@@ -167,7 +167,7 @@ public static partial class RealtimeValidation
 
         if (RealtimeMapper.ParseBlessing(request.BlessingId) is not { } parsed)
         {
-            return Invalid("blessingId", "blessingId no es una bendición conocida.");
+            return Invalid("blessingId", "blessingId no es una mejora conocida.");
         }
 
         blessing = parsed;

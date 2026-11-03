@@ -1440,7 +1440,7 @@ components:
                 finalState: DOWN
                 embers: 9
                 placement: 2
-                pact: { pactId: NEVER_DOWNED, description: Terminar sin haber caído., fulfilled: false }
+                pact: { pactId: NEVER_DOWNED, description: Terminar sin que te derriben., fulfilled: false }
             finishedAt: '2026-11-03T18:13:52Z'
             replayUrl: https://ascua-api.azurecontainerapps.io/api/v1/matches/0193a1c2-5e7f-7a10-8b2c-3d4e5f607182/replay
             betrayals:

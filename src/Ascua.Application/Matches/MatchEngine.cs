@@ -352,7 +352,7 @@ public sealed class MatchEngine(
         {
             return previous.Blessing == blessing
                 ? MatchResult<DraftAck>.Ok(previous)
-                : new MatchError(RealtimeErrors.DraftClosed, "Ya elegiste una bendición de esta oferta.");
+                : new MatchError(RealtimeErrors.DraftClosed, "Ya elegiste una mejora de esta oferta.");
         }
 
         var found = await GetForPlayerAsync(matchId, userId, cancellationToken);
@@ -795,7 +795,7 @@ public sealed class MatchEngine(
         }
 
         index = hero.DraftOptions.IndexOf(blessing);
-        return index < 0 ? new MatchError(RealtimeErrors.InvalidPick, "Esa bendición no está en la oferta.") { Field = "blessingId" } : null;
+        return index < 0 ? new MatchError(RealtimeErrors.InvalidPick, "Esa mejora no está en la oferta.") { Field = "blessingId" } : null;
     }
 
     private async Task<bool> AllDecidedAsync(MatchSnapshot snapshot, CancellationToken cancellationToken)

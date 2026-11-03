@@ -593,7 +593,7 @@ public static class RealtimeMapper
     public static string PactDescription(PactKind pact) => pact switch
     {
         PactKind.SlayWarden => "Dar el golpe final al Celador.",
-        PactKind.NeverFall => "Terminar sin haber caído.",
+        PactKind.NeverFall => "Terminar sin que te derriben.",
         PactKind.OpenThreeChests => "Abrir 3 cofres.",
         PactKind.ReviveTwoAllies => "Levantar a 2 aliados.",
         _ => "Golpear 2 veces a un aliado por la espalda o con una traición anónima.",

@@ -1695,7 +1695,7 @@
                       "placement": 2,
                       "pact": {
                         "pactId": "NEVER_DOWNED",
-                        "description": "Terminar sin haber caído.",
+                        "description": "Terminar sin que te derriben.",
                         "fulfilled": false
                       }
                     }

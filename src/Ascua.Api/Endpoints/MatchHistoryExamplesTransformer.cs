@@ -24,7 +24,7 @@ internal sealed class MatchHistoryExamplesTransformer : IOpenApiOperationTransfo
             "players":[{"playerId":"{{{Me}}}","displayName":"ana","hero":"ERRATA","finalState":"ALIVE","embers":17,"placement":1,
             "pact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda o con una traición anónima.","fulfilled":true}},
             {"playerId":"{{{Ally}}}","displayName":"beto","hero":"MAMPOSTERO","finalState":"DOWN","embers":9,"placement":2,
-            "pact":{"pactId":"NEVER_DOWNED","description":"Terminar sin haber caído.","fulfilled":false}}],
+            "pact":{"pactId":"NEVER_DOWNED","description":"Terminar sin que te derriben.","fulfilled":false}}],
             "myPact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda o con una traición anónima.","fulfilled":true},
             "replayUrl":"https://ascua.example/api/v1/matches/{{{MatchId}}}/replay"}
             """,
