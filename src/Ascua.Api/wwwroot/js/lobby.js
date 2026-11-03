@@ -22,8 +22,10 @@ function heroPicker(fieldset, name, selected) {
       heroAvatar(id, 'md'),
       el('span', { class: 'hc-name' }, info.name),
       el('span', { class: 'hc-role' }, info.role),
-      el('span', { class: 'hc-stats' }, el('span', { class: 'hp' }, `♥ ${info.hp} de vida`), '·', el('span', {}, info.passive)),
-      el('span', { class: 'hc-ability' }, el('b', {}, info.ability), `: ${info.abilityText}`),
+      el('span', { class: 'hc-breaks' }, `Rompe: «${info.breaks}»`),
+      el('span', { class: 'hc-stats' }, el('span', { class: 'hp' }, info.hpIsEmbers ? `✦ ${info.hp} ascuas son su vida` : `♥ ${info.hp} de vida`), '·', el('span', {}, `alcance ${info.range}`), '·', el('span', {}, `iniciativa ${info.initiative}`)),
+      el('span', { class: 'hc-ability' }, el('b', {}, info.passiveName), `: ${info.passive}`),
+      el('span', { class: 'hc-ability' }, el('b', {}, `${info.ability} (enf. ${info.cooldown})`), `: ${info.abilityText}`),
       el('span', { class: 'hc-taken' }));
   });
   fieldset.append(...cards);
@@ -169,8 +171,12 @@ function renderRoom(room) {
   // Las tarjetas de héroe no se recrean (conservan el foco del teclado): solo se marca la elegida y quién más la tiene.
   for (const input of $('room-hero').querySelectorAll('input')) {
     input.checked = input.value === mine?.hero;
+    // En una sala cada héroe es único: el de otro jugador no se puede elegir.
     const others = room.members.filter((m) => m !== mine && m.hero === input.value).map((m) => m.username);
-    input.closest('.hero-card').querySelector('.hc-taken').textContent = others.length ? `También: ${others.join(', ')}` : '';
+    input.disabled = others.length > 0;
+    const card = input.closest('.hero-card');
+    card.classList.toggle('taken', others.length > 0);
+    card.querySelector('.hc-taken').textContent = others.length ? `Lo tiene ${others.join(', ')}` : '';
   }
   const ready = Boolean(mine?.ready);
   $('btn-ready').textContent = ready ? '✔ Listo (cancelar)' : 'Marcar listo';
@@ -224,7 +230,7 @@ export function initLobby({ onEnterMatch }) {
   enterMatch = onEnterMatch;
   if (bound) return;
   bound = true;
-  heroPicker($('queue-heroes'), 'hero', 'YUNQUE');
+  heroPicker($('queue-heroes'), 'hero', 'ERRATA');
   heroPicker($('room-hero'), 'room-hero', null);
 
   $('btn-copy-code').addEventListener('click', async () => {

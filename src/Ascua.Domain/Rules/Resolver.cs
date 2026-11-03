@@ -6,10 +6,10 @@ namespace Ascua.Domain.Rules;
 
 /// <summary>
 /// Resolución pura y determinista de una ronda: (estado, órdenes, azar) → (estado nuevo, eventos).
-/// Orden fijo: 1) GUARDAR y escudos; 2) movimientos con rebote; 3) ataques y habilidades por
-/// iniciativa; 4) los enemigos ejecutan lo anunciado; 5) los enemigos se mueven y anuncian;
-/// 6) disparadores y limpieza. Antes de todo se revelan los caminos elegidos en la ronda
-/// (planteamiento/04-caminos-tras-morir.md); las Brasas y los Renegados dan órdenes como los demás.
+/// Orden fijo (planteamiento/05-heroes.md, §3): 0) se revelan los caminos elegidos; 1) GUARDAR y Volver;
+/// 2) Corrimiento; 3) movimientos con rebote (Espejo de Hilván, Polizón mueve a su huésped); 4) ataques,
+/// habilidades e interacciones por iniciativa, con el Eco de Anteayer justo después de su dueño; 5) los enemigos
+/// ejecutan lo anunciado; 6) los enemigos se mueven y anuncian (salvo el huésped); 7) disparadores y limpieza.
 /// </summary>
 public static class Resolver
 {
@@ -28,10 +28,14 @@ public static class Resolver
 
         var ctx = new RoundContext(state, rng);
         Paths.RevealChoices(ctx);
+        HeroSkills.ClearShouts(ctx);
+        HeroSkills.RecordHistory(ctx);
         var downAtStart = state.Heroes.Where(h => h.Status == HeroStatus.Down).Select(h => h.Player).ToHashSet();
         var plan = PlanOrders(ctx, orders);
 
         ActivateGuards(ctx, plan);
+        HeroSkills.Rewind(ctx, plan);
+        RoomShift.Resolve(ctx, plan);
         HeroMovement.Resolve(ctx, plan);
         HeroActions.Resolve(ctx, plan);
         EnemyTurn.ExecuteTelegraphs(ctx);
@@ -74,26 +78,20 @@ public static class Resolver
         foreach (var (player, order) in plan)
         {
             var hero = ctx.Hero(player);
-            if (hero.IsEmber)
+            if (order.Type != OrderType.Guard)
             {
-                if (order.Type == OrderType.Guard)
-                {
-                    Paths.Beacon(ctx, hero);
-                }
-
                 continue;
             }
 
-            if (order.Type == OrderType.Guard)
+            if (hero.IsEmber)
             {
+                Paths.Beacon(ctx, hero);
+            }
+            else if (!hero.IsInHost)
+            {
+                // Dentro de un huésped, GUARDAR no hace nada.
                 ctx.Guarding.Add(player);
                 ctx.Emit(new HeroGuarded(player) { Audience = RoundContext.AudienceOf(hero) });
-            }
-            else if (order is { Type: OrderType.Skill, Direction: { } direction } && hero.Class == HeroClass.Yunque)
-            {
-                ctx.Ramparts[player] = direction;
-                ctx.Update(hero with { Facing = direction, SkillCooldown = hero.SkillCooldownOnUse });
-                ctx.Emit(new SkillUsed(player, hero.Class, direction) { Audience = RoundContext.AudienceOf(hero) });
             }
         }
     }
@@ -108,7 +106,23 @@ public static class Resolver
                 ctx.Emit(new PactRevealed(score.Player, score.Pact, score.PactFulfilled));
             }
 
+            foreach (var betrayal in outcome.Betrayals)
+            {
+                ctx.Emit(new BetrayalRevealed(betrayal.Traitor, betrayal.Victim, betrayal.Damage));
+            }
+
             ctx.Emit(new MatchEnded(outcome));
+        }
+
+        // Quien hizo ruido se oye donde terminó la ronda (además de donde hizo el ruido).
+        foreach (var hero in ctx.Heroes.Where(h => ctx.NoisyHeroes.Contains(h.Player)).ToList())
+        {
+            ctx.MakeNoise(hero);
+        }
+
+        foreach (var enemy in ctx.Enemies.Where(e => ctx.NoisyEnemies.Contains(e.Id)).ToList())
+        {
+            ctx.MakeNoise(enemy);
         }
 
         ctx.Emit(new RoundResolved(ctx.Round));
@@ -123,6 +137,13 @@ public static class Resolver
             NextEnemyId = ctx.NextEnemyId,
             LastSeq = ctx.LastSeq,
             Outcome = outcome,
+            Betrayals = [.. ctx.Betrayals],
+            NoisyHeroes = [.. ctx.NoisyHeroes],
+            NoisyEnemies = [.. ctx.NoisyEnemies],
+            NoiseTiles = [.. ctx.NoiseTiles],
+            BellRound = ctx.BellRound,
+            BellRinger = ctx.BellRinger,
+            BellClosed = ctx.BellClosed,
         };
         return (next, ctx.Events);
     }

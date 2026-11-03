@@ -18,16 +18,16 @@ public static class MatchFactory
     public const int RoomCount = 5;
     private const int MaxLayoutAttempts = 50;
 
-    public static readonly ImmutableList<Position> SpawnPoints = [new(3, 8), new(5, 8), new(2, 8), new(6, 8)];
-    public static readonly Position StairsPosition = new(4, 0);
-    public static readonly Position WardenPosition = new(4, 2);
+    public static readonly ImmutableList<Position> SpawnPoints = [new(3, 7), new(5, 7), new(2, 7), new(6, 7)];
+    public static readonly Position StairsPosition = new(4, 3);
+    public static readonly Position WardenPosition = new(4, 3);
 
     private static readonly EnemyKind[][] RoomEnemies =
     [
         [EnemyKind.Scavenger, EnemyKind.Scavenger, EnemyKind.Moth],
         [EnemyKind.Slime, EnemyKind.Hopper, EnemyKind.Scavenger],
-        [EnemyKind.Crossbowman, EnemyKind.Slime, EnemyKind.Moth, EnemyKind.Scavenger],
-        [EnemyKind.Totem, EnemyKind.Crossbowman, EnemyKind.Hopper],
+        [EnemyKind.Crossbowman, EnemyKind.Slime, EnemyKind.Moth],
+        [EnemyKind.Totem, EnemyKind.Crossbowman],
         [EnemyKind.Warden],
     ];
 
@@ -66,6 +66,7 @@ public static class MatchFactory
             {
                 Pact = pacts[seat % pacts.Count],
                 DraftOptions = [.. options],
+                SecondBody = setup.Class == HeroClass.Hilvan ? SecondBodyAt(seat, players.Count) : null,
             });
         }
 
@@ -90,6 +91,15 @@ public static class MatchFactory
             LastSeq = log.LastSeq,
         };
         return (state, log.Events);
+    }
+
+    /// <summary>Hilván empieza con sus cuerpos en la misma fila, a 2 casillas, sin pisar la entrada de otro asiento.</summary>
+    private static Position SecondBodyAt(int seat, int playerCount)
+    {
+        var east = SpawnPoints[seat].Step(Direction.East, HeroRules.BodySpacing);
+        return Room.IsInside(east) && !SpawnPoints.Take(playerCount).Contains(east)
+            ? east
+            : SpawnPoints[seat].Step(Direction.West, HeroRules.BodySpacing);
     }
 
     private static Room GenerateRoom(int index, int playerCount, IRandom rng, ref int nextEnemyId, ref int nextChestId)
@@ -176,6 +186,9 @@ public static class MatchFactory
         return room;
     }
 
+    /// <summary>Los monstruos nacen a esta distancia o menos de la escalera: a la vista del grupo y sin rincones que recorrer.</summary>
+    public const int MonsterSpread = 4;
+
     private static Room Populate(Room room, int index, int playerCount, IRandom rng, ref int nextEnemyId, ref int nextChestId)
     {
         var chests = ImmutableList.CreateBuilder<Chest>();
@@ -189,7 +202,9 @@ public static class MatchFactory
 
         var occupied = new HashSet<Position>(room.Chests.Select(c => c.Position));
         var enemies = ImmutableList.CreateBuilder<Enemy>();
-        foreach (var kind in RoomEnemies[index])
+        // Con 2 jugadores la sala trae un monstruo menos: los mismos enemigos tardarían el doble en caer.
+        var kinds = RoomEnemies[index];
+        foreach (var kind in playerCount == MinPlayers ? kinds.Take(2) : kinds)
         {
             if (kind == EnemyKind.Warden)
             {
@@ -198,7 +213,7 @@ public static class MatchFactory
             }
 
             var candidates = Room.AllPositions()
-                .Where(p => p.Y is >= 1 and <= 4
+                .Where(p => p.Y <= 5 && p.DistanceTo(StairsPosition) <= MonsterSpread
                     && room.TerrainAt(p) is Terrain.Floor or Terrain.Spikes
                     && !occupied.Contains(p))
                 .ToList();
@@ -263,7 +278,7 @@ public static class RoomValidator
         return allFloorReachable && objectsReachable;
     }
 
-    private static bool IsSafeFloor(Room room, Position position) =>
+    internal static bool IsSafeFloor(Room room, Position position) =>
         Room.IsInside(position)
         && room.TerrainAt(position) is Terrain.Floor or Terrain.Spikes or Terrain.Stairs
         && room.ChestAt(position) is null;

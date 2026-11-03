@@ -18,6 +18,7 @@ public sealed class MatchHub(
     RealtimeConnections connections,
     MatchMetrics metrics,
     IClock clock,
+    RealtimeOptions options,
     ILogger<MatchHub> logger) : Hub
 {
     public const string Path = "/realtime/match";
@@ -233,6 +234,29 @@ public sealed class MatchHub(
         };
     }
 
+    /// <summary>Señal rápida a su bando (contrato 2.0.0): frase fija y, si quiere, una casilla. No se guarda.</summary>
+    public async Task<object> SendSignal(SendSignalRequest request)
+    {
+        if (RealtimeValidation.SendSignal(request, out var matchId, out var signal) is { } invalid)
+        {
+            return RealtimeReplies.Error(invalid);
+        }
+
+        if (NotJoined(matchId) is { } notJoined)
+        {
+            return notJoined;
+        }
+
+        using var scope = Scope(matchId);
+        var result = await engine.SendSignalAsync(matchId, UserId, signal!, Context.ConnectionAborted);
+        if (result.Error is { } error)
+        {
+            return RealtimeReplies.Error(error, error.Code == RealtimeErrors.RateLimited ? (int)options.SignalInterval.TotalMilliseconds : null);
+        }
+
+        return new SendSignalAck { MatchId = RealtimeMapper.Id(matchId), SentAt = RealtimeMapper.Timestamp(result.Value) };
+    }
+
     private IDictionary<string, object>? NotJoined(Guid matchId) =>
         JoinedMatch == matchId ? null : RealtimeReplies.Error(RealtimeErrors.NotJoined, "Primero hay que llamar a JoinMatch en esta conexión.");
 
@@ -243,8 +267,8 @@ public sealed class MatchHub(
     }
 
     /// <summary>
-    /// Las ofertas pendientes (draft y camino) se reenvían al (re)conectar o pedir el snapshot: el cliente pudo
-    /// perder la original.
+    /// Las ofertas pendientes (draft y camino) y lo que oye el Campanero se reenvían al (re)conectar o pedir el
+    /// snapshot: el cliente pudo perder el original.
     /// </summary>
     private async Task PushDraftOfferAsync(MatchSnapshot snapshot, MatchParticipant participant)
     {
@@ -256,6 +280,11 @@ public sealed class MatchHub(
         if (RealtimeMapper.PathOffer(snapshot, participant, clock.UtcNow) is { } pathOffer)
         {
             await Clients.Caller.SendAsync("PathOffer", pathOffer, Context.ConnectionAborted);
+        }
+
+        if (await engine.LastWordForAsync(snapshot, participant.PlayerId, Context.ConnectionAborted) is { } heard)
+        {
+            await Clients.Caller.SendAsync("LastWord", RealtimeMapper.LastWord(snapshot.MatchId, heard), Context.ConnectionAborted);
         }
     }
 

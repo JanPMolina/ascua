@@ -181,7 +181,12 @@ function onFinished({ iWon, outcome }) {
   finishTimer = setTimeout(() => { if (screen === 'finished') setTheme('ambient'); }, (length + 1) * 1000);
 }
 
-const HERO_ATTACK = { YUNQUE: 'attackYunque', CHISPA: 'attackChispa', CUERVO: 'attackCuervo', RAIZ: 'attackRaiz' };
+const HERO_ATTACK = {
+  ERRATA: 'attackErrata', ANTEAYER: 'attackAnteayer', HILVAN: 'attackHilvan', POLIZON: 'attackPolizon', ESCUCHA: 'attackEscucha',
+  USURERA: 'attackUsurera', AVARO: 'attackAvaro', MAMPOSTERO: 'attackMampostero', CAMPANERO: 'attackCampanero',
+};
+/** Habilidades cuyo sonido no sale de un evento propio. */
+const ABILITY_SOUND = { ANTEAYER: 'rewind', HILVAN: 'tense', USURERA: 'loan' };
 
 function lookup(id, before, after) {
   if (!id) return null;
@@ -228,7 +233,26 @@ function soundFor(ev, ctx) {
     case 'RENEGADE_DEFEATED': return ['renegadeDefeated', { wet: 0.35 }, target?.position];
     case 'ATTACKED':
       if (actor?.enemy) return ['attackEnemy', { opts: { boss: actor.kind === 'CELADOR' } }, actor.position];
-      return [HERO_ATTACK[actor?.hero] ?? 'attackYunque', {}, actor?.position ?? ev.position];
+      return [HERO_ATTACK[actor?.hero] ?? 'attackMampostero', {}, actor?.position ?? ev.position];
+    case 'ABILITY_USED': return ABILITY_SOUND[actor?.hero] ? [ABILITY_SOUND[actor.hero], { wet: 0.4 }, actor?.position] : null;
+    // Los nueve héroes.
+    case 'ECHO_FIRED': return ['echoFired', { wet: 0.55 }, ev.position];
+    case 'ATTACK_CORRECTED': return ['correct', { wet: 0.25 }, ev.tiles?.[0]];
+    case 'BETRAYAL_RECORDED': return ['echoGained', { wet: 0.4, gain: 0.6 }, null];
+    case 'HOST_BOARDED': return ['board', { wet: 0.2 }, target?.position];
+    case 'HOST_EXITED': return ['unboard', { wet: 0.2 }, ev.position];
+    case 'HOST_DRAINED': return ['drain', { wet: 0.3 }, target?.position];
+    case 'WARDEN_TURNED': return ['wardenTurn', { wet: 0.4 }, target?.position];
+    case 'SHOUTED': return ['shout', { wet: 0.6 }, actor?.position];
+    case 'DEBT_CHANGED':
+      if (ev.detail === 'LOAN') return null; // lo cubre el sonido del Préstamo
+      if (ev.detail === 'INTEREST' || ev.detail === 'CANCELLED') return ['loan', { wet: 0.25, gain: 0.5 }, null];
+      return ['collect', { opts: { amount: Math.abs(ev.amount ?? 1) }, wet: 0.3 }, null];
+    case 'EMBERS_DROPPED': return ['embersDrop', { opts: { amount: ev.amount ?? 1 }, wet: 0.2 }, ev.position];
+    case 'EMBERS_PICKED_UP': return ['embersPickup', { wet: 0.25 }, ev.position];
+    case 'ENEMY_BRIBED': return ['bribe', { wet: 0.25 }, target?.position];
+    case 'ROOM_SHIFTED': return ['roomShift', { wet: 0.35 }, null];
+    case 'BELL_RUNG': return ['bellRing', { wet: 0.7 }, null];
     case 'DAMAGED': return ['damage', { opts: { onMe, onEnemy: Boolean(target?.enemy) }, gain: onMe ? 1.1 : 0.9 }, target?.position];
     case 'BLOCKED': return ev.detail === 'WARNING_SHIELD' ? ['warningShield', { wet: 0.3 }, target?.position] : ['block', {}, actor?.position];
     case 'HEALED': return ['heal', { wet: 0.4 }, (target ?? actor)?.position];
@@ -323,6 +347,8 @@ function bindBus() {
     scheduleTicks(leftMs);
   });
   on('player:decided', ({ isMe }) => { if (isMe) decided = true; else playSfx('allyDecided', { wet: 0.2 }); });
+  on('signal:received', ({ kind }) => playSfx('signal', { opts: { danger: kind === 'DANGER' || kind === 'HELP' }, wet: 0.2 }));
+  on('lastword:heard', () => playSfx('lastWord', { wet: 0.5 }));
   on('order:sent', () => playSfx('orderSent'));
   on('order:acked', () => { decided = true; playSfx('orderAcked', { wet: 0.3 }); });
   on('order:rejected', () => playSfx('orderRejected', { wet: 0.1 }));

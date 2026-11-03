@@ -2,7 +2,7 @@ asyncapi: 3.0.0
 id: urn:ascua:realtime:match
 info:
   title: Ascua — protocolo en tiempo real
-  version: 1.3.0
+  version: 2.0.0
   description: |
     Contrato del hub SignalR **`/realtime/match`** del servidor autoritativo de *Ascua*
     (mazmorra semi-cooperativa por turnos simultáneos, 2-4 jugadores).
@@ -15,7 +15,7 @@ info:
     | Aspecto | Valor |
     |---|---|
     | Transporte | Solo **WebSocket seguro (`wss`)**. Sin *negotiate*: el cliente usa `skipNegotiation: true` y `transport: WebSockets`. No hay SSE ni *long polling*, así que no hacen falta *sticky sessions* |
-    | URL | `wss://{apiHost}/realtime/match?protocolVersion=1&access_token={ticket}` |
+    | URL | `wss://{apiHost}/realtime/match?protocolVersion=2&access_token={ticket}` |
     | Protocolo de hub | **MessagePack** (`"protocol":"messagepack","version":1` en el *handshake* de SignalR). Los objetos se serializan como **mapas con claves de texto** (camelCase), nunca como arreglos posicionales, para que agregar campos sea compatible. **JSON** (`"protocol":"json"`) se admite **solo para depuración** en ambientes `local` y `dev`; en `prod` se rechaza |
     | Tamaño máximo | 4 KB por mensaje entrante (`MaximumReceiveMessageSize`) |
     | Heartbeat | El servidor envía *ping* de SignalR cada **10 s** (`KeepAliveInterval`). Si el servidor no recibe nada del cliente en **30 s** (`ClientTimeoutInterval`) cierra la conexión. El cliente debe configurar `serverTimeoutInMilliseconds = 30000` y `keepAliveIntervalInMilliseconds = 10000` |
@@ -40,11 +40,13 @@ info:
 
     ```
     POST /api/v1/realtime/tickets ─► ticket
-    WS upgrade (ticket, protocolVersion=1) ─► handshake MessagePack
+    WS upgrade (ticket, protocolVersion=2) ─► handshake MessagePack
     JoinMatch ─► ACK con Snapshot
     [Drafting]   DraftOffer ─► DraftPick ─► ACK
     [InProgress] RoundOpened ─► SubmitOrder ─► ACK ─► PlayerDecided (a todos) ─► RoundResolved (a cada uno su vista)
     [Extinto]    RoundResolved (EXTINGUISHED) ─► PathOffer (privado) ─► ChoosePath ─► ACK ─► RoundResolved (PATH_CHOSEN a todos)
+    [Campanero]  PlayerDecided de todos los demás ─► LastWord (privado) ─► SubmitOrder
+    [Cualquiera] SendSignal ─► ACK ─► SignalReceived (a su bando)
     ... ─► MatchFinished ─► cierre MATCH_FINISHED
     ```
 
@@ -97,6 +99,7 @@ info:
     | `INVALID_ORDER` | No | La orden es válida en forma pero ilegal en el estado actual (p. ej. habilidad en enfriamiento) |
     | `STALE_ROUND` | No | `round` no es la ronda abierta (ya se cerró o aún no existe). `details.currentRound` indica la vigente |
     | `ORDER_ALREADY_SUBMITTED` | No | Ya hay una orden para esta ronda con **otro** `clientActionId`; la primera es la que vale |
+    | `ORDER_TOO_LATE` | No | Con el Repique sonando, venció tu plazo reducido: guardas (o enciendes el Faro) en esta ronda (desde 2.0.0) |
     | `DUPLICATE_ACTION` | — | **No es un fallo.** Reenvío del mismo `clientActionId`: se devuelve el ACK original con `result: DUPLICATE_ACTION` y no se aplica nada |
     | `NOT_PARTICIPANT` | No | El usuario no pertenece a la partida |
     | `NOT_JOINED` | No | Se invocó un método de partida sin `JoinMatch` previo en esta conexión |
@@ -107,7 +110,7 @@ info:
     | `DRAFT_CLOSED` | No | La oferta de draft ya se resolvió o venció |
     | `INVALID_PICK` | No | La bendición elegida no está entre las opciones de esa oferta |
     | `PATH_CLOSED` | No | La oferta de camino no está abierta: no estás extinto, ya elegiste otro camino en esa oferta, el `offerId` es de otra oferta o ya se resolvió/venció (desde 1.3.0) |
-    | `RATE_LIMITED` | Sí | Se agotó el *token bucket* de la conexión (capacidad 20, recarga 5/s). `retryAfterMs` indica la espera |
+    | `RATE_LIMITED` | Sí | Se agotó el *token bucket* de la conexión (capacidad 20, recarga 5/s), o `SendSignal` antes de 3 s desde tu última señal. `retryAfterMs` indica la espera |
     | `MESSAGE_TOO_LARGE` | No | Mensaje mayor a 4 KB (además cierra la conexión con 1009) |
     | `INTERNAL_ERROR` | Sí | Error del servidor; no se aplicó nada. Se puede reintentar con el **mismo** `clientActionId` |
     | `SESSION_REPLACED` | No | Solo en el mensaje `Error`: esta conexión se cierra porque el usuario abrió otra en la misma partida (desde 1.1.0) |
@@ -124,20 +127,24 @@ info:
     - `SubmitOrder` es idempotente por `clientActionId` (UUID v7 generado en el cliente):
       ante un *timeout* el cliente reintenta con el **mismo** id.
     - Ningún mensaje revela información oculta de otro jugador: órdenes antes de resolver,
-      pactos, opciones de draft, bendiciones ajenas, contenido de cofres, casillas fuera de visión
-      ni héroes en sigilo. Cada jugador recibe su propia vista.
+      pactos, opciones de draft, bendiciones ajenas, contenido de cofres, casillas fuera de visión,
+      el huésped de Polizón, deudas ajenas ni traiciones anónimas antes del final. Cada jugador recibe
+      su propia vista. La única excepción a «órdenes antes de resolver» es `LastWord`: la pasiva del
+      Campanero, privada para él.
 
     ## 5. Versionado y compatibilidad
 
     - **`protocolVersion`** (entero, *query* del *upgrade*) es la versión **mayor** del protocolo.
-      Esta especificación define `protocolVersion=1`. `info.version` sigue SemVer y su mayor coincide.
+      Esta especificación define `protocolVersion=2`. `info.version` sigue SemVer y su mayor coincide.
     - Dentro de una versión mayor solo hay **cambios aditivos** (sube la menor):
       campos opcionales nuevos, mensajes servidor→cliente nuevos, códigos de error nuevos y
       valores nuevos en enumeraciones marcadas como extensibles (`VisibleEvent.type`).
       Los clientes **deben ignorar** campos y mensajes desconocidos.
     - Un cambio incompatible (quitar o renombrar un campo, cambiar un tipo, endurecer una
       validación) exige una versión mayor nueva. El servidor acepta la mayor actual y la anterior
-      durante al menos 30 días; luego rechaza la vieja con `UNSUPPORTED_PROTOCOL_VERSION`.
+      durante al menos 30 días; luego rechaza la vieja con `UNSUPPORTED_PROTOCOL_VERSION`. La 2.0.0 es
+      una excepción deliberada: no hay producción ni clientes externos, y una partida con héroes viejos
+      ya no se puede jugar, así que la versión 1 se rechaza desde el primer día (ADR-0009).
     - Cada mensaje declara `x-since` (versión en que apareció). Los cambios se registran en
       `docs/adr/` y en el changelog de la versión.
 
@@ -164,7 +171,56 @@ info:
     - Privado de cada jugador: `PathOffer`, `me.path` (oferta, elección sin revelar, ecos, ascuas guardadas) y
       los eventos `PATH_OFFERED`, `PATH_SELECTED` y `ECHO_GAINED`.
 
+    ## 7. Los nueve héroes (desde 2.0.0)
+
+    Reglas en `planteamiento/05-heroes.md`. Todo usa las órdenes de siempre: no hay selección de objetivos.
+
+    | `hero` | `ABILITY` | Lo que cambia en el cable |
+    |---|---|---|
+    | `ERRATA` | Corregir (dirección): desvía todo anuncio con alguna casilla a ≤2 | Ve los anuncios de toda la sala: los de enemigos que no ve llegan en `hiddenTelegraphs`, sin autor. El uso es anónimo: los demás solo ven `ATTACK_CORRECTED` |
+    | `ANTEAYER` | Volver (dirección indiferente) | `me.rewindTile` y `me.rewindHp`: adónde saltaría (`null` sin 2 rondas de historia). Sus ecos llegan en `echoes` y al disparar en `ECHO_FIRED` |
+    | `HILVAN` | Tensar (dirección indiferente) | `me.secondBody` y `allies[].secondBody`. `MOVED`/`BOUNCED` con `detail: SECOND_BODY`. `MOVE`, `ATTACK` e `INTERACT` este/oeste van en espejo |
+    | `POLIZON` | Abordar (dirección); dentro, salir | `me.hostEnemyId` (solo él). Para los demás, `position: null`, ni rastro de su huésped. `HOST_BOARDED` y `HOST_DRAINED` son privados; `HOST_EXITED` lo ve quien vea la casilla |
+    | `ESCUCHA` | Grito (dirección indiferente) | `tiles` trae toda la sala, pero `enemies`, `allies[].position`, cofres y fuego solo si están a su alcance (`VisionRadius` 1) o hicieron ruido. `noiseTiles` son las casillas donde oyó algo. Tras `SHOUTED`, su bando ve la sala entera hasta la próxima resolución |
+    | `USURERA` | Préstamo (dirección) | `me.debt`/`me.debtTo` para el deudor; `allies[].debtToYou` para ella. `DEBT_CHANGED` les llega solo a ellos dos |
+    | `AVARO` | Soborno (dirección) | Su vida son sus `embers`: `hp` es 1 mientras está en pie y `maxHp` es 1. `groundEmbers` son las ascuas en el suelo. `EMBERS_DROPPED`, `EMBERS_PICKED_UP`, `ENEMY_BRIBED` |
+    | `MAMPOSTERO` | Corrimiento (dirección) | `ROOM_SHIFTED` llega a todos: `amount` = índice de la línea, `detail` = `ROW_E`, `ROW_W`, `COLUMN_N` o `COLUMN_S`. Las posiciones y casillas ya llegan movidas |
+    | `CAMPANERO` | Repique (dirección indiferente) | Ver abajo |
+
+    **Último en hablar.** Si todos los demás ya decidieron y él no, el Campanero recibe `LastWord` con las
+    órdenes de todos (solo los tipos, si es Renegado). Quien está en su gracia de reconexión no cuenta y figura
+    como `GUARD`. Se reenvía tras `JoinMatch` y `GetSnapshot` mientras siga aplicando. Su orden se resuelve
+    igual con las demás.
+
+    **Repique.** En la ronda siguiente, `RoundOpened` trae `bellDeadline` y `bellRingerId`, `view.bell` describe
+    el Repique y `roundDeadline` es el plazo **de cada jugador**: el reducido (8 s por defecto) para los demás y
+    el normal para quien lo tocó. Si el Campanero decide primero, los demás **conservan** sus segundos: la ronda
+    se cierra cuando todos decidieron o venció su plazo, con el máximo de la ronda normal. Al vencer el plazo
+    reducido llega un `Snapshot` a todos con `view.bell.closed: true` (y `BELL_EXPIRED`) y una orden tardía recibe
+    `ORDER_TOO_LATE`. El plazo es durable: sobrevive a un reinicio.
+
+    **Señales rápidas.** `SendSignal { matchId, kind, position? }`, hasta 1 cada 3 s por jugador. Llega solo a su
+    bando (y a quien la envía) como `SignalReceived`. La casilla la eligió quien la envía, así que **puede ser
+    mentira**. No se guarda ni aparece en la reproducción.
+
+    **Traiciones.** El daño a un aliado desviado por Errata o dado desde un huésped se registra culpando al
+    monstruo; `BETRAYAL_RECORDED` solo lo recibe quien la cometió. Al final, `MatchFinished.betrayals` y los eventos
+    `BETRAYAL_REVEALED` las revelan, sumadas por traidor y víctima («Errata le costó 3 de vida a Ana»).
+
     ### Changelog
+
+    - **2.0.0** (incompatible): `protocolVersion` pasa a 2 (la 1 se rechaza). `HeroKind` pasa a `ERRATA`,
+      `ANTEAYER`, `HILVAN`, `POLIZON`, `ESCUCHA`, `USURERA`, `AVARO`, `MAMPOSTERO` y `CAMPANERO` (fuera `YUNQUE`,
+      `CHISPA`, `CUERVO` y `RAIZ`). `SelfHero` pierde `charges` y `stealthRoundsLeft`, suma `secondBody`,
+      `hostEnemyId`, `debt`, `debtTo`, `rewindTile` y `rewindHp`; `abilityCooldown` llega hasta 12. `OtherHero` suma
+      `secondBody` y `debtToYou`. `PlayerView` y `PlayerViewDelta` suman `hiddenTelegraphs`, `echoes`,
+      `groundEmbers`, `noiseTiles` y `bell`; el delta suma `roundDeadline`. `RoundOpened` suma `bellDeadline` y
+      `bellRingerId`. `MatchFinished` suma `betrayals`. Mensajes nuevos: `SendSignal` (+ ACK), `SignalReceived` y
+      `LastWord`. `ErrorCode` suma `ORDER_TOO_LATE`. `VisibleEvent` suma el campo `tiles` y los tipos
+      `ECHO_FIRED`, `ATTACK_CORRECTED`, `BETRAYAL_RECORDED`, `BETRAYAL_REVEALED`, `HOST_BOARDED`, `HOST_EXITED`,
+      `HOST_DRAINED`, `WARDEN_TURNED`, `SHOUTED`, `DEBT_CHANGED`, `EMBERS_DROPPED`, `EMBERS_PICKED_UP`, `EMBERS_LOST`,
+      `ENEMY_BRIBED`, `ROOM_SHIFTED`, `BELL_RUNG` y `BELL_EXPIRED`. `BLOCKED` ya no se usa para el bloqueo frontal ni
+      para la Muralla, que dejan de existir.
 
     - **1.3.0** (aditivo): caminos tras la extinción. Mensajes nuevos `ChoosePath` (+ ACK) y `PathOffer`;
       `ErrorCode` suma `PATH_CLOSED`; `HeroState` suma `EMBER_SPIRIT` y `RENEGADE`; `MatchFinished.outcome`
@@ -242,7 +298,7 @@ channels:
           properties:
             protocolVersion:
               type: string
-              enum: ['1']
+              enum: ['2']
               description: Versión mayor del protocolo de Ascua.
             access_token:
               type: string
@@ -274,6 +330,10 @@ channels:
         $ref: '#/components/messages/ChoosePath'
       ChoosePathAck:
         $ref: '#/components/messages/ChoosePathAck'
+      SendSignal:
+        $ref: '#/components/messages/SendSignal'
+      SendSignalAck:
+        $ref: '#/components/messages/SendSignalAck'
       InvocationError:
         $ref: '#/components/messages/InvocationError'
       RoundOpened:
@@ -288,6 +348,10 @@ channels:
         $ref: '#/components/messages/DraftOffer'
       PathOffer:
         $ref: '#/components/messages/PathOffer'
+      LastWord:
+        $ref: '#/components/messages/LastWord'
+      SignalReceived:
+        $ref: '#/components/messages/SignalReceived'
       PlayerConnectionChanged:
         $ref: '#/components/messages/PlayerConnectionChanged'
       MatchFinished:
@@ -335,6 +399,9 @@ operations:
       `INTERACT` = Reavivar, `ATTACK` = Estorbo, `GUARD` = Faro; Estorbo en enfriamiento → `INVALID_ORDER`)
       y el Renegado ya presente (`RENEGADE`, con las mismas órdenes que su héroe). Un extinto o un Renegado
       que aún no apareció recibe `PLAYER_DOWN`.
+
+      Desde 2.0.0, con el Repique sonando, una orden que llega después del plazo reducido recibe
+      `ORDER_TOO_LATE`, salvo que sea de quien lo tocó.
     tags:
       - name: invocacion
     messages:
@@ -423,6 +490,26 @@ operations:
       messages:
         - $ref: '#/channels/match/messages/ChoosePathAck'
         - $ref: '#/channels/match/messages/InvocationError'
+  sendSignal:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: SendSignal
+    summary: Envía a tu bando una frase fija y, si quieres, una casilla marcada.
+    description: |
+      Es información libre: también se puede mentir. Se valida que la casilla esté en el tablero y que
+      no hayas enviado otra señal hace menos de 3 s (`RATE_LIMITED` con `retryAfterMs`). No toca la partida,
+      no se guarda ni aparece en la reproducción. Desde 2.0.0.
+    tags:
+      - name: invocacion
+    messages:
+      - $ref: '#/channels/match/messages/SendSignal'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/SendSignalAck'
+        - $ref: '#/channels/match/messages/InvocationError'
 
   # ───────────── Servidor → cliente ─────────────
   sendRoundOpened:
@@ -492,6 +579,29 @@ operations:
       - name: privado
     messages:
       - $ref: '#/channels/match/messages/PathOffer'
+  sendLastWord:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: LastWord
+    summary: Último en hablar. Las órdenes de los demás, solo para el Campanero.
+    description: |
+      Llega cuando todos los demás ya decidieron (o venció su plazo con el Repique) y él todavía no. Se
+      reenvía tras `JoinMatch` y `GetSnapshot` mientras siga aplicando. Desde 2.0.0.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/LastWord'
+  sendSignalReceived:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: SignalReceived
+    summary: Señal rápida de alguien de tu bando (también la propia). Desde 2.0.0.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/SignalReceived'
   sendPlayerConnectionChanged:
     action: send
     channel:
@@ -507,7 +617,7 @@ operations:
     channel:
       $ref: '#/channels/match'
     title: MatchFinished
-    summary: Resultado final e inmutable, con los pactos revelados.
+    summary: Resultado final e inmutable, con los pactos y las traiciones revelados.
     tags:
       - name: difusion
     messages:
@@ -610,7 +720,7 @@ components:
                 me:
                   playerId: 0193a1b0-1111-7c00-9a00-00000000a001
                   displayName: ana
-                  hero: CHISPA
+                  hero: ANTEAYER
                   state: ALIVE
                   hp: 4
                   maxHp: 4
@@ -618,9 +728,7 @@ components:
                   position: { x: 1, y: 1 }
                   facing: E
                   embers: 0
-                  charges: 0
                   abilityCooldown: 0
-                  stealthRoundsLeft: 0
                   downRoundsLeft: null
                   blessings: []
                   pact: null
@@ -635,7 +743,7 @@ components:
       title: SubmitOrder
       summary: Orden secreta del jugador para la ronda `round`.
       x-since: 1.0.0
-      x-errors: [INVALID_PAYLOAD, INVALID_ORDER, STALE_ROUND, ORDER_ALREADY_SUBMITTED, DUPLICATE_ACTION, NOT_PARTICIPANT, NOT_JOINED, PLAYER_DOWN, MATCH_NOT_ACTIVE, RATE_LIMITED, MESSAGE_TOO_LARGE, INTERNAL_ERROR]
+      x-errors: [INVALID_PAYLOAD, INVALID_ORDER, STALE_ROUND, ORDER_ALREADY_SUBMITTED, ORDER_TOO_LATE, DUPLICATE_ACTION, NOT_PARTICIPANT, NOT_JOINED, PLAYER_DOWN, MATCH_NOT_ACTIVE, RATE_LIMITED, MESSAGE_TOO_LARGE, INTERNAL_ERROR]
       correlationId:
         $ref: '#/components/correlationIds/clientAction'
       tags:
@@ -833,6 +941,46 @@ components:
             result: DUPLICATE_ACTION
             acceptedAt: '2026-11-03T18:07:12Z'
 
+    SendSignal:
+      name: SendSignal
+      title: SendSignal
+      summary: Señal rápida a tu bando.
+      x-since: 2.0.0
+      x-errors: [INVALID_PAYLOAD, NOT_PARTICIPANT, NOT_JOINED, PLAYER_DOWN, MATCH_NOT_FOUND, MATCH_NOT_ACTIVE, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/SendSignalRequest'
+      examples:
+        - name: cuidado
+          summary: «¡Cuidado!» marcando una casilla.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            kind: DANGER
+            position: { x: 3, y: 3 }
+        - name: ayuda
+          summary: «Ayuda», sin casilla.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            kind: HELP
+
+    SendSignalAck:
+      name: SendSignalAck
+      title: ACK de SendSignal
+      summary: La señal se envió a tu bando.
+      x-since: 2.0.0
+      tags:
+        - name: invocacion
+      payload:
+        $ref: '#/components/schemas/SendSignalAck'
+      examples:
+        - name: enviada
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            sentAt: '2026-11-03T18:02:14.120Z'
+
     InvocationError:
       name: InvocationError
       title: Error de invocación
@@ -878,6 +1026,19 @@ components:
               message: path debe ser FRIENDSHIP o VENGEANCE.
               details:
                 field: path
+        - name: repique
+          summary: Una orden después del plazo reducido del Repique.
+          payload:
+            error:
+              code: ORDER_TOO_LATE
+              message: 'El Repique ya sonó: se acabó tu tiempo en esta ronda.'
+        - name: senal
+          summary: Una señal antes de los 3 s.
+          payload:
+            error:
+              code: RATE_LIMITED
+              message: 'Demasiadas señales: espera unos segundos.'
+              retryAfterMs: 3000
 
     # ───────────── Servidor → cliente ─────────────
     RoundOpened:
@@ -899,6 +1060,16 @@ components:
             deadline: '2026-11-03T18:02:35Z'
             durationMs: 20000
             expectedPlayers: 3
+        - name: conRepique
+          summary: Desde 2.0.0. Todos menos quien lo tocó deben decidir antes de `bellDeadline`.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 9
+            deadline: '2026-11-03T18:03:15Z'
+            durationMs: 20000
+            expectedPlayers: 3
+            bellDeadline: '2026-11-03T18:03:03Z'
+            bellRingerId: 0193a1b0-1111-7c00-9a00-00000000a002
 
     PlayerDecided:
       name: PlayerDecided
@@ -947,7 +1118,7 @@ components:
               me:
                 playerId: 0193a1b0-1111-7c00-9a00-00000000a001
                 displayName: ana
-                hero: CHISPA
+                hero: ANTEAYER
                 state: ALIVE
                 hp: 3
                 maxHp: 4
@@ -955,9 +1126,7 @@ components:
                 position: { x: 4, y: 3 }
                 facing: N
                 embers: 2
-                charges: 1
                 abilityCooldown: 0
-                stealthRoundsLeft: 0
                 downRoundsLeft: null
                 blessings: [LAMPARA]
                 pact:
@@ -968,7 +1137,7 @@ components:
               alliesChanged:
                 - playerId: 0193a1b0-1111-7c00-9a00-00000000a002
                   displayName: beto
-                  hero: YUNQUE
+                  hero: MAMPOSTERO
                   state: ALIVE
                   hp: 6
                   maxHp: 6
@@ -1012,7 +1181,7 @@ components:
               me:
                 playerId: 0193a1b0-1111-7c00-9a00-00000000a001
                 displayName: ana
-                hero: CHISPA
+                hero: ANTEAYER
                 state: EMBER_SPIRIT
                 hp: 0
                 maxHp: 4
@@ -1020,9 +1189,7 @@ components:
                 position: { x: 2, y: 5 }
                 facing: N
                 embers: 0
-                charges: 0
                 abilityCooldown: 0
-                stealthRoundsLeft: 0
                 downRoundsLeft: null
                 blessings: [LAMPARA]
                 pact:
@@ -1070,7 +1237,7 @@ components:
               me:
                 playerId: 0193a1b0-1111-7c00-9a00-00000000a001
                 displayName: ana
-                hero: CHISPA
+                hero: ANTEAYER
                 state: ALIVE
                 hp: 3
                 maxHp: 4
@@ -1078,9 +1245,7 @@ components:
                 position: { x: 4, y: 3 }
                 facing: N
                 embers: 2
-                charges: 1
                 abilityCooldown: 0
-                stealthRoundsLeft: 0
                 downRoundsLeft: null
                 blessings: [LAMPARA]
                 pact:
@@ -1093,10 +1258,10 @@ components:
               allies:
                 - playerId: 0193a1b0-1111-7c00-9a00-00000000a003
                   displayName: caro
-                  hero: CUERVO
+                  hero: POLIZON
                   state: ALIVE
-                  hp: 4
-                  maxHp: 4
+                  hp: 3
+                  maxHp: 3
                   position: null
                   facing: null
                   embers: 3
@@ -1168,6 +1333,55 @@ components:
             friendshipEmbersMax: 9
             wardenRoom: false
 
+    LastWord:
+      name: LastWord
+      title: LastWord
+      summary: Último en hablar. Solo lo recibe el Campanero.
+      x-since: 2.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/LastWord'
+      examples:
+        - name: heroe
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 8
+            typesOnly: false
+            orders:
+              - { playerId: 0193a1b0-1111-7c00-9a00-00000000a002, type: ATTACK, direction: E }
+              - { playerId: 0193a1b0-1111-7c00-9a00-00000000a003, type: GUARD, direction: null }
+        - name: renegado
+          summary: Como Renegado solo oye los tipos.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 8
+            typesOnly: true
+            orders:
+              - { playerId: 0193a1b0-1111-7c00-9a00-00000000a002, type: ATTACK, direction: null }
+
+    SignalReceived:
+      name: SignalReceived
+      title: SignalReceived
+      summary: Señal rápida de tu bando. La casilla la eligió quien la envía; puede mentir.
+      x-since: 2.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/SignalReceived'
+      examples:
+        - name: cuidado
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            fromPlayerId: 0193a1b0-1111-7c00-9a00-00000000a002
+            kind: DANGER
+            position: { x: 3, y: 3 }
+            sentAt: '2026-11-03T18:02:14.120Z'
+
     PlayerConnectionChanged:
       name: PlayerConnectionChanged
       title: PlayerConnectionChanged
@@ -1196,7 +1410,7 @@ components:
     MatchFinished:
       name: MatchFinished
       title: MatchFinished
-      summary: Resultado final, inmutable, con los pactos de todos revelados.
+      summary: Resultado final, inmutable, con los pactos y las traiciones de todos revelados.
       x-since: 1.0.0
       tags:
         - name: difusion
@@ -1215,20 +1429,24 @@ components:
             standings:
               - playerId: 0193a1b0-1111-7c00-9a00-00000000a001
                 displayName: ana
-                hero: CHISPA
+                hero: ANTEAYER
                 finalState: ALIVE
                 embers: 14
                 placement: 1
                 pact: { pactId: OPEN_3_CHESTS, description: Abrir 3 cofres., fulfilled: true }
               - playerId: 0193a1b0-1111-7c00-9a00-00000000a002
                 displayName: beto
-                hero: YUNQUE
+                hero: MAMPOSTERO
                 finalState: DOWN
                 embers: 9
                 placement: 2
                 pact: { pactId: NEVER_DOWNED, description: Terminar sin haber caído., fulfilled: false }
             finishedAt: '2026-11-03T18:13:52Z'
             replayUrl: https://ascua-api.azurecontainerapps.io/api/v1/matches/0193a1c2-5e7f-7a10-8b2c-3d4e5f607182/replay
+            betrayals:
+              - traitorId: 0193a1b0-1111-7c00-9a00-00000000a001
+                victimId: 0193a1b0-1111-7c00-9a00-00000000a002
+                damage: 3
 
     ServerDraining:
       name: ServerDraining
@@ -1317,7 +1535,7 @@ components:
       maxLength: 32
     HeroKind:
       type: string
-      enum: [YUNQUE, CHISPA, CUERVO, RAIZ]
+      enum: [ERRATA, ANTEAYER, HILVAN, POLIZON, ESCUCHA, USURERA, AVARO, MAMPOSTERO, CAMPANERO]
     HeroState:
       type: string
       enum: [ALIVE, DOWN, EXTINCT, RETIRED, EMBER_SPIRIT, RENEGADE]
@@ -1348,7 +1566,7 @@ components:
     Hp:
       type: integer
       minimum: 0
-      maximum: 8
+      maximum: 10
 
     # ───────────── Órdenes ─────────────
     Order:
@@ -1526,6 +1744,7 @@ components:
         - INVALID_ORDER
         - STALE_ROUND
         - ORDER_ALREADY_SUBMITTED
+        - ORDER_TOO_LATE
         - DUPLICATE_ACTION
         - NOT_PARTICIPANT
         - NOT_JOINED
@@ -1626,9 +1845,11 @@ components:
         - type: 'null'
     SelfHero:
       type: object
-      description: El héroe propio, con toda su información privada (pacto, bendiciones, orden pendiente).
+      description: |
+        El héroe propio, con toda su información privada (pacto, bendiciones, orden pendiente). El Avaro no tiene
+        barra de vida: `hp` y `maxHp` son 1 mientras está en pie y lo que aguanta son sus `embers`.
       additionalProperties: false
-      required: [playerId, displayName, hero, state, hp, maxHp, shield, position, facing, embers, charges, abilityCooldown, stealthRoundsLeft, downRoundsLeft, blessings, pact, decided, pendingOrder]
+      required: [playerId, displayName, hero, state, hp, maxHp, shield, position, facing, embers, abilityCooldown, downRoundsLeft, blessings, pact, decided, pendingOrder]
       properties:
         playerId:
           $ref: '#/components/schemas/Uuid'
@@ -1643,7 +1864,7 @@ components:
         maxHp:
           type: integer
           minimum: 1
-          maximum: 8
+          maximum: 10
         shield:
           type: integer
           minimum: 0
@@ -1654,20 +1875,43 @@ components:
           $ref: '#/components/schemas/Direction'
         embers:
           $ref: '#/components/schemas/Embers'
-        charges:
-          type: integer
-          minimum: 0
-          maximum: 3
-          description: Cargas de Chispa; 0 para los demás héroes.
         abilityCooldown:
           type: integer
           minimum: 0
-          maximum: 8
-          description: Rondas para volver a usar la habilidad (Avivar, para la Brasa). Hasta 8 para el Renegado (×2) desde 1.3.0.
-        stealthRoundsLeft:
+          maximum: 12
+          description: Rondas para volver a usar la habilidad (Avivar, para la Brasa). El Renegado tiene enfriamiento ×2; hasta 12 por girar al Celador como Polizón Renegado.
+        secondBody:
+          description: 'Hilván: su segundo cuerpo. `null` para los demás. Desde 2.0.0.'
+          anyOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+        hostEnemyId:
+          description: 'Polizón: el enemigo en el que va (solo lo ve él); mientras tanto, `position` sigue al huésped. Desde 2.0.0.'
+          anyOf:
+            - type: integer
+              minimum: 1
+              maximum: 100000
+            - type: 'null'
+        debt:
           type: integer
           minimum: 0
-          maximum: 2
+          maximum: 99
+          description: Ascuas que debes a la Usurera; las ves tú y ella. Desde 2.0.0.
+        debtTo:
+          description: A quién le debes; `null` sin deuda. Desde 2.0.0.
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        rewindTile:
+          description: 'Anteayer: adónde saltaría Volver en la ronda abierta; `null` sin 2 rondas de historia. Desde 2.0.0.'
+          anyOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+        rewindHp:
+          description: 'Anteayer: la vida que tenía allí. Desde 2.0.0.'
+          anyOf:
+            - $ref: '#/components/schemas/Hp'
+            - type: 'null'
         downRoundsLeft:
           description: Rondas que faltan para extinguirse si está caído; `null` si no lo está.
           anyOf:
@@ -1742,8 +1986,9 @@ components:
     OtherHero:
       type: object
       description: |
-        Otro portador, tal como lo ve este jugador. `position` y `facing` son `null` si está en
-        sigilo. Nunca incluye pacto, bendiciones concretas ni orden pendiente. Desde 1.3.0: una Brasa
+        Otro portador, tal como lo ve este jugador. `position` y `facing` son `null` si va dentro de un huésped
+        (Polizón) o, para La Escucha, si no está a su alcance ni hizo ruido. Nunca incluye pacto, bendiciones
+        concretas, orden pendiente ni huésped. Desde 1.3.0: una Brasa
         (`EMBER_SPIRIT`) se ve siempre si eres del grupo; un `RENEGADE` (o, para un Renegado, un héroe) solo
         trae posición dentro de la visión; un extinto o un Renegado que aún no apareció no tiene posición.
         Nunca incluye ecos, ascuas guardadas ni el camino elegido sin revelar.
@@ -1763,7 +2008,7 @@ components:
         maxHp:
           type: integer
           minimum: 1
-          maximum: 8
+          maximum: 10
         position:
           $ref: '#/components/schemas/NullablePosition'
         facing:
@@ -1780,6 +2025,59 @@ components:
           type: boolean
         decided:
           type: boolean
+        secondBody:
+          description: 'Hilván: su segundo cuerpo, con la misma regla de visibilidad que `position`. Desde 2.0.0.'
+          anyOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+        debtToYou:
+          description: Lo que te debe este jugador; solo si eres la Usurera a la que le debe. Desde 2.0.0.
+          anyOf:
+            - type: integer
+              minimum: 1
+              maximum: 99
+            - type: 'null'
+    Echo:
+      type: object
+      description: Un Eco de Anteayer. Lo ve quien tenga esa casilla en su visión (el próximo de cada Anteayer); ella ve todos los suyos.
+      additionalProperties: false
+      required: [ownerId, position, direction, fireRound]
+      properties:
+        ownerId:
+          $ref: '#/components/schemas/Uuid'
+        position:
+          $ref: '#/components/schemas/Position'
+        direction:
+          $ref: '#/components/schemas/Direction'
+        fireRound:
+          $ref: '#/components/schemas/RoundNumber'
+    GroundEmbers:
+      type: object
+      description: Ascuas en el suelo en una casilla visible. Las recoge el primero que la pise; se pierden al cambiar de sala.
+      additionalProperties: false
+      required: [position, amount]
+      properties:
+        position:
+          $ref: '#/components/schemas/Position'
+        amount:
+          type: integer
+          minimum: 1
+          maximum: 99
+    Bell:
+      type: object
+      description: Repique sonando en la ronda abierta. Es público; se oye.
+      additionalProperties: false
+      required: [ringerId, deadline, closed]
+      properties:
+        ringerId:
+          $ref: '#/components/schemas/Uuid'
+        deadline:
+          description: Hasta cuándo pueden decidir los demás; `null` si ya venció.
+          allOf:
+            - $ref: '#/components/schemas/NullableTimestamp'
+        closed:
+          type: boolean
+          description: Ya venció el plazo reducido.
     Enemy:
       type: object
       description: Enemigo dentro de la visión del jugador. `telegraph` son las casillas que golpeará en la ronda siguiente.
@@ -1851,12 +2149,38 @@ components:
 
         Reavivar se informa como `REVIVED` (con `actorId` = la Brasa) y la Deriva como `MOVED`. El primer golpe
         de un Renegado a cada héroe llega como `BLOCKED` con `detail: WARNING_SHIELD`.
+
+        Tipos de los héroes (desde 2.0.0; los marcados *privado* solo los reciben los implicados):
+
+        | `type` | Campos | Significado |
+        |---|---|---|
+        | `MOVED`, `BOUNCED` | `detail: SECOND_BODY` | Es el segundo cuerpo de Hilván |
+        | `ECHO_FIRED` | `actorId` = Anteayer, `position` = de dónde sale, `detail` = dirección | Disparó un Eco |
+        | `ATTACK_CORRECTED` | `targetId` = `enemy:{id}` (solo si lo ves), `tiles` = casillas que ves | Un anuncio se desvió; no dice quién fue |
+        | `BETRAYAL_RECORDED` *privado* | `actorId` = traidor, `targetId` = víctima, `amount` = daño | Solo lo ve quien la cometió |
+        | `BETRAYAL_REVEALED` | `actorId`, `targetId`, `amount` | Al terminar, sumadas por traidor y víctima |
+        | `HOST_BOARDED` *privado* | `actorId`, `targetId` = `enemy:{id}` | Polizón entró |
+        | `HOST_EXITED` | `actorId`, `position` | Polizón reapareció (lo ve quien vea la casilla) |
+        | `HOST_DRAINED` *privado* | `actorId`, `targetId` = `enemy:{id}` | Drenó a su huésped |
+        | `WARDEN_TURNED` | `targetId` = `enemy:{id}`, `detail` = hacia dónde mira | Abordar giró al Celador |
+        | `SHOUTED` | `actorId` | Grito de La Escucha |
+        | `DEBT_CHANGED` *privado* | `actorId` = Usurera, `targetId` = deudor, `amount` = cambio, `detail` = `LOAN`/`INTEREST`/`PAID`/`EXTINCTION`/`MATCH_END`/`CANCELLED` | Solo para ellos dos |
+        | `EMBERS_DROPPED` | `position`, `amount` | Cayeron ascuas al suelo |
+        | `EMBERS_PICKED_UP` | `actorId`, `position`, `amount` | Alguien las recogió |
+        | `EMBERS_LOST` *privado* | `actorId`, `amount` negativo, `detail` = `HIT`/`BRIBE`/`DEBT_SETTLED` | Tus ascuas bajaron |
+        | `ENEMY_BRIBED` | `actorId` = Avaro, `targetId` = `enemy:{id}`, `amount` = pago | Soborno |
+        | `ROOM_SHIFTED` | `actorId`, `amount` = línea, `detail` = `ROW_E`/`ROW_W`/`COLUMN_N`/`COLUMN_S` | Corrimiento; lo ven todos |
+        | `BELL_RUNG` | `actorId`, `amount` = ronda en que suena | Repique |
+        | `BELL_EXPIRED` | `actorId` = quien lo tocó | Venció el plazo reducido |
+
+        `EMBERS_GAINED` puede traer `detail: DEBT_COLLECTED`. `ENEMY_KILLED` no trae `actorId` si el golpe final fue
+        anónimo y no es tuyo (desviado por Errata o desde un huésped).
       additionalProperties: false
       required: [type]
       properties:
         type:
           type: string
-          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED, PATH_OFFERED, PATH_SELECTED, PATH_CHOSEN, EMBER_REBORN, RENEGADE_SPAWNED, RENEGADE_DEFEATED, ECHO_GAINED, SHIELD_KINDLED, ATTACK_HINDERED, BEACON_LIT, WARMTH_HEALED]
+          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED, PATH_OFFERED, PATH_SELECTED, PATH_CHOSEN, EMBER_REBORN, RENEGADE_SPAWNED, RENEGADE_DEFEATED, ECHO_GAINED, SHIELD_KINDLED, ATTACK_HINDERED, BEACON_LIT, WARMTH_HEALED, ECHO_FIRED, ATTACK_CORRECTED, BETRAYAL_RECORDED, BETRAYAL_REVEALED, HOST_BOARDED, HOST_EXITED, HOST_DRAINED, WARDEN_TURNED, SHOUTED, DEBT_CHANGED, EMBERS_DROPPED, EMBERS_PICKED_UP, EMBERS_LOST, ENEMY_BRIBED, ROOM_SHIFTED, BELL_RUNG, BELL_EXPIRED]
         detail:
           type: string
           maxLength: 32
@@ -1873,6 +2197,12 @@ components:
           type: integer
           minimum: -99
           maximum: 99
+        tiles:
+          type: array
+          maxItems: 81
+          description: Casillas del evento (`ATTACK_CORRECTED`). Desde 2.0.0.
+          items:
+            $ref: '#/components/schemas/Position'
     PlayerView:
       type: object
       description: Vista completa del jugador; la genera `PlayerViewProjector` y no contiene secretos ajenos.
@@ -1891,7 +2221,9 @@ components:
           minimum: 1
           maximum: 5
         roundDeadline:
-          $ref: '#/components/schemas/NullableTimestamp'
+          description: Plazo de este jugador en la ronda abierta. Con el Repique, el de los demás es menor que el de quien lo tocó.
+          allOf:
+            - $ref: '#/components/schemas/NullableTimestamp'
         me:
           $ref: '#/components/schemas/SelfHero'
         allies:
@@ -1907,14 +2239,42 @@ components:
         tiles:
           type: array
           maxItems: 81
-          description: Solo las casillas visibles o recordadas por el jugador.
+          description: Solo las casillas visibles para el jugador. La Escucha conoce el terreno de toda la sala.
           items:
             $ref: '#/components/schemas/Tile'
+        hiddenTelegraphs:
+          type: array
+          maxItems: 81
+          description: Casillas anunciadas por enemigos que no ves (Errata y Ojo de búho), sin autor. Desde 2.0.0.
+          items:
+            $ref: '#/components/schemas/Position'
+        echoes:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/Echo'
+        groundEmbers:
+          type: array
+          maxItems: 81
+          items:
+            $ref: '#/components/schemas/GroundEmbers'
+        noiseTiles:
+          type: array
+          maxItems: 81
+          description: 'La Escucha: casillas donde oyó ruido en la última resolución. Vacío para los demás. Desde 2.0.0.'
+          items:
+            $ref: '#/components/schemas/Position'
+        bell:
+          description: Repique sonando en la ronda abierta; `null` si no. Desde 2.0.0.
+          anyOf:
+            - $ref: '#/components/schemas/Bell'
+            - type: 'null'
     PlayerViewDelta:
       type: object
       description: |
         Cambios de la vista desde `previousSeq`. Las listas ausentes significan "sin cambios".
-        Un enemigo que sale de la visión aparece en `enemiesRemoved`.
+        Un enemigo que sale de la visión aparece en `enemiesRemoved`. `hiddenTelegraphs`, `echoes`,
+        `groundEmbers` y `noiseTiles` son listas completas: reemplazan a las anteriores.
       additionalProperties: false
       required: [status, me, events]
       properties:
@@ -1957,6 +2317,34 @@ components:
           maxItems: 128
           items:
             $ref: '#/components/schemas/VisibleEvent'
+        hiddenTelegraphs:
+          type: array
+          maxItems: 81
+          items:
+            $ref: '#/components/schemas/Position'
+        echoes:
+          type: array
+          maxItems: 16
+          items:
+            $ref: '#/components/schemas/Echo'
+        groundEmbers:
+          type: array
+          maxItems: 81
+          items:
+            $ref: '#/components/schemas/GroundEmbers'
+        noiseTiles:
+          type: array
+          maxItems: 81
+          items:
+            $ref: '#/components/schemas/Position'
+        bell:
+          anyOf:
+            - $ref: '#/components/schemas/Bell'
+            - type: 'null'
+        roundDeadline:
+          description: Plazo de este jugador en la ronda que abre; con el Repique puede ser menor que el de los demás. Desde 2.0.0.
+          allOf:
+            - $ref: '#/components/schemas/NullableTimestamp'
     RevealedPact:
       type: object
       additionalProperties: false
@@ -1993,6 +2381,15 @@ components:
           minimum: 1
           maximum: 4
           description: Jugadores de los que se espera orden (héroes activos y, desde 1.3.0, Brasas y Renegados presentes).
+        bellDeadline:
+          description: Con Repique, hasta cuándo pueden decidir todos menos `bellRingerId`; si no, `null`. Desde 2.0.0.
+          allOf:
+            - $ref: '#/components/schemas/NullableTimestamp'
+        bellRingerId:
+          description: Quien tocó el Repique; conserva todo el reloj. Desde 2.0.0.
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
     PlayerDecided:
       type: object
       additionalProperties: false
@@ -2097,6 +2494,82 @@ components:
         wardenRoom:
           type: boolean
           description: En la sala del Celador la Brasa no renace (puntúa con la fórmula al final) y el Renegado aparece 2 rondas después junto al Celador.
+    HeardOrder:
+      type: object
+      description: Una orden que oye el Campanero. Como Renegado, sin dirección.
+      additionalProperties: false
+      required: [playerId, type, direction]
+      properties:
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        type:
+          type: string
+          enum: [MOVE, ATTACK, ABILITY, INTERACT, GUARD]
+        direction:
+          anyOf:
+            - $ref: '#/components/schemas/Direction'
+            - type: 'null'
+    LastWord:
+      type: object
+      additionalProperties: false
+      required: [matchId, round, orders, typesOnly]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        round:
+          $ref: '#/components/schemas/RoundNumber'
+        orders:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/HeardOrder'
+        typesOnly:
+          type: boolean
+          description: Como Renegado solo se oyen los tipos.
+    SignalKind:
+      type: string
+      enum: [HERE, DANGER, HELP, MINE]
+      description: «¡Aquí!», «¡Cuidado!», «Ayuda» y «Es mía».
+    SendSignalRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId, kind]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          $ref: '#/components/schemas/SignalKind'
+        position:
+          description: Casilla marcada (opcional). Debe estar en el tablero; puede ser mentira.
+          anyOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+    SendSignalAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, sentAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        sentAt:
+          $ref: '#/components/schemas/Timestamp'
+    SignalReceived:
+      type: object
+      additionalProperties: false
+      required: [matchId, fromPlayerId, kind, position, sentAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        fromPlayerId:
+          $ref: '#/components/schemas/Uuid'
+        kind:
+          $ref: '#/components/schemas/SignalKind'
+        position:
+          anyOf:
+            - $ref: '#/components/schemas/Position'
+            - type: 'null'
+        sentAt:
+          $ref: '#/components/schemas/Timestamp'
     PlayerConnectionChanged:
       type: object
       additionalProperties: false
@@ -2174,6 +2647,23 @@ components:
           type: string
           format: uri
           maxLength: 256
+        betrayals:
+          type: array
+          maxItems: 12
+          description: Traiciones anónimas, sumadas por traidor y víctima. Siempre llega; vacía si no hubo. Desde 2.0.0.
+          items:
+            type: object
+            additionalProperties: false
+            required: [traitorId, victimId, damage]
+            properties:
+              traitorId:
+                $ref: '#/components/schemas/Uuid'
+              victimId:
+                $ref: '#/components/schemas/Uuid'
+              damage:
+                type: integer
+                minimum: 1
+                maximum: 999
     ServerDraining:
       type: object
       additionalProperties: false

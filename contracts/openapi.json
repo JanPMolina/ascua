@@ -1584,7 +1584,7 @@
                       "status": "FINISHED",
                       "outcome": "WARDEN_DEFEATED",
                       "result": "VICTORY",
-                      "hero": "CUERVO",
+                      "hero": "ERRATA",
                       "placement": 1,
                       "embers": 17,
                       "rounds": 38,
@@ -1676,20 +1676,20 @@
                     {
                       "playerId": "0192f39e-11aa-7c3b-8d55-6f0e2a9b4c10",
                       "displayName": "ana",
-                      "hero": "CUERVO",
+                      "hero": "ERRATA",
                       "finalState": "ALIVE",
                       "embers": 17,
                       "placement": 1,
                       "pact": {
                         "pactId": "BETRAY_TWICE_UNSEEN",
-                        "description": "Golpear 2 veces a un aliado por la espalda sin que te descubra.",
+                        "description": "Golpear 2 veces a un aliado por la espalda o con una traición anónima.",
                         "fulfilled": true
                       }
                     },
                     {
                       "playerId": "0192f39e-22bb-7c3b-8d55-6f0e2a9b4c20",
                       "displayName": "beto",
-                      "hero": "YUNQUE",
+                      "hero": "MAMPOSTERO",
                       "finalState": "DOWN",
                       "embers": 9,
                       "placement": 2,
@@ -1702,7 +1702,7 @@
                   ],
                   "myPact": {
                     "pactId": "BETRAY_TWICE_UNSEEN",
-                    "description": "Golpear 2 veces a un aliado por la espalda sin que te descubra.",
+                    "description": "Golpear 2 veces a un aliado por la espalda o con una traición anónima.",
                     "fulfilled": true
                   },
                   "replayUrl": "https://ascua.example/api/v1/matches/0192f3a1-7c2e-7b4d-9a10-3f5e8c6d2b71/replay"
@@ -1832,7 +1832,7 @@
                         "me": {
                           "playerId": "0192f39e-11aa-7c3b-8d55-6f0e2a9b4c10",
                           "displayName": "ana",
-                          "hero": "CUERVO",
+                          "hero": "ERRATA",
                           "state": "ALIVE",
                           "hp": 4,
                           "maxHp": 4,
@@ -1843,16 +1843,14 @@
                           },
                           "facing": "N",
                           "embers": 1,
-                          "charges": 0,
                           "abilityCooldown": 0,
-                          "stealthRoundsLeft": 0,
                           "downRoundsLeft": null,
                           "blessings": [
                             "GANZUA"
                           ],
                           "pact": {
                             "pactId": "BETRAY_TWICE_UNSEEN",
-                            "description": "Golpear 2 veces a un aliado por la espalda sin que te descubra."
+                            "description": "Golpear 2 veces a un aliado por la espalda o con una traición anónima."
                           },
                           "decided": false,
                           "pendingOrder": null
@@ -1861,7 +1859,7 @@
                           {
                             "playerId": "0192f39e-22bb-7c3b-8d55-6f0e2a9b4c20",
                             "displayName": "beto",
-                            "hero": "YUNQUE",
+                            "hero": "MAMPOSTERO",
                             "state": "ALIVE",
                             "hp": 6,
                             "maxHp": 6,
@@ -2800,6 +2798,23 @@
           }
         }
       },
+      "BellDto": {
+        "type": "object",
+        "properties": {
+          "ringerId": {
+            "type": "string"
+          },
+          "deadline": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "closed": {
+            "type": "boolean"
+          }
+        }
+      },
       "ChooseHeroRequest": {
         "required": [
           "hero"
@@ -2906,6 +2921,28 @@
               "string"
             ],
             "description": "Capacidad de la sala (2 a 4).",
+            "format": "int32"
+          }
+        }
+      },
+      "EchoDto": {
+        "type": "object",
+        "properties": {
+          "ownerId": {
+            "type": "string"
+          },
+          "position": {
+            "$ref": "#/components/schemas/PositionDto"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "fireRound": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
             "format": "int32"
           }
         }
@@ -3087,7 +3124,10 @@
           "blessings",
           "draftOptions",
           "pact",
-          "stealthRoundsLeft"
+          "secondBody",
+          "hostEnemyId",
+          "debt",
+          "debtTo"
         ],
         "type": "object",
         "properties": {
@@ -3145,13 +3185,38 @@
           "pact": {
             "type": "string"
           },
-          "stealthRoundsLeft": {
+          "secondBody": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              }
+            ]
+          },
+          "hostEnemyId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "debt": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
               "string"
             ],
             "format": "int32"
+          },
+          "debtTo": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },
@@ -3205,12 +3270,33 @@
           }
         }
       },
+      "GroundEmbersDto": {
+        "type": "object",
+        "properties": {
+          "position": {
+            "$ref": "#/components/schemas/PositionDto"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "HeroClass": {
         "enum": [
-          "YUNQUE",
-          "CHISPA",
-          "CUERVO",
-          "RAIZ",
+          "ERRATA",
+          "ANTEAYER",
+          "HILVAN",
+          "POLIZON",
+          "ESCUCHA",
+          "USURERA",
+          "AVARO",
+          "MAMPOSTERO",
+          "CAMPANERO",
           null
         ]
       },
@@ -3445,7 +3531,7 @@
           },
           "hero": {
             "type": "string",
-            "description": "Héroe con el que jugó: YUNQUE, CHISPA, CUERVO o RAIZ."
+            "description": "Héroe con el que jugó: ERRATA, ANTEAYER, HILVAN, POLIZON, ESCUCHA, USURERA, AVARO, MAMPOSTERO o CAMPANERO."
           },
           "placement": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
@@ -3662,6 +3748,25 @@
           },
           "decided": {
             "type": "boolean"
+          },
+          "secondBody": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              }
+            ]
+          },
+          "debtToYou": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -3724,6 +3829,40 @@
             "items": {
               "$ref": "#/components/schemas/TileDto"
             }
+          },
+          "hiddenTelegraphs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionDto"
+            }
+          },
+          "echoes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EchoDto"
+            }
+          },
+          "groundEmbers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GroundEmbersDto"
+            }
+          },
+          "noiseTiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PositionDto"
+            }
+          },
+          "bell": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BellDto"
+              }
+            ]
           }
         }
       },
@@ -4256,14 +4395,6 @@
             ],
             "format": "int32"
           },
-          "charges": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
           "abilityCooldown": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
@@ -4272,9 +4403,53 @@
             ],
             "format": "int32"
           },
-          "stealthRoundsLeft": {
+          "secondBody": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              }
+            ]
+          },
+          "hostEnemyId": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "debt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "debtTo": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rewindTile": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PositionDto"
+              }
+            ]
+          },
+          "rewindHp": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
               "integer",
               "string"
             ],

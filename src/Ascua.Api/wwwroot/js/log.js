@@ -43,6 +43,10 @@ function summarize(entry) {
   if (p.state) parts.push(p.state);
   if (p.options) parts.push(p.options.join(' / '));
   if (p.blessingId) parts.push(p.blessingId);
+  if (p.kind) parts.push(p.kind);
+  if (p.position) parts.push(`(${p.position.x},${p.position.y})`);
+  if (p.orders) parts.push(`${p.orders.length} órdenes${p.typesOnly ? ' (solo tipos)' : ''}`);
+  if (p.bellDeadline) parts.push('con Repique');
   if (p.message) parts.push(p.message);
   return parts.join(' · ');
 }

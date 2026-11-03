@@ -13,7 +13,8 @@ se escribe una nueva que la **reemplaza** y se actualiza el estado de la anterio
 | [0005](0005-dotnet-10-openapi-31.md) | .NET 10 en lugar de .NET 8 (OpenAPI 3.1 nativo) | aceptada | 2026-10-29 |
 | [0006](0006-ticket-handshake-websocket.md) | Ticket de un solo uso para el *handshake* WebSocket | aceptada | 2026-10-29 |
 | [0007](0007-salas-y-emparejamiento.md) | Salas y emparejamiento en Redis con escrituras atómicas (Lua + versión optimista) | aceptada | 2026-10-29 |
-| [0008](0008-nombres-de-heroes.md) | Un solo juego de nombres de héroe (YUNQUE, CHISPA, CUERVO, RAIZ) y lectura compatible de partidas guardadas | aceptada | 2026-10-30 |
+| [0008](0008-nombres-de-heroes.md) | Un solo juego de nombres de héroe (YUNQUE, CHISPA, CUERVO, RAIZ) y lectura compatible de partidas guardadas | reemplazada por ADR-0009 | 2026-10-30 |
+| [0009](0009-nueve-heroes-contrato-2.md) | Nueve héroes nuevos, contrato 2.0.0 sin periodo de transición y borrado de partidas viejas | aceptada | 2026-11-02 |
 
 Contratos relacionados: [`contracts/asyncapi.yaml`](../../contracts/asyncapi.yaml) (tiempo real) y
 [`contracts/openapi.json`](../../contracts/openapi.json) (REST, OpenAPI 3.1 generado por la API). Visión general en

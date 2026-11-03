@@ -33,18 +33,18 @@ public sealed record EnemyStats(int MaxHp, int Damage, int Speed, bool Flies);
 
 public static class EnemyCatalog
 {
-    public const int WardenHpPerPlayer = 12;
-    public const int TotemSummonEvery = 3;
+    public const int WardenHpPerPlayer = 5;
+    public const int TotemSummonEvery = 5;
     public const int TotemMaxSummons = 3;
 
     public static EnemyStats For(EnemyKind kind) => kind switch
     {
-        EnemyKind.Scavenger => new(MaxHp: 2, Damage: 1, Speed: 1, Flies: false),
+        EnemyKind.Scavenger => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: false),
         EnemyKind.Moth => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: true),
-        EnemyKind.Slime => new(MaxHp: 2, Damage: 1, Speed: 1, Flies: false),
+        EnemyKind.Slime => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: false),
         EnemyKind.Hopper => new(MaxHp: 1, Damage: 1, Speed: 2, Flies: false),
-        EnemyKind.Crossbowman => new(MaxHp: 2, Damage: 2, Speed: 1, Flies: false),
-        EnemyKind.Totem => new(MaxHp: 3, Damage: 0, Speed: 0, Flies: false),
+        EnemyKind.Crossbowman => new(MaxHp: 1, Damage: 2, Speed: 1, Flies: false),
+        EnemyKind.Totem => new(MaxHp: 2, Damage: 0, Speed: 0, Flies: false),
         EnemyKind.Warden => new(MaxHp: WardenHpPerPlayer, Damage: 2, Speed: 1, Flies: false),
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
     };
@@ -67,6 +67,12 @@ public sealed record Enemy
     /// <summary>Estorbo de una Brasa: su ataque anunciado se ejecuta una ronda más tarde.</summary>
     public bool Delayed { get; init; }
 
+    /// <summary>Errata desvió su anuncio: al ejecutarse golpea todo lo que haya en esas casillas.</summary>
+    public PlayerId? DivertedBy { get; init; }
+
+    /// <summary>Ascuas que recibió del Avaro; las suelta al morir.</summary>
+    public int Bribes { get; init; }
+
     public int BurnRounds { get; init; }
     public int BurnDamage { get; init; }
 
@@ -81,6 +87,9 @@ public sealed record Enemy
 
     /// <summary>Celador en fase 2: el próximo anuncio será la cruz completa.</summary>
     public bool CrossNext { get; init; }
+
+    /// <summary>Celador: acaba de anunciar; en su próximo turno toma aire (no se mueve, ni se gira, ni anuncia).</summary>
+    public bool WardenRests { get; init; }
 
     public EnemyStats Stats => EnemyCatalog.For(Kind);
     public bool Flies => Stats.Flies;

@@ -67,6 +67,7 @@ public sealed class MatchEngine(
             Deadline = now + options.DraftDuration,
             RoundDuration = options.RoundDuration,
             PathChoiceDuration = options.PathChoiceDuration,
+            BellDuration = options.BellDuration,
             CreatedAt = now,
         };
 
@@ -168,6 +169,9 @@ public sealed class MatchEngine(
         if (snapshot.Status == MatchStatus.InProgress)
         {
             ScheduleCloseCheck(matchId, snapshot.State.Round);
+
+            // Quien está en su gracia ya no cuenta para «todos decidieron».
+            await NotifyLastWordAsync(snapshot, cancellationToken);
         }
     }
 
@@ -205,6 +209,11 @@ public sealed class MatchEngine(
             return Map(domainError, snapshot.State.Round);
         }
 
+        if (snapshot.IsBellOverFor(participant.PlayerId, clock.UtcNow))
+        {
+            return new MatchError(RealtimeErrors.OrderTooLate, "El Repique ya sonó: se acabó tu tiempo en esta ronda.");
+        }
+
         var ack = new OrderAck(matchId, round, clientActionId, userId, clock.UtcNow);
         var result = await hot.SubmitOrderAsync(ack, participant.PlayerId, order, cancellationToken);
         switch (result.Status)
@@ -225,9 +234,13 @@ public sealed class MatchEngine(
 
         var expected = snapshot.ActivePlayers().Count;
         await notifier.PlayerDecidedAsync(snapshot, userId, result.DecidedCount, expected, cancellationToken);
-        if (result.DecidedCount >= expected || await AllDecidedAsync(snapshot, cancellationToken))
+        if (await AllDecidedAsync(snapshot, cancellationToken))
         {
             ScheduleCloseCheck(matchId, round);
+        }
+        else
+        {
+            await NotifyLastWordAsync(snapshot, cancellationToken);
         }
 
         return MatchResult<(OrderAck, bool)>.Ok((ack, false));
@@ -293,6 +306,12 @@ public sealed class MatchEngine(
         if (snapshot.PathDeadline is { } pathDeadline && pathDeadline <= now && snapshot.Deadline > now)
         {
             await ExpirePathChoicesAsync(matchId, now, cancellationToken);
+            return;
+        }
+
+        if (snapshot.BellDeadline is { } bell && bell <= now && snapshot.Deadline > now)
+        {
+            await ExpireBellAsync(matchId, now, cancellationToken);
             return;
         }
 
@@ -458,6 +477,48 @@ public sealed class MatchEngine(
         await hot.SavePathAckAsync(userId, ack, cancellationToken);
         ScheduleCloseCheck(matchId, mutation.Snapshot!.State.Round);
         return MatchResult<(PathAck, bool)>.Ok((ack, false));
+    }
+
+    /// <summary>
+    /// Señal rápida al bando de quien la envía (05-heroes.md §13): como mucho 1 cada <see cref="RealtimeOptions.SignalInterval"/>
+    /// por jugador. No toca la partida, no se guarda y no aparece en la reproducción.
+    /// </summary>
+    public async Task<MatchResult<DateTimeOffset>> SendSignalAsync(Guid matchId, Guid userId, QuickSignal signal, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(signal);
+        var found = await GetForPlayerAsync(matchId, userId, cancellationToken);
+        if (found.Error is { } error)
+        {
+            return error;
+        }
+
+        var (snapshot, participant) = found.Value;
+        if (snapshot.Status != MatchStatus.InProgress)
+        {
+            return new MatchError(RealtimeErrors.MatchNotActive, "La partida no está en una ronda.") { Status = snapshot.Status };
+        }
+
+        if (snapshot.State.FindHero(participant.PlayerId) is null or { Status: HeroStatus.Retired })
+        {
+            return new MatchError(RealtimeErrors.PlayerDown, "El héroe ya no está en la partida.");
+        }
+
+        if (!await hot.TryTakeSignalSlotAsync(matchId, userId, options.SignalInterval, cancellationToken))
+        {
+            return new MatchError(RealtimeErrors.RateLimited, "Demasiadas señales: espera unos segundos.");
+        }
+
+        var now = clock.UtcNow;
+        await notifier.SignalAsync(snapshot, participant, signal, now, cancellationToken);
+        return MatchResult<DateTimeOffset>.Ok(now);
+    }
+
+    /// <summary>Lo que oye este jugador si es el Campanero y la pasiva aplica; para el reenvío al (re)conectar.</summary>
+    public async Task<LastWordHeard?> LastWordForAsync(MatchSnapshot snapshot, PlayerId player, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        var heard = await HeardAsync(snapshot, cancellationToken);
+        return heard is not null && LastWord.Listener(snapshot.State)?.Player == player ? heard : null;
     }
 
     /// <summary>
@@ -662,6 +723,58 @@ public sealed class MatchEngine(
         }
     }
 
+    /// <summary>Venció el plazo del Repique: los demás ya no pueden decidir, y el Campanero oye lo que hay.</summary>
+    private async Task ExpireBellAsync(Guid matchId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var mutation = await MutateAsync(
+            matchId,
+            TimeSpan.Zero,
+            current =>
+            {
+                if (current.BellDeadline is not { } bell || bell > now)
+                {
+                    return Task.FromResult<MatchChange?>(null);
+                }
+
+                var result = Domain(() => MatchRules.CloseBell(current.State));
+                return Task.FromResult<MatchChange?>(Advance(current, result.State, result.Events, now, roundResolved: false, NoDefaults));
+            },
+            cancellationToken);
+
+        if (mutation is { Status: MutationStatus.Changed, Snapshot: { } closed })
+        {
+            ScheduleCloseCheck(matchId, closed.State.Round);
+            await NotifyLastWordAsync(closed, cancellationToken);
+        }
+        else if (mutation.Snapshot is { } unchanged)
+        {
+            await hot.SaveAsync(unchanged, cancellationToken);
+        }
+    }
+
+    private async Task<LastWordHeard?> HeardAsync(MatchSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        if (snapshot.Status != MatchStatus.InProgress || LastWord.Listener(snapshot.State) is not { } listener)
+        {
+            return null;
+        }
+
+        var orders = await hot.GetOrdersAsync(snapshot.MatchId, snapshot.State.Round, cancellationToken);
+        var connected = await hot.ConnectedUsersAsync(snapshot.MatchId, cancellationToken);
+        var heard = LastWord.Heard(snapshot.State, orders, connected.Select(PlayerIds.Of).ToHashSet());
+        return heard is null ? null : new LastWordHeard(snapshot.State.Round, heard, listener.IsRenegade);
+    }
+
+    /// <summary>Último en hablar: si todos los demás ya decidieron, se lo cuenta en privado al Campanero.</summary>
+    private async Task NotifyLastWordAsync(MatchSnapshot snapshot, CancellationToken cancellationToken)
+    {
+        if (await HeardAsync(snapshot, cancellationToken) is { } heard)
+        {
+            var listener = LastWord.Listener(snapshot.State)!;
+            await notifier.LastWordAsync(snapshot, PlayerIds.ToUserId(listener.Player), heard, cancellationToken);
+        }
+    }
+
     private static MatchError? CheckDraft(MatchSnapshot snapshot, PlayerId player, Guid offerId, Blessing blessing, out int index)
     {
         index = -1;
@@ -700,6 +813,15 @@ public sealed class MatchEngine(
         if (snapshot.ChoosingPlayers().Any(p => connected.Contains(PlayerIds.ToUserId(p))))
         {
             return false;
+        }
+
+        // Con el Repique la ronda se cierra cuando el Campanero decide, pero los demás conservan sus segundos.
+        if (snapshot.State.IsBellRound && snapshot.State.BellRinger is { } ringer)
+        {
+            var ringerDone = !active.Contains(ringer) || orders.ContainsKey(ringer) || !connected.Contains(PlayerIds.ToUserId(ringer));
+            var othersDone = snapshot.State.BellClosed
+                || active.Where(p => p != ringer).All(p => orders.ContainsKey(p) || !connected.Contains(PlayerIds.ToUserId(p)));
+            return ringerDone && othersDone && (snapshot.State.BellClosed || active.Any(orders.ContainsKey));
         }
 
         // Un desconectado (en gracia) no frena la ronda: recibirá GUARDAR. Si nadie decidió, se espera el plazo.

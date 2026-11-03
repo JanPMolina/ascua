@@ -64,7 +64,7 @@ public static class RealtimeSetup
         return (await response.Content.ReadFromJsonAsync<RealtimeTicketResponse>())!.Ticket;
     }
 
-    public static Uri HubUri(WebApplicationFactory<Program> host, string ticket, string protocolVersion = "1") =>
+    public static Uri HubUri(WebApplicationFactory<Program> host, string ticket, string protocolVersion = "2") =>
         new(host.Server.BaseAddress, $"realtime/match?protocolVersion={protocolVersion}&access_token={ticket}");
 
     public static async Task<RealtimeTestClient> ConnectAsync(WebApplicationFactory<Program> host, TestPlayer player, Guid matchId)
@@ -121,6 +121,8 @@ public sealed class RealtimeTestClient : IAsyncDisposable
         client.Listen<SnapshotMessage>("Snapshot");
         client.Listen<DraftOfferMessage>("DraftOffer");
         client.Listen<PathOfferMessage>("PathOffer");
+        client.Listen<LastWordMessage>("LastWord");
+        client.Listen<SignalReceivedMessage>("SignalReceived");
         client.Listen<PlayerConnectionChangedMessage>("PlayerConnectionChanged");
         client.Listen<MatchFinishedMessage>("MatchFinished");
         client.Listen<ServerDrainingMessage>("ServerDraining");
@@ -173,6 +175,9 @@ public sealed class RealtimeTestClient : IAsyncDisposable
 
     public Task<ChoosePathReply> ChoosePathAsync(Guid matchId, string offerId, string path) =>
         Connection.InvokeAsync<ChoosePathReply>("ChoosePath", new ChoosePathRequest { MatchId = matchId.ToString("D"), OfferId = offerId, Path = path });
+
+    public Task<SignalReply> SendSignalAsync(Guid matchId, string kind, PositionDto? position = null) =>
+        Connection.InvokeAsync<SignalReply>("SendSignal", new SendSignalRequest { MatchId = matchId.ToString("D"), Kind = kind, Position = position });
 
     /// <summary>Espera su oferta de draft y elige la primera opción.</summary>
     public async Task PickFirstAsync(Guid matchId)
@@ -249,6 +254,19 @@ public sealed class ChoosePathReply
 
     [Key("acceptedAt")]
     public string? AcceptedAt { get; set; }
+
+    [Key("error")]
+    public ErrorBodyDto? Error { get; set; }
+}
+
+[MessagePackObject]
+public sealed class SignalReply
+{
+    [Key("matchId")]
+    public string? MatchId { get; set; }
+
+    [Key("sentAt")]
+    public string? SentAt { get; set; }
 
     [Key("error")]
     public ErrorBodyDto? Error { get; set; }

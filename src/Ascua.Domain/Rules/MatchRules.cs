@@ -31,6 +31,10 @@ public static class MatchRules
         var updated = BlessingRules.Grant(hero, blessing) with { DraftOptions = [] };
         log.Emit(new BlessingChosen(player, blessing) { Audience = Audience.Only(player) });
         log.Emit(new BlessingCountChanged(player, updated.Blessings.Count));
+        if (updated.Embers != hero.Embers)
+        {
+            log.Emit(new EmbersChanged(player, updated.Embers - hero.Embers, EmberReason.Blessing, updated.Embers) { Audience = Audience.Only(player) });
+        }
 
         var heroes = state.Heroes.SetItem(state.Heroes.FindIndex(h => h.Player == player), updated);
         var next = state with { Heroes = heroes };
@@ -79,6 +83,20 @@ public static class MatchRules
         return CommandResult.Ok(state, events);
     }
 
+    /// <summary>Venció el plazo reducido del Repique: ya no se aceptan órdenes de los demás en esta ronda.</summary>
+    public static CommandResult CloseBell(GameState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.Phase != MatchPhase.InProgress || !state.IsBellRound || state.BellClosed)
+        {
+            return CommandResult.Ok(state, []);
+        }
+
+        var log = new EventLog(state.LastSeq, state.Round);
+        log.Emit(new BellExpired(state.BellRinger!.Value));
+        return CommandResult.Ok(state with { BellClosed = true, LastSeq = log.LastSeq }, log.Events);
+    }
+
     /// <summary>
     /// Venció la gracia de desconexión: el héroe se retira y pierde todas sus ascuas.
     /// Si no queda ningún humano activo, la partida termina como abandonada.
@@ -115,14 +133,36 @@ public static class MatchRules
             PathChoice = null,
             AwaitingSpawn = false,
             BeaconActive = false,
+            HostEnemyId = null,
+            SecondBody = null,
+            EchoQueue = [],
+            History = [],
+            Shouting = false,
+            Debt = 0,
+            DebtTo = null,
         };
         var heroes = state.Heroes.SetItem(state.Heroes.FindIndex(h => h.Player == player), retired);
         log.Emit(new HeroRetired(player));
+
+        // Si se retira la Usurera, nadie le debe nada.
+        foreach (var debtor in heroes.Where(h => h.DebtTo == player).ToList())
+        {
+            log.Emit(new DebtChanged(debtor.Player, player, -debtor.Debt, 0, DebtReason.Cancelled) { Audience = Audience.Only(debtor.Player) });
+            heroes = heroes.Replace(debtor, debtor with { Debt = 0, DebtTo = null });
+        }
+
         var next = state with { Heroes = heroes };
+        if (next.BellRinger == player)
+        {
+            next = next with { BellRound = 0, BellRinger = null, BellClosed = false };
+        }
 
         if (!heroes.Any(h => h.IsOnBoard))
         {
-            var outcome = new GameOutcome(OutcomeKind.Abandoned, DefeatReason.None, [], Outcomes.Scores(heroes));
+            var outcome = new GameOutcome(OutcomeKind.Abandoned, DefeatReason.None, [], Outcomes.Scores(heroes))
+            {
+                Betrayals = Outcomes.Summarize(next.Betrayals),
+            };
             next = next with { Phase = MatchPhase.Finished, Outcome = outcome };
             log.Emit(new MatchEnded(outcome));
         }

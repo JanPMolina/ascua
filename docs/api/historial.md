@@ -42,6 +42,9 @@ todo pasa por los DTOs del contrato de tiempo real.
   `full` para admin) y sus eventos visibles en orden. `seq` es el último aplicado.
 - Partidas creadas antes de la migración `MatchHistoryReplay`: tienen una sola instantánea (la última)
   con todos sus eventos.
+- Las partidas con héroes anteriores a los nueve actuales se borraron ([ADR-0009](../adr/0009-nueve-heroes-contrato-2.md)).
+- Las señales rápidas no se guardan, así que no aparecen. Las traiciones anónimas siguen el mismo filtro que en
+  vivo: solo las ve quien las cometió hasta que el final las revela.
 
 ## Base de datos
 

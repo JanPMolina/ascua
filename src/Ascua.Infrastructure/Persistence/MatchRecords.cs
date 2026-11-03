@@ -26,6 +26,9 @@ public sealed class MatchRecord
 
     public int RoundDurationMs { get; set; }
 
+    /// <summary>Plazo reducido del Repique de esta partida (05-heroes.md §12).</summary>
+    public int BellDurationMs { get; set; }
+
     public string? Result { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

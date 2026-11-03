@@ -75,7 +75,10 @@ public static class MatchReplayMapper
                 [.. h.Blessings.Select(RealtimeMapper.BlessingId)],
                 [.. h.DraftOptions.Select(RealtimeMapper.BlessingId)],
                 RealtimeMapper.PactId(h.Pact),
-                h.StealthRounds))],
+                h.SecondBody is { } second ? RealtimeMapper.Position(second) : null,
+                h.HostEnemyId,
+                h.Debt,
+                h.DebtTo?.Value))],
             [.. state.Enemies.Select(e => new FullEnemyDto(
                 e.Id,
                 RealtimeMapper.EnemyKind(e.Kind),

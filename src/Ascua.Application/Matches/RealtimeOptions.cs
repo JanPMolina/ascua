@@ -14,6 +14,12 @@ public sealed class RealtimeOptions
     /// <summary>Plazo para elegir camino tras extinguirse; al vencer se toma Amistad (04-caminos-tras-morir.md).</summary>
     public TimeSpan PathChoiceDuration { get; set; } = TimeSpan.FromSeconds(15);
 
+    /// <summary>Repique del Campanero: en esa ronda los demás solo tienen este tiempo para decidir (05-heroes.md §12).</summary>
+    public TimeSpan BellDuration { get; set; } = TimeSpan.FromSeconds(8);
+
+    /// <summary>Señales rápidas: como mucho 1 por jugador cada este tiempo (además del límite del hub).</summary>
+    public TimeSpan SignalInterval { get; set; } = TimeSpan.FromSeconds(3);
+
     /// <summary>Gracia de reconexión; al vencer se aplica la regla de abandono.</summary>
     public TimeSpan ReconnectGrace { get; set; } = TimeSpan.FromSeconds(60);
 
@@ -71,6 +77,7 @@ public static class RealtimeErrors
     public const string InvalidOrder = "INVALID_ORDER";
     public const string StaleRound = "STALE_ROUND";
     public const string OrderAlreadySubmitted = "ORDER_ALREADY_SUBMITTED";
+    public const string OrderTooLate = "ORDER_TOO_LATE";
     public const string NotParticipant = "NOT_PARTICIPANT";
     public const string NotJoined = "NOT_JOINED";
     public const string PlayerDown = "PLAYER_DOWN";

@@ -37,11 +37,21 @@ public enum DefeatReason
 
 public sealed record FinalScore(PlayerId Player, int Embers, PactKind Pact, bool PactFulfilled, int Total);
 
+/// <summary>
+/// Daño anónimo a un aliado: un golpe desviado por Errata o dado desde un huésped por Polizón. El registro culpa
+/// al monstruo; esto se guarda en secreto y se revela en la pantalla final.
+/// </summary>
+public sealed record Betrayal(PlayerId Traitor, PlayerId Victim, int Damage);
+
 public sealed record GameOutcome(
     OutcomeKind Kind,
     DefeatReason Reason,
     ImmutableList<PlayerId> Winners,
-    ImmutableList<FinalScore> Scores);
+    ImmutableList<FinalScore> Scores)
+{
+    /// <summary>Traiciones anónimas de la partida, sumadas por traidor y víctima (se revelan al final).</summary>
+    public ImmutableList<Betrayal> Betrayals { get; init; } = [];
+}
 
 /// <summary>
 /// Verdad completa de una partida, incluida la información oculta. Inmutable: cada
@@ -72,7 +82,31 @@ public sealed record GameState
 
     public GameOutcome? Outcome { get; init; }
 
+    /// <summary>Traiciones anónimas hasta ahora. Secretas: solo salen en <see cref="GameOutcome.Betrayals"/>.</summary>
+    public ImmutableList<Betrayal> Betrayals { get; init; } = [];
+
+    /// <summary>Héroes que hicieron ruido en la última resolución (lo que oye La Escucha).</summary>
+    public ImmutableList<PlayerId> NoisyHeroes { get; init; } = [];
+
+    /// <summary>Enemigos que hicieron ruido en la última resolución.</summary>
+    public ImmutableList<int> NoisyEnemies { get; init; } = [];
+
+    /// <summary>Casillas donde se oyó ruido en la última resolución.</summary>
+    public ImmutableList<Position> NoiseTiles { get; init; } = [];
+
+    /// <summary>Ronda en la que suena el Repique del Campanero (0 = ninguna): los demás tienen menos tiempo.</summary>
+    public int BellRound { get; init; }
+
+    /// <summary>Quién hizo sonar el Repique; él conserva todo el reloj.</summary>
+    public PlayerId? BellRinger { get; init; }
+
+    /// <summary>Venció el plazo reducido del Repique: ya no se aceptan órdenes de los demás.</summary>
+    public bool BellClosed { get; init; }
+
     public Room CurrentRoom => Rooms[RoomIndex];
 
     public Hero? FindHero(PlayerId player) => Heroes.Find(h => h.Player == player);
+
+    /// <summary>¿Suena el Repique en la ronda abierta?</summary>
+    public bool IsBellRound => BellRinger is not null && BellRound == Round;
 }

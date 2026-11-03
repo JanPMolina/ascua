@@ -1,8 +1,10 @@
 # ADR-0008: Un solo juego de nombres de héroe (YUNQUE, CHISPA, CUERVO, RAIZ)
 
-- **Estado:** aceptada
+- **Estado:** reemplazada por [ADR-0009](0009-nueve-heroes-contrato-2.md)
 - **Fecha:** 2026-10-30
 - **Autores:** Equipo Ascua
+
+> Los héroes de esta ADR ya no existen. El lector tolerante del punto 3 (`HeroClassJsonConverter`, `HeroNames`) y `HeroNamesMigrationTests` se eliminaron con ADR-0009. La migración `HeroNamesInSpanish` sigue en el historial de migraciones.
 
 ## Contexto
 

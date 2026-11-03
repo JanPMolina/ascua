@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using Ascua.Domain.Events;
 using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
@@ -8,19 +9,62 @@ public static class Outcomes
 {
     internal static GameOutcome? Evaluate(RoundContext ctx)
     {
-        if (ctx.WardenSlain)
+        var ended = ctx.WardenSlain || !ctx.Heroes.Any(h => h.IsActive) || ctx.Round >= ctx.Start.MaxRounds;
+        if (!ended)
         {
-            return Victory(ctx.Heroes);
+            return null;
         }
 
-        if (!ctx.Heroes.Any(h => h.IsActive))
+        // Al terminar la Usurera cobra lo que quede, antes de decidir al ganador.
+        SettleDebts(ctx);
+        GameOutcome outcome;
+        if (ctx.WardenSlain)
         {
-            return ctx.Heroes.Any(h => h.IsPresentRenegade)
+            outcome = Victory(ctx.Heroes);
+        }
+        else if (!ctx.Heroes.Any(h => h.IsActive))
+        {
+            outcome = ctx.Heroes.Any(h => h.IsPresentRenegade)
                 ? ThresholdClaimed(ctx.Heroes)
                 : Defeat(ctx.Heroes, DefeatReason.AllFallen);
         }
+        else
+        {
+            outcome = Defeat(ctx.Heroes, DefeatReason.RoundLimit);
+        }
 
-        return ctx.Round >= ctx.Start.MaxRounds ? Defeat(ctx.Heroes, DefeatReason.RoundLimit) : null;
+        return outcome with { Betrayals = Summarize(ctx.Betrayals) };
+    }
+
+    /// <summary>Traiciones sumadas por traidor y víctima, en el orden en que ocurrieron.</summary>
+    public static ImmutableList<Betrayal> Summarize(IEnumerable<Betrayal> betrayals) =>
+    [
+        .. betrayals
+            .GroupBy(b => (b.Traitor, b.Victim))
+            .Select(g => new Betrayal(g.Key.Traitor, g.Key.Victim, g.Sum(b => b.Damage))),
+    ];
+
+    private static void SettleDebts(RoundContext ctx)
+    {
+        foreach (var debtor in ctx.Heroes.Where(h => h is { Debt: > 0, DebtTo: not null }).OrderBy(h => h.Seat).ToList())
+        {
+            var hero = ctx.Hero(debtor.Player);
+            var creditorId = hero.DebtTo!.Value;
+            var final = FinalEmbers(hero);
+            var paid = Math.Min(hero.Debt, final);
+            if (paid == 0)
+            {
+                continue;
+            }
+
+            // Las ascuas de una Brasa o de un extinto se fijan con su fórmula antes de cobrar.
+            ctx.Update(hero with { Embers = final - paid, SavedEmbers = 0, Debt = hero.Debt - paid });
+            Combat.EmitDebt(ctx, hero.Player, creditorId, -paid, hero.Debt - paid, DebtReason.MatchEnd);
+            ctx.Emit(new EmbersChanged(hero.Player, -paid, EmberReason.DebtSettled, final - paid) { Audience = Audience.Only(hero.Player) });
+            var creditor = ctx.Hero(creditorId);
+            ctx.Update(creditor with { Embers = creditor.Embers + paid });
+            ctx.Emit(new EmbersChanged(creditorId, paid, EmberReason.DebtCollected, creditor.Embers + paid) { Audience = Audience.Only(creditorId) });
+        }
     }
 
     /// <summary>
@@ -32,8 +76,8 @@ public static class Outcomes
         ArgumentNullException.ThrowIfNull(hero);
         return hero.Status switch
         {
-            HeroStatus.EmberSpirit => hero.Embers + PathRules.RebirthEmbers(hero.SavedEmbers, hero.Echoes),
-            HeroStatus.Extinct => hero.Embers + PathRules.RenegadeEmbers(hero.SavedEmbers),
+            HeroStatus.EmberSpirit => hero.Embers + PathRules.RebirthEmbers(hero, hero.Echoes),
+            HeroStatus.Extinct => hero.Embers + PathRules.RenegadeEmbers(hero),
             _ => hero.Embers,
         };
     }

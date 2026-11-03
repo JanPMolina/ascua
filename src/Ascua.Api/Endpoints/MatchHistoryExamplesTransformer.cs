@@ -15,26 +15,26 @@ internal sealed class MatchHistoryExamplesTransformer : IOpenApiOperationTransfo
     {
         ["GetMatchHistory"] = $$$"""
             {"items":[{"matchId":"{{{MatchId}}}","createdAt":"2026-11-01T20:15:03.120+00:00","finishedAt":"2026-11-01T20:31:47.900+00:00",
-            "status":"FINISHED","outcome":"WARDEN_DEFEATED","result":"VICTORY","hero":"CUERVO","placement":1,"embers":17,"rounds":38,"playerCount":3}],
+            "status":"FINISHED","outcome":"WARDEN_DEFEATED","result":"VICTORY","hero":"ERRATA","placement":1,"embers":17,"rounds":38,"playerCount":3}],
             "page":1,"pageSize":20,"total":1}
             """,
         ["GetMatch"] = $$$"""
             {"matchId":"{{{MatchId}}}","status":"FINISHED","outcome":"WARDEN_DEFEATED","createdAt":"2026-11-01T20:15:03.120+00:00",
             "finishedAt":"2026-11-01T20:31:47.900+00:00","rounds":38,"winners":["{{{Me}}}"],
-            "players":[{"playerId":"{{{Me}}}","displayName":"ana","hero":"CUERVO","finalState":"ALIVE","embers":17,"placement":1,
-            "pact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda sin que te descubra.","fulfilled":true}},
-            {"playerId":"{{{Ally}}}","displayName":"beto","hero":"YUNQUE","finalState":"DOWN","embers":9,"placement":2,
+            "players":[{"playerId":"{{{Me}}}","displayName":"ana","hero":"ERRATA","finalState":"ALIVE","embers":17,"placement":1,
+            "pact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda o con una traición anónima.","fulfilled":true}},
+            {"playerId":"{{{Ally}}}","displayName":"beto","hero":"MAMPOSTERO","finalState":"DOWN","embers":9,"placement":2,
             "pact":{"pactId":"NEVER_DOWNED","description":"Terminar sin haber caído.","fulfilled":false}}],
-            "myPact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda sin que te descubra.","fulfilled":true},
+            "myPact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda o con una traición anónima.","fulfilled":true},
             "replayUrl":"https://ascua.example/api/v1/matches/{{{MatchId}}}/replay"}
             """,
         ["GetMatchReplay"] = $$$"""
             {"matchId":"{{{MatchId}}}","viewMode":"PLAYER","viewerId":"{{{Me}}}","status":"FINISHED","fromRound":1,"toRound":1,
             "rounds":[{"round":1,"seq":42,"full":null,"view":{"status":"IN_PROGRESS","round":2,"floor":1,"roundDeadline":null,
-            "me":{"playerId":"{{{Me}}}","displayName":"ana","hero":"CUERVO","state":"ALIVE","hp":4,"maxHp":4,"shield":0,"position":{"x":4,"y":7},
-            "facing":"N","embers":1,"charges":0,"abilityCooldown":0,"stealthRoundsLeft":0,"downRoundsLeft":null,"blessings":["GANZUA"],
-            "pact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda sin que te descubra."},"decided":false,"pendingOrder":null},
-            "allies":[{"playerId":"{{{Ally}}}","displayName":"beto","hero":"YUNQUE","state":"ALIVE","hp":6,"maxHp":6,"position":{"x":5,"y":7},
+            "me":{"playerId":"{{{Me}}}","displayName":"ana","hero":"ERRATA","state":"ALIVE","hp":4,"maxHp":4,"shield":0,"position":{"x":4,"y":7},
+            "facing":"N","embers":1,"abilityCooldown":0,"downRoundsLeft":null,"blessings":["GANZUA"],
+            "pact":{"pactId":"BETRAY_TWICE_UNSEEN","description":"Golpear 2 veces a un aliado por la espalda o con una traición anónima."},"decided":false,"pendingOrder":null},
+            "allies":[{"playerId":"{{{Ally}}}","displayName":"beto","hero":"MAMPOSTERO","state":"ALIVE","hp":6,"maxHp":6,"position":{"x":5,"y":7},
             "facing":"N","embers":0,"blessingCount":1,"connected":false,"decided":false}],
             "enemies":[{"enemyId":3,"kind":"CARRONERO","hp":2,"maxHp":2,"position":{"x":4,"y":4},"facing":"S","phase":null,"telegraph":[{"x":4,"y":5}]}],
             "tiles":[{"x":4,"y":7,"kind":"FLOOR"}]},

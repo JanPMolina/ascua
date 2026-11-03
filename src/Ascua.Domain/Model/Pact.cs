@@ -15,7 +15,7 @@ public enum PactKind
     /// <summary>Levantar a 2 aliados.</summary>
     ReviveTwoAllies,
 
-    /// <summary>Golpear a un aliado al menos 2 veces sin que te descubran (por la espalda).</summary>
+    /// <summary>Golpear a un aliado al menos 2 veces sin que te descubran (por la espalda o con una traición anónima).</summary>
     BetrayUnseen,
 }
 

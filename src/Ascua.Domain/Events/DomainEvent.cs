@@ -46,12 +46,6 @@ public abstract record DomainEvent
 
 public enum PreventionReason
 {
-    /// <summary>Bloqueo frontal de Yunque.</summary>
-    Block,
-
-    /// <summary>Muralla de Yunque.</summary>
-    Rampart,
-
     /// <summary>El Celador en fase 1 es inmune a los golpes de frente.</summary>
     FrontImmunity,
 
@@ -66,7 +60,6 @@ public enum StatusEffect
 {
     Burning,
     Frozen,
-    Stealth,
 }
 
 public enum ExtinctionReason
@@ -102,6 +95,27 @@ public enum EmberReason
 
     /// <summary>Derrotó a un Renegado (+2).</summary>
     RenegadeDefeated,
+
+    /// <summary>El Avaro eligió una bendición que cambia sus ascuas (Corazón doble, Puño de piedra).</summary>
+    Blessing,
+
+    /// <summary>El Avaro pagó un Soborno.</summary>
+    Bribe,
+
+    /// <summary>El Avaro perdió ascuas por un golpe (caen al suelo).</summary>
+    MiserHit,
+
+    /// <summary>Se levantó el Avaro: sus ascuas son su vida.</summary>
+    MiserRevived,
+
+    /// <summary>Recogió ascuas del suelo.</summary>
+    PickedUp,
+
+    /// <summary>La Usurera cobró una deuda.</summary>
+    DebtCollected,
+
+    /// <summary>El deudor pagó lo que debía al terminar la partida.</summary>
+    DebtSettled,
 }
 
 public sealed record MatchCreated(int PlayerCount) : DomainEvent;
@@ -119,10 +133,17 @@ public sealed record HeroGuarded(PlayerId Player) : DomainEvent;
 /// <summary>La entidad estaba congelada y perdió su acción.</summary>
 public sealed record ActionLost(EntityRef Entity) : DomainEvent;
 
-public sealed record HeroMoved(PlayerId Player, Position From, Position To) : DomainEvent;
+/// <summary><see cref="Body"/>: 0 el cuerpo principal, 1 el segundo cuerpo de Hilván.</summary>
+public sealed record HeroMoved(PlayerId Player, Position From, Position To) : DomainEvent
+{
+    public int Body { get; init; }
+}
 
 /// <summary>El movimiento rebotó: casilla bloqueada, ocupada o disputada.</summary>
-public sealed record MoveBounced(PlayerId Player, Position Attempted) : DomainEvent;
+public sealed record MoveBounced(PlayerId Player, Position Attempted) : DomainEvent
+{
+    public int Body { get; init; }
+}
 
 public sealed record HeroAttacked(PlayerId Player, Direction Direction) : DomainEvent;
 
@@ -159,7 +180,14 @@ public sealed record EnemySpawned(int EnemyId, EnemyKind Kind, Position Position
 
 public sealed record EnemyMoved(int EnemyId, Position From, Position To) : DomainEvent;
 
-public sealed record EnemyKilled(int EnemyId, EnemyKind Kind, PlayerId? Killer) : DomainEvent;
+/// <summary>
+/// <see cref="HiddenKiller"/>: el golpe final fue anónimo (desviado por Errata o desde un huésped); solo el autor
+/// lo sabe, los demás ven el monstruo muerto sin autor.
+/// </summary>
+public sealed record EnemyKilled(int EnemyId, EnemyKind Kind, PlayerId? Killer) : DomainEvent
+{
+    public bool HiddenKiller { get; init; }
+}
 
 /// <summary>Anuncio (telegraph) de las casillas que el enemigo golpeará la ronda siguiente.</summary>
 public sealed record AttackTelegraphed(int? EnemyId, ImmutableList<Position> Tiles) : DomainEvent;
@@ -197,10 +225,89 @@ public sealed record EmberReborn(PlayerId Player, Position Position, int Hp) : D
 /// <summary>Un Renegado apareció en la sala. La posición se quita para quien no la ve.</summary>
 public sealed record RenegadeSpawned(PlayerId Player, Position? Position) : DomainEvent;
 
-public sealed record RenegadeDefeated(PlayerId Renegade, PlayerId? By) : DomainEvent;
+/// <summary><see cref="HiddenBy"/>: lo derrotó un golpe anónimo; solo el autor sabe quién fue.</summary>
+public sealed record RenegadeDefeated(PlayerId Renegade, PlayerId? By) : DomainEvent
+{
+    public bool HiddenBy { get; init; }
+}
 
 /// <summary>Una Brasa ganó ecos (privado: el grupo solo ve que la Brasa ayudó).</summary>
 public sealed record EchoGained(PlayerId Player, int Amount, EchoReason Reason, int Total) : DomainEvent;
 
 /// <summary>Una Brasa usó una habilidad (Deriva se informa como <see cref="HeroMoved"/>).</summary>
 public sealed record EmberAbilityUsed(PlayerId Player, EmberAbility Ability, EntityRef? Target, Position? Tile) : DomainEvent;
+
+/// <summary>El Eco de Anteayer repitió un ataque desde donde estaba.</summary>
+public sealed record EchoFired(PlayerId Player, Position Origin, Direction Direction) : DomainEvent;
+
+/// <summary>Errata desvió un anuncio: no dice quién fue y solo lleva las casillas que se ven.</summary>
+public sealed record AttackCorrected(int? EnemyId, ImmutableList<Position> Tiles) : DomainEvent;
+
+/// <summary>Traición anónima (privado: solo la ve quien la cometió hasta la pantalla final).</summary>
+public sealed record BetrayalRecorded(PlayerId Traitor, PlayerId Victim, int Damage) : DomainEvent;
+
+/// <summary>Al terminar se revelan las traiciones, sumadas por traidor y víctima.</summary>
+public sealed record BetrayalRevealed(PlayerId Traitor, PlayerId Victim, int Damage) : DomainEvent;
+
+/// <summary>Polizón entró en un monstruo (privado: para los demás, desaparece).</summary>
+public sealed record HostBoarded(PlayerId Player, int EnemyId) : DomainEvent;
+
+/// <summary>Polizón salió del huésped: reaparece en esa casilla.</summary>
+public sealed record HostExited(PlayerId Player, Position Tile) : DomainEvent;
+
+/// <summary>Polizón drenó a su huésped (privado).</summary>
+public sealed record HostDrained(PlayerId Player, int EnemyId) : DomainEvent;
+
+/// <summary>Abordar giró 180° al Celador hasta su próximo anuncio.</summary>
+public sealed record WardenTurned(int EnemyId, Direction Facing) : DomainEvent;
+
+/// <summary>La Escucha gritó: su bando ve la sala entera hasta la próxima resolución.</summary>
+public sealed record Shouted(PlayerId Player) : DomainEvent;
+
+public enum DebtReason
+{
+    /// <summary>Nuevo Préstamo de la Usurera.</summary>
+    Loan,
+
+    /// <summary>Subió por el interés (cada 3 rondas).</summary>
+    Interest,
+
+    /// <summary>Se pagó con ascuas ganadas.</summary>
+    Paid,
+
+    /// <summary>Se cobró de las ascuas guardadas al extinguirse.</summary>
+    Extinction,
+
+    /// <summary>Se cobró lo que quedaba al terminar la partida.</summary>
+    MatchEnd,
+
+    /// <summary>Se canceló porque la Usurera abandonó la partida.</summary>
+    Cancelled,
+}
+
+/// <summary>Cambio en una deuda. Cada cambio se emite dos veces: una para el deudor y otra para la Usurera.</summary>
+public sealed record DebtChanged(PlayerId Debtor, PlayerId Creditor, int Delta, int Total, DebtReason Reason) : DomainEvent;
+
+/// <summary>Cayeron ascuas al suelo.</summary>
+public sealed record EmbersDropped(Position Tile, int Amount) : DomainEvent;
+
+/// <summary>Alguien recogió ascuas del suelo.</summary>
+public sealed record EmbersPickedUp(PlayerId Player, Position Tile, int Amount) : DomainEvent;
+
+/// <summary>El Avaro sobornó a un enemigo: canceló su anuncio.</summary>
+public sealed record EnemyBribed(PlayerId Player, int EnemyId, int Cost) : DomainEvent;
+
+public enum ShiftAxis
+{
+    Row,
+    Column,
+}
+
+/// <summary>Corrimiento: la sala tiembla y todos ven qué línea se movió.</summary>
+public sealed record RoomShifted(PlayerId Player, ShiftAxis Axis, int Line, Direction Direction) : DomainEvent;
+
+/// <summary>Repique: en <see cref="ForRound"/> los demás tendrán menos tiempo.</summary>
+public sealed record BellRung(PlayerId Player, int ForRound) : DomainEvent;
+
+/// <summary>Venció el plazo reducido del Repique en la ronda abierta.</summary>
+public sealed record BellExpired(PlayerId Ringer) : DomainEvent;

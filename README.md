@@ -72,10 +72,12 @@ src/
   Ascua.Infrastructure/  Redis, Postgres, Key Vault, azar seguro
   Ascua.Api/             REST, hub SignalR, auth, salud, cliente web (wwwroot)
   Ascua.Bot/             Bot y pruebas de carga
+tools/
+  Ascua.Sim/             Simulador de balance: bots por héroe contra el motor (docs/balance.md)
 tests/                   Unitarias, arquitectura, integración (+ concurrencia, seguridad, resiliencia)
 contracts/               AsyncAPI 3.0 (tiempo real) y OpenAPI 3.1 (REST)
 infra/                   Bicep (Azure)
-docs/                    ADRs, API, rendimiento, runbooks, modelo de amenazas, pendientes
+docs/                    ADRs, API, balance, rendimiento, runbooks, modelo de amenazas, pendientes
 loadtests/               Prueba de carga con NBomber y reportes
 planteamiento/           Reglas del juego, arquitectura y plan de trabajo
 inspiracion/             Investigación sobre Guidus (juego que inspira Ascua)

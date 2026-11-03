@@ -4,8 +4,8 @@ using Ascua.Domain.Model;
 namespace Ascua.Domain.Rules;
 
 /// <summary>
-/// Fase 6: trampas, fuego, quemaduras, caídos, contadores, Calidez de las Brasas, Renegados que reaparecen
-/// y paso de sala (con el renacer de las Brasas).
+/// Fase 7: trampas, fuego, quemaduras, caídos, drenaje del huésped, contadores, interés de las deudas, Calidez de
+/// las Brasas, Renegados que reaparecen y paso de sala (con el renacer de las Brasas).
 /// </summary>
 internal static class Cleanup
 {
@@ -18,9 +18,12 @@ internal static class Cleanup
         BurnFires(ctx);
         TickBurns(ctx);
         TickDownedHeroes(ctx, downAtStart);
+        HeroSkills.DrainHosts(ctx);
         TickCounters(ctx);
+        TickDebts(ctx);
         Paths.Warmth(ctx);
         Paths.SpawnDueRenegades(ctx);
+        SettleBell(ctx);
         TryAdvanceRoom(ctx);
     }
 
@@ -33,16 +36,17 @@ internal static class Cleanup
 
         foreach (var tile in ctx.Room.PositionsOf(Terrain.Spikes).ToList())
         {
-            var hero = ctx.HeroAt(tile);
+            // Conoce las piedras: los pinchos no le afectan al Mampostero.
+            var hero = ctx.HeroAt(tile) is { IsActive: true, Class: not HeroClass.Mampostero } exposed ? exposed : null;
             var enemy = ctx.EnemyAt(tile);
-            if (hero is { IsActive: true } || enemy is { Flies: false })
+            if (hero is not null || enemy is { Flies: false })
             {
                 ctx.Emit(new TrapTriggered(tile) { Audience = Audience.At(tile) });
             }
 
-            if (hero is { IsActive: true })
+            if (hero is not null)
             {
-                Combat.HitHero(ctx, hero.Player, SpikeDamage, Attacker.None);
+                Combat.HitHero(ctx, hero.Player, SpikeDamage, Attacker.None, tile);
             }
 
             if (enemy is { Flies: false })
@@ -58,7 +62,7 @@ internal static class Cleanup
         {
             if (ctx.HeroAt(fire.Position) is { IsActive: true } hero)
             {
-                Combat.HitHero(ctx, hero.Player, fire.Damage, Attacker.None);
+                Combat.HitHero(ctx, hero.Player, fire.Damage, Attacker.None, fire.Position);
             }
 
             if (ctx.EnemyAt(fire.Position) is { } enemy)
@@ -114,21 +118,36 @@ internal static class Cleanup
     {
         foreach (var hero in ctx.Heroes.ToList())
         {
-            var charges = hero.Charges;
-            if (hero is { IsVulnerable: true, Class: HeroClass.Chispa } && !ctx.Attacked.Contains(hero.Player))
-            {
-                charges = Math.Min(hero.MaxCharges, charges + 1);
-            }
-
-            var stealth = ctx.FreshStealth.Contains(hero.Player) ? hero.StealthRounds : Math.Max(0, hero.StealthRounds - 1);
             ctx.Update(hero with
             {
                 SkillCooldown = Math.Max(0, hero.SkillCooldown - 1),
                 HinderCooldown = Math.Max(0, hero.HinderCooldown - 1),
                 WarmthCooldown = Math.Max(0, hero.WarmthCooldown - 1),
-                StealthRounds = stealth,
-                Charges = charges,
             });
+        }
+    }
+
+    /// <summary>Interés: cada 3 rondas con deuda, la deuda sube 1 (el interés solo no pasa del tope de 6).</summary>
+    private static void TickDebts(RoundContext ctx)
+    {
+        foreach (var hero in ctx.Heroes.Where(h => h is { Debt: > 0, DebtTo: not null }).ToList())
+        {
+            var elapsed = ctx.Round - hero.DebtSinceRound;
+            if (elapsed > 0 && elapsed % HeroRules.InterestEvery == 0 && hero.Debt < HeroRules.DebtCap)
+            {
+                Combat.AddDebt(ctx, hero.Player, hero.DebtTo!.Value, 1, DebtReason.Interest);
+            }
+        }
+    }
+
+    /// <summary>El Repique dura una ronda; si quien lo tocó ya no puede dar órdenes, tampoco suena.</summary>
+    private static void SettleBell(RoundContext ctx)
+    {
+        if (ctx.BellRinger is { } ringer && (ctx.BellRound <= ctx.Round || !ctx.Hero(ringer).CanAct))
+        {
+            ctx.BellRound = 0;
+            ctx.BellRinger = null;
+            ctx.BellClosed = false;
         }
     }
 
@@ -143,7 +162,8 @@ internal static class Cleanup
             return;
         }
 
-        var onStairs = ctx.Heroes.Any(h => h.IsActive && ctx.Room.TerrainAt(h.Position) == Terrain.Stairs);
+        // Con Hilván basta un cuerpo sobre la escalera.
+        var onStairs = ctx.Heroes.Any(h => h is { IsActive: true, HasBody: true } && h.Bodies.Any(b => ctx.Room.TerrainAt(b) == Terrain.Stairs));
         if (!onStairs)
         {
             return;
@@ -161,12 +181,27 @@ internal static class Cleanup
         ctx.Enemies.AddRange(enemies);
         ctx.NextEnemyId = Math.Max(ctx.NextEnemyId, room.InitialEnemies.Select(e => e.Id + 1).DefaultIfEmpty(0).Max());
         var reborn = Paths.Rebirth(ctx);
-        var seat = 0;
-        foreach (var hero in ctx.Heroes.Where(h => h.Status is HeroStatus.Active or HeroStatus.Down).OrderBy(h => h.Seat).ToList())
+
+        // La historia y los ecos de Anteayer no pasan de sala.
+        foreach (var hero in ctx.Heroes.ToList())
         {
-            ctx.Update(hero with { Position = room.SpawnPoints[seat++ % room.SpawnPoints.Count], Facing = Direction.North });
+            ctx.Update(hero with { EchoQueue = [], History = [], SecondBody = null });
         }
 
+        var seat = 0;
+        var placed = ctx.Heroes.Where(h => h.Status is HeroStatus.Active or HeroStatus.Down).OrderBy(h => h.Seat).ToList();
+        foreach (var hero in placed)
+        {
+            ctx.Update(hero with { Position = room.SpawnPoints[seat++ % room.SpawnPoints.Count], Facing = Direction.North, SecondBody = null, EchoQueue = [], History = [] });
+        }
+
+        foreach (var hero in placed)
+        {
+            HeroSkills.PlaceSecondBody(ctx, ctx.Hero(hero.Player));
+        }
+
+        // En la sala nueva nadie hizo ruido todavía.
+        ctx.ClearNoise();
         ctx.Emit(new RoomEntered(ctx.RoomIndex));
         foreach (var player in reborn)
         {

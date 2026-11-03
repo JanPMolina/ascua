@@ -11,10 +11,10 @@ public enum Blessing
     /// <summary>Paso ígneo: 15% de dejar fuego en la casilla anterior al moverse.</summary>
     FireStep,
 
-    /// <summary>Puño de piedra: +1 de daño, −1 de vida máxima.</summary>
+    /// <summary>Puño de piedra: +1 de daño, −1 de vida máxima (−1 ascua para el Avaro).</summary>
     StoneFist,
 
-    /// <summary>Corazón doble: +2 de vida máxima, −10% de bloqueo.</summary>
+    /// <summary>Corazón doble: +2 de vida máxima (+2 ascuas para el Avaro).</summary>
     DoubleHeart,
 
     /// <summary>Hoja hambrienta: cura 1 al matar.</summary>
@@ -29,7 +29,7 @@ public enum Blessing
     /// <summary>Ganzúa: los cofres sueltan +1 ascua.</summary>
     Lockpick,
 
-    /// <summary>Último aliento: una vez, al caer queda con 1 de vida.</summary>
+    /// <summary>Último aliento: una vez, al caer queda con 1 de vida (1 ascua para el Avaro).</summary>
     LastBreath,
 
     /// <summary>Codicia: +1 ascua por golpe final, recibe +1 de daño.</summary>
@@ -89,6 +89,17 @@ public static class BlessingRules
         }
 
         var updated = hero with { Blessings = hero.Blessings.Add(blessing) };
+        if (hero.IsMiser)
+        {
+            var embers = blessing switch
+            {
+                Blessing.DoubleHeart => hero.Embers + 2,
+                Blessing.StoneFist => Math.Max(0, hero.Embers - 1),
+                _ => hero.Embers,
+            };
+            return updated with { Embers = embers, PeakEmbers = Math.Max(hero.PeakEmbers, embers) };
+        }
+
         return blessing switch
         {
             Blessing.DoubleHeart => updated with { Hp = updated.Hp + 2 },

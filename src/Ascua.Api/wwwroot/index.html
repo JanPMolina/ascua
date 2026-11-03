@@ -54,11 +54,16 @@
         </div>
       </div>
 
-      <ul class="hero-strip" aria-label="Los cuatro héroes">
-        <li class="hero-mini" data-hero="YUNQUE"><img src="img/heroes/yunque.svg" alt="" width="64" height="64"><b>Yunque</b><small>Tanque</small></li>
-        <li class="hero-mini" data-hero="CHISPA"><img src="img/heroes/chispa.svg" alt="" width="64" height="64"><b>Chispa</b><small>Distancia</small></li>
-        <li class="hero-mini" data-hero="CUERVO"><img src="img/heroes/cuervo.svg" alt="" width="64" height="64"><b>Cuervo</b><small>Pícaro</small></li>
-        <li class="hero-mini" data-hero="RAIZ"><img src="img/heroes/raiz.svg" alt="" width="64" height="64"><b>Raíz</b><small>Soporte</small></li>
+      <ul class="hero-strip" aria-label="Los nueve héroes">
+        <li class="hero-mini" data-hero="ERRATA"><img src="img/heroes/errata.svg" alt="" width="64" height="64"><b>Errata</b><small>Correctora</small></li>
+        <li class="hero-mini" data-hero="ANTEAYER"><img src="img/heroes/anteayer.svg" alt="" width="64" height="64"><b>Anteayer</b><small>Reincidente</small></li>
+        <li class="hero-mini" data-hero="HILVAN"><img src="img/heroes/hilvan.svg" alt="" width="64" height="64"><b>Hilván</b><small>Dos cuerpos</small></li>
+        <li class="hero-mini" data-hero="POLIZON"><img src="img/heroes/polizon.svg" alt="" width="64" height="64"><b>Polizón</b><small>Parásito</small></li>
+        <li class="hero-mini" data-hero="ESCUCHA"><img src="img/heroes/escucha.svg" alt="" width="64" height="64"><b>La Escucha</b><small>Ciega</small></li>
+        <li class="hero-mini" data-hero="USURERA"><img src="img/heroes/usurera.svg" alt="" width="64" height="64"><b>La Usurera</b><small>Prestamista</small></li>
+        <li class="hero-mini" data-hero="AVARO"><img src="img/heroes/avaro.svg" alt="" width="64" height="64"><b>El Avaro</b><small>Sin vida</small></li>
+        <li class="hero-mini" data-hero="MAMPOSTERO"><img src="img/heroes/mampostero.svg" alt="" width="64" height="64"><b>El Mampostero</b><small>Albañil</small></li>
+        <li class="hero-mini" data-hero="CAMPANERO"><img src="img/heroes/campanero.svg" alt="" width="64" height="64"><b>El Campanero</b><small>Último en hablar</small></li>
       </ul>
 
       <div class="cards auth-forms">
@@ -207,16 +212,14 @@
               <div class="tile tile-shield" title="Escudo: absorbe daño antes que la vida">
                 <span class="tile-ico" aria-hidden="true">⛨</span><b id="me-shield">0</b><small>Escudo</small>
               </div>
-              <div id="tile-charges" class="tile tile-charges" title="Cargas de la habilidad">
-                <span id="me-charge-pips" class="pips" aria-hidden="true"></span><b id="me-charges">0</b><small>Cargas</small>
-              </div>
               <div id="tile-ability" class="tile tile-ability" title="Enfriamiento de la habilidad">
                 <span class="tile-ico" aria-hidden="true">✺</span><b id="me-cooldown">0</b><small id="me-ability">Habilidad</small>
               </div>
-              <div class="tile tile-stealth" title="Rondas de sigilo que quedan">
-                <span class="tile-ico" aria-hidden="true">☾</span><b id="me-stealth">0</b><small>Sigilo</small>
+              <div id="tile-debt" class="tile tile-debt" hidden>
+                <span class="tile-ico" aria-hidden="true">⚖</span><b id="me-debt">0</b><small id="me-debt-label">Deuda</small>
               </div>
             </div>
+            <p id="me-note" class="me-note" hidden></p>
             <!-- Caminos tras la extinción (match.js): eligiendo, Brasa errante o Renegado. -->
             <div id="me-path" class="path-panel" hidden>
               <div class="path-panel-head">
@@ -269,6 +272,7 @@
               <span class="pill"><small>Piso</small><b id="m-floor">–</b></span>
               <span class="pill"><small>Ronda</small><b id="m-round">–</b></span>
               <span id="m-status" class="badge"></span>
+              <span id="m-bell" class="badge bell" role="timer" aria-live="off" hidden></span>
               <span id="conn-state" class="badge conn">desconectado</span>
             </div>
             <div id="m-clock" class="clock" role="timer" aria-label="Tiempo de la ronda">
@@ -287,6 +291,10 @@
             <span><span class="sw sw-spikes"></span>pinchos</span> <span><span class="sw sw-fire"></span>fuego</span> <span><span class="sw sw-tele"></span>ataque anunciado</span>
             <span><span class="sw sw-fog"></span>recordado</span>
             <span id="legend-paths" hidden><span><span class="sw sw-ember"></span>Brasa</span> <span><span class="sw sw-renegade"></span>Renegado</span></span>
+            <span id="legend-hidden" hidden><span class="sw sw-proof"></span>anuncio sin autor</span>
+            <span id="legend-echo" hidden><span class="sw sw-echo"></span>Eco</span>
+            <span id="legend-noise" hidden><span class="sw sw-noise"></span>ruido</span>
+            <span id="legend-ground" hidden><span class="sw sw-ground"></span>ascuas en el suelo</span>
           </p>
         </div>
 
@@ -312,6 +320,10 @@
               <button type="button" class="dir" data-dir="E" aria-label="Este"><span aria-hidden="true">▶</span><small>E</small></button>
               <button type="button" class="dir" data-dir="S" aria-label="Sur"><span aria-hidden="true">▼</span><small>S</small></button>
             </div>
+            <div id="last-word" class="last-word" hidden aria-live="polite">
+              <b id="last-word-title">🔔 Último en hablar</b>
+              <ul id="last-word-list"></ul>
+            </div>
             <div id="order-status" class="order-status" aria-live="polite">Sin orden en esta ronda.</div>
             <details class="shortcuts">
               <summary>Atajos de teclado</summary>
@@ -324,6 +336,21 @@
                 <li><kbd>Esc</kbd> cancelar Q/E</li>
               </ul>
             </details>
+          </div>
+
+          <div class="card card-signals">
+            <div class="card-head">
+              <h3>Señales</h3>
+              <span class="spacer"></span>
+              <small id="signal-hint" class="hint">Clic en el tablero: marca casilla</small>
+            </div>
+            <div class="signal-buttons" role="group" aria-label="Señales rápidas a tu bando">
+              <button type="button" class="signal" data-signal="HERE"><span aria-hidden="true">📍</span> ¡Aquí! <kbd>1</kbd></button>
+              <button type="button" class="signal" data-signal="DANGER"><span aria-hidden="true">⚠</span> ¡Cuidado! <kbd>2</kbd></button>
+              <button type="button" class="signal" data-signal="HELP"><span aria-hidden="true">🆘</span> Ayuda <kbd>3</kbd></button>
+              <button type="button" class="signal" data-signal="MINE"><span aria-hidden="true">✋</span> Es mía <kbd>4</kbd></button>
+            </div>
+            <ul id="signal-feed" class="signal-feed" aria-live="polite"></ul>
           </div>
 
           <div class="card card-events">
@@ -340,6 +367,7 @@
             <button id="btn-demo-extinct" type="button" class="secondary small">🕯 Simular extinción</button>
             <button id="btn-demo-renegade" type="button" class="secondary small">☠ Simular Renegado aliado</button>
             <button id="btn-demo-floor" type="button" class="secondary small">⇣ Bajar de piso</button>
+            <label class="inline demo-hero">Héroe <select id="demo-hero" aria-label="Héroe de la demo"></select></label>
           </div>
         </aside>
       </div>
@@ -398,12 +426,16 @@
         <ol id="fin-podium" class="podium" aria-label="Podio"></ol>
         <h3 class="section-title">Clasificación</h3>
         <ol id="fin-standings" class="standings"></ol>
+        <div id="fin-betrayal-box">
+          <h3 class="section-title">Traiciones reveladas</h3>
+          <ul id="fin-betrayals" class="betrayals"></ul>
+        </div>
         <h3 class="section-title">Pactos revelados</h3>
         <p class="hint">Las cartas se voltean solas; haz clic (o Enter) en una para darla vuelta otra vez.</p>
         <div id="fin-pacts" class="pacts"></div>
         <div id="fin-tutorial" class="fin-tutorial" hidden>
           <h3>Terminaste el tutorial</h3>
-          <p>En una partida real juegan de 2 a 4 personas, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan los pactos secretos y gana quien tenga más ascuas.</p>
+          <p>En una partida real juegan de 2 a 4 personas, cada una con uno de los nueve héroes, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan los pactos secretos y gana quien tenga más ascuas.</p>
           <div class="row">
             <a class="button primary" href="/">Jugar en línea</a>
             <a class="button secondary" href="?tutorial=1">Repetir el tutorial</a>
@@ -476,7 +508,7 @@
           <tbody>
             <tr><td>Mover</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></td><td>1 casilla en N/S/E/O.</td></tr>
             <tr><td>Atacar</td><td><kbd>⇧</kbd> + flecha</td><td>Ataque básico según el alcance de tu héroe.</td></tr>
-            <tr><td>Habilidad</td><td><kbd>Q</kbd> y flecha</td><td>La habilidad de tu héroe (cargas o enfriamiento).</td></tr>
+            <tr><td>Habilidad</td><td><kbd>Q</kbd> y flecha</td><td>La habilidad de tu héroe (tiene enfriamiento; si no hace nada, no lo gasta).</td></tr>
             <tr><td>Interactuar</td><td><kbd>E</kbd> y flecha</td><td>Abrir un cofre, levantar a un aliado caído o usar un altar (casilla vecina).</td></tr>
             <tr><td>Guardar</td><td><kbd>Espacio</kbd></td><td>Recibes la mitad de daño; anula los golpes de 1. Es la orden por defecto.</td></tr>
           </tbody>
@@ -487,30 +519,57 @@
       <section class="howto-page" hidden>
         <h3>Leer el tablero</h3>
         <ul>
-          <li><b>Niebla:</b> ves hasta 3 casillas a tu alrededor; lo que viste antes queda en gris. Siempre ves a tus aliados, salvo que estén en sigilo.</li>
+          <li><b>Niebla:</b> ves hasta 3 casillas a tu alrededor; lo que viste antes queda en gris. Siempre ves a tus aliados, salvo a Polizón cuando va dentro de un monstruo.</li>
           <li><span class="sw sw-tele"></span><b>Ataque anunciado:</b> los enemigos marcan dónde golpearán <b>la ronda siguiente</b>. Apártate o guarda.</li>
           <li><span class="sw sw-chest"></span><b>Cofre:</b> ascuas y a veces una poción, escudo o la llave de plata de los altares.</li>
-          <li><span class="sw sw-stairs"></span><b>Escalera:</b> con la sala sin enemigos, pisarla lleva a todos a la sala siguiente.</li>
+          <li><span class="sw sw-stairs"></span><b>Escalera:</b> con la sala sin enemigos, pisarla lleva a todos a la sala siguiente. El Mampostero puede moverla.</li>
           <li><span class="sw sw-spikes"></span><b>Pinchos</b> (se activan en rondas pares) y <span class="sw sw-fire"></span><b>fuego</b> hacen daño.</li>
         </ul>
       </section>
 
       <section class="howto-page" hidden>
         <h3>Los héroes</h3>
+        <p class="hint">Cada uno rompe una regla del juego. Todos hacen 1 de daño básico. Toda habilidad es una orden y una dirección.</p>
         <div class="heroes">
-          <div class="hero-row"><img src="img/heroes/yunque.svg" alt="" width="48" height="48"><dl>
-            <dt>Yunque · tanque · 6 de vida</dt>
-            <dd>25% de bloquear golpes de frente. <b>Muralla</b>: protege a los aliados que estén detrás de él esa ronda.</dd></dl></div>
-          <div class="hero-row"><img src="img/heroes/chispa.svg" alt="" width="48" height="48"><dl>
-            <dt>Chispa · distancia · 4 de vida</dt>
-            <dd>Dispara a 3 casillas en línea y gana 1 carga por ronda sin atacar. <b>Descarga</b>: golpe en cruz con 1 + cargas de daño.</dd></dl></div>
-          <div class="hero-row"><img src="img/heroes/cuervo.svg" alt="" width="48" height="48"><dl>
-            <dt>Cuervo · pícaro · 4 de vida</dt>
-            <dd>Doble daño por la espalda. <b>Paso sombrío</b>: avanza 2 casillas y queda invisible 2 rondas.</dd></dl></div>
-          <div class="hero-row"><img src="img/heroes/raiz.svg" alt="" width="48" height="48"><dl>
-            <dt>Raíz · soporte · 5 de vida</dt>
-            <dd>Las curaciones le rinden +1. <b>Brote</b>: cura 2 a un aliado cercano o a sí misma.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/errata.svg" alt="" width="48" height="48"><dl>
+            <dt>Errata · 4 de vida</dt>
+            <dd><i>Rompe: «los golpes caen donde se anunciaron».</i> Ve todos los anuncios de la sala, aunque no sepa de quién son. <b>Corregir</b> (enf. 3): todo enemigo con alguna casilla anunciada a ≤2 desplaza su anuncio entero 1 casilla en la dirección que elijas. Golpea lo que haya ahí, también a quien lo anunció.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/anteayer.svg" alt="" width="48" height="48"><dl>
+            <dt>Anteayer · 4 de vida</dt>
+            <dd><i>Rompe: «lo hecho, hecho está».</i> <b>Eco:</b> 2 rondas después de cada ataque, una copia translúcida lo repite desde donde estabas, aunque ya estés caído. <b>Volver</b> (enf. 5): saltas a donde estabas hace 2 rondas y recuperas la vida que tenías entonces, si era más.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/hilvan.svg" alt="" width="48" height="48"><dl>
+            <dt>Hilván · 8 de vida</dt>
+            <dd><i>Rompe: «tienes un solo cuerpo».</i> Dos cuerpos, una orden, una vida. Norte y sur los mueven igual; este y oeste, al revés. Un golpe a cada cuerpo son dos golpes. <b>Tensar</b> (enf. 3): con los cuerpos alineados, a ≥2 y sin muro entre ellos, todo lo que haya en medio recibe 2 de daño, aliados incluidos.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/polizon.svg" alt="" width="48" height="48"><dl>
+            <dt>Polizón · 4 de vida</dt>
+            <dd><i>Rompe: «eres tu cuerpo».</i> Dentro de un monstruo no te ve nadie, aliados incluidos. Cada 2 rondas lo drenas: pierde 1 y curas 1. <b>Abordar</b> (enf. 3): entras en el enemigo vecino. Dentro, mover lo mueve, atacar hace que golpee ya y la habilidad te saca. Al Celador solo lo giras 180°; al Tótem no se entra.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/escucha.svg" alt="" width="48" height="48"><dl>
+            <dt>La Escucha · 5 de vida</dt>
+            <dd><i>Rompe: «ves lo que tienes cerca».</i> Conoce el terreno, pero solo percibe lo que está a 1 casilla y lo que hizo ruido. Golpea a tientas hasta 4 casillas, amigo o enemigo; 2 de daño a lo que no hizo ruido. <b>Grito</b> (enf. 4): hasta la próxima resolución su bando ve la sala entera, y en esta ronda todos los monstruos la eligen a ella.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/usurera.svg" alt="" width="48" height="48"><dl>
+            <dt>La Usurera · 4 de vida</dt>
+            <dd><i>Rompe: «ayudar es gratis».</i> <b>Interés:</b> cada 5 rondas la deuda sube 1 (tope 4). Lo que gane el deudor le llega a ella y al terminar cobra lo que quede. La deuda solo la ven ella y el deudor. <b>Préstamo</b> (enf. 2): al primer aliado herido o caído en línea a ≤2 le cura 3 o lo levanta con 3. No pide permiso: le crea 1 ascua de deuda.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/avaro.svg" alt="" width="48" height="48"><dl>
+            <dt>El Avaro · 4 ascuas</dt>
+            <dd><i>Rompe: «la vida y la puntuación son cosas distintas».</i> Sus ascuas son su vida. Cada punto de daño tira 1 al suelo y el primero que pise la casilla se la queda. No acepta curas ni préstamos. <b>Soborno</b> (enf. 2): paga 1 ascua al primer enemigo en línea a ≤3: cancela su anuncio y esa ronda no actúa. El Celador cuesta 3 y solo cancela el anuncio.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/mampostero.svg" alt="" width="48" height="48"><dl>
+            <dt>El Mampostero · 6 de vida</dt>
+            <dd><i>Rompe: «la mazmorra está quieta».</i> Los pinchos y las grietas no le afectan. <b>Corrimiento</b> (enf. 3): desliza 1 casilla su fila (este/oeste) o su columna (norte/sur) con todo encima, escalera incluida. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2. Los anuncios no se mueven.</dd></dl></div>
+          <div class="hero-row"><img src="img/heroes/campanero.svg" alt="" width="48" height="48"><dl>
+            <dt>El Campanero · 5 de vida</dt>
+            <dd><i>Rompe: «el reloj es igual para todos».</i> <b>Último en hablar:</b> si todos los demás decidieron y él no, recibe en privado sus órdenes. Golpea hasta 2 casillas. <b>Repique</b> (enf. 4): en la ronda siguiente los demás tienen solo 8 s y él conserva los 20. Se oye: todos ven la cuenta regresiva.</dd></dl></div>
         </div>
+      </section>
+
+      <section class="howto-page" hidden>
+        <h3>Señales y traición anónima</h3>
+        <ul>
+          <li><b>Señales rápidas:</b> durante la ronda puedes enviar a tu bando «¡Aquí!», «¡Cuidado!», «Ayuda» o «Es mía» (teclas <kbd>1</kbd>–<kbd>4</kbd>), hasta una cada 3 s. Si antes haces clic en el tablero, la señal marca esa casilla.</li>
+          <li><b>También se puede mentir:</b> la casilla la eliges tú y el servidor no la comprueba. Solo la recibe tu bando y no queda en la repetición.</li>
+          <li><b>Traición anónima:</b> si un golpe desviado por Errata o dado desde el huésped de Polizón le cae a un aliado, el registro culpa al monstruo. No hay robo de ascuas, y cuenta para el pacto de traicionar.</li>
+          <li><b>Se revela al final:</b> la pantalla de resultados dice quién fue («Errata le costó 3 de vida a Ana»).</li>
+          <li><b>El Repique</b> se oye: si el Campanero lo tocó, todos ven la cuenta regresiva. Si se te acaba tu plazo, guardas (o enciendes el Faro) y una orden tardía se rechaza.</li>
+        </ul>
       </section>
 
       <section class="howto-page" hidden>
@@ -568,7 +627,7 @@
         <ul>
           <li><b>Draft:</b> al empezar eliges 1 bendición entre 2, en privado. Los altares dan más, con la llave de plata.</li>
           <li>Algunas bendiciones se combinan en <b>sinergias</b>: Brasa viva + Paso ígneo = Infierno.</li>
-          <li><b>El Celador</b> es inmune a los golpes de frente: hay que rodearlo. A la mitad de su vida invoca tótems y alterna golpes en área.</li>
+          <li><b>El Celador</b> es inmune a los golpes de frente: hay que rodearlo. A la mitad de su vida invoca tótems y alterna golpes en área. Golpea una ronda sí y una no: la ronda en que no anuncia nada (⏸) está tomando aire, no es un fallo.</li>
         </ul>
         <p>La mejor forma de aprender es jugando:</p>
         <a class="button primary" href="?tutorial=1">Empezar el tutorial interactivo</a>

@@ -3,18 +3,18 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
-/// <summary>Fase 3: ataques, habilidades e interacciones de los héroes, por iniciativa.</summary>
+/// <summary>
+/// Fase 4: ataques, habilidades e interacciones de los héroes, por iniciativa. El Eco de Anteayer actúa justo
+/// después de su dueño, también si está caído o extinto.
+/// </summary>
 internal static class HeroActions
 {
-    public const int DischargeArmLength = 3;
-    public const int SproutHeal = 2;
-    public const int SproutRange = 2;
     public const int PotionHeal = 2;
 
     public static void Resolve(RoundContext ctx, Dictionary<PlayerId, Order> plan)
     {
-        var initiative = plan.Keys
-            .Select(ctx.Hero)
+        var initiative = ctx.Heroes
+            .Where(h => plan.ContainsKey(h.Player) || h.EchoQueue.Exists(e => e.FireRound <= ctx.Round))
             .OrderByDescending(h => h.Stats.Initiative)
             .ThenBy(h => h.Seat)
             .Select(h => h.Player)
@@ -22,29 +22,39 @@ internal static class HeroActions
 
         foreach (var player in initiative)
         {
-            var hero = ctx.Hero(player);
-            var order = plan[player];
-            if (!hero.CanAct || order.Direction is not { } direction)
+            if (plan.TryGetValue(player, out var order))
             {
-                continue;
+                Act(ctx, ctx.Hero(player), order);
             }
 
-            if (hero.IsEmber)
-            {
-                EmberAction(ctx, hero, order.Type, direction);
-                continue;
-            }
+            HeroSkills.FireEchoes(ctx, player);
+        }
+    }
 
+    private static void Act(RoundContext ctx, Hero hero, Order order)
+    {
+        if (!hero.CanAct || order.Direction is not { } direction)
+        {
+            return;
+        }
+
+        if (hero.IsEmber)
+        {
+            EmberAction(ctx, hero, order.Type, direction);
+        }
+        else if (hero.IsInHost)
+        {
+            HostAction(ctx, hero, order.Type, direction);
+        }
+        else
+        {
             switch (order.Type)
             {
                 case OrderType.Attack:
                     BasicAttack(ctx, hero, direction);
                     break;
-                case OrderType.Skill when hero.Class == HeroClass.Chispa:
-                    Discharge(ctx, hero, direction);
-                    break;
-                case OrderType.Skill when hero.Class == HeroClass.Raiz:
-                    Sprout(ctx, hero, direction);
+                case OrderType.Skill:
+                    HeroSkills.Use(ctx, hero, direction);
                     break;
                 case OrderType.Interact when !hero.IsRenegade:
                     Interact(ctx, hero, direction);
@@ -74,15 +84,46 @@ internal static class HeroActions
         }
     }
 
+    /// <summary>Polizón dentro de un huésped: ATACAR hace que golpee, HABILIDAD sale; GUARDAR e INTERACTUAR no hacen nada.</summary>
+    private static void HostAction(RoundContext ctx, Hero polizon, OrderType type, Direction direction)
+    {
+        switch (type)
+        {
+            case OrderType.Attack:
+                HeroSkills.HostStrike(ctx, polizon, direction);
+                break;
+            case OrderType.Skill:
+                HeroSkills.LeaveHost(ctx, polizon, direction);
+                break;
+            default:
+                break;
+        }
+    }
+
     private static void BasicAttack(RoundContext ctx, Hero hero, Direction direction)
     {
         hero = hero with { Facing = direction };
+        if (hero.Class == HeroClass.Anteayer)
+        {
+            hero = hero with { EchoQueue = hero.EchoQueue.Add(new PendingEcho(ctx.Round + HeroRules.EchoDelay, hero.Position, direction)) };
+        }
+
         ctx.Update(hero);
-        ctx.Attacked.Add(hero.Player);
+        ctx.MakeNoise(hero);
         ctx.Emit(new HeroAttacked(hero.Player, direction) { Audience = RoundContext.AudienceOf(hero) });
 
-        var position = hero.Position;
-        for (var i = 0; i < hero.Stats.Range; i++)
+        LineAttack(ctx, hero.Player, hero.Position, direction, hero.Stats.Range, hero.Damage);
+        if (hero.SecondBody is { } second && ctx.Hero(hero.Player).HasBody)
+        {
+            LineAttack(ctx, hero.Player, second, direction.Mirrored(), hero.Stats.Range, hero.Damage);
+        }
+    }
+
+    /// <summary>Ataque en línea desde <paramref name="origin"/>: golpea lo primero que encuentre; muros y braseros lo detienen.</summary>
+    public static void LineAttack(RoundContext ctx, PlayerId player, Position origin, Direction direction, int range, int damage)
+    {
+        var position = origin;
+        for (var i = 0; i < range; i++)
         {
             position = position.Step(direction);
             var terrain = ctx.Room.TerrainAt(position);
@@ -93,75 +134,30 @@ internal static class HeroActions
 
             if (terrain == Terrain.Brazier)
             {
-                Combat.ToppleBrazier(ctx, position, hero);
+                Combat.ToppleBrazier(ctx, position, ctx.Hero(player));
                 return;
             }
 
-            if (StrikeAt(ctx, hero.Player, position, hero.Damage))
+            if (StrikeAt(ctx, player, origin, position, damage))
             {
                 return;
             }
         }
-    }
-
-    /// <summary>Descarga de Chispa: cruz desde sí (brazos de 3) con 1 + cargas de daño.</summary>
-    private static void Discharge(RoundContext ctx, Hero hero, Direction direction)
-    {
-        var damage = hero.IsRenegade ? PathRules.RenegadeMaxDamage : 1 + hero.Charges + (hero.Has(Blessing.StoneFist) ? 1 : 0);
-        hero = hero with { Facing = direction, Charges = 0 };
-        ctx.Update(hero);
-        ctx.Attacked.Add(hero.Player);
-        ctx.Emit(new SkillUsed(hero.Player, hero.Class, direction) { Audience = RoundContext.AudienceOf(hero) });
-
-        foreach (var arm in Directions.All)
-        {
-            var position = hero.Position;
-            for (var i = 0; i < DischargeArmLength; i++)
-            {
-                position = position.Step(arm);
-                var terrain = ctx.Room.TerrainAt(position);
-                if (terrain == Terrain.Wall)
-                {
-                    break;
-                }
-
-                if (terrain == Terrain.Brazier)
-                {
-                    Combat.ToppleBrazier(ctx, position, hero);
-                    break;
-                }
-
-                StrikeAt(ctx, hero.Player, position, damage);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Brote de Raíz: cura 2 al aliado más cercano a ≤2 casillas en esa dirección; si no hay, a sí mismo.
-    /// Para un Renegado, "aliado" es otro Renegado.
-    /// </summary>
-    private static void Sprout(RoundContext ctx, Hero hero, Direction direction)
-    {
-        hero = hero with { Facing = direction, SkillCooldown = hero.SkillCooldownOnUse };
-        ctx.Update(hero);
-        ctx.Emit(new SkillUsed(hero.Player, hero.Class, direction) { Audience = RoundContext.AudienceOf(hero) });
-
-        var origin = hero.Position;
-        var target = ctx.Heroes
-            .Where(h => h.IsVulnerable && h.Player != hero.Player && h.IsSameFaction(hero))
-            .Where(h => origin.DistanceTo(h.Position) <= SproutRange && origin.DirectionTo(h.Position) == direction)
-            .OrderBy(h => origin.DistanceTo(h.Position))
-            .ThenBy(h => h.Seat)
-            .FirstOrDefault();
-        Combat.Heal(ctx, target?.Player ?? hero.Player, SproutHeal);
     }
 
     private static void Interact(RoundContext ctx, Hero hero, Direction direction)
     {
-        hero = hero with { Facing = direction };
-        ctx.Update(hero);
-        var target = hero.Position.Step(direction);
+        ctx.Update(hero with { Facing = direction });
+        InteractAt(ctx, hero.Player, hero.Position.Step(direction));
+        if (hero.SecondBody is { } second)
+        {
+            InteractAt(ctx, hero.Player, second.Step(direction.Mirrored()));
+        }
+    }
 
+    private static void InteractAt(RoundContext ctx, PlayerId player, Position target)
+    {
+        var hero = ctx.Hero(player);
         if (ctx.HeroAt(target) is { Status: HeroStatus.Down } fallen)
         {
             Revive(ctx, hero, fallen);
@@ -178,8 +174,9 @@ internal static class HeroActions
 
     private static void Revive(RoundContext ctx, Hero hero, Hero fallen)
     {
-        ctx.Update(fallen with { Status = HeroStatus.Active, Hp = Math.Min(HeroCatalog.ReviveHp, fallen.MaxHp), DownRounds = 0 });
+        Combat.StandUp(ctx, fallen, HeroCatalog.ReviveHp, HeroRules.MiserReviveEmbers);
         ctx.Update(hero with { Progress = hero.Progress with { Revives = hero.Progress.Revives + 1 } });
+        ctx.MakeNoise(hero);
         ctx.Emit(new HeroRevived(hero.Player, fallen.Player));
         Combat.GainEmbers(ctx, hero.Player, 2, EmberReason.AllyRevived);
     }
@@ -197,12 +194,13 @@ internal static class HeroActions
             Progress = hero.Progress with { ChestsOpened = hero.Progress.ChestsOpened + 1 },
         };
         ctx.Update(hero);
+        ctx.MakeNoise(hero);
         ctx.Emit(new ChestOpened(hero.Player, chest.Id) { Audience = RoundContext.AudienceOf(hero) });
         ctx.Emit(new ChestLooted(hero.Player, chest.Id, chest.Loot, chest.HasSilverKey) { Audience = Audience.Only(hero.Player) });
         Combat.GainEmbers(ctx, hero.Player, 1 + (hero.Has(Blessing.Lockpick) ? 1 : 0), EmberReason.ChestOpened);
         if (chest.Loot == ChestLoot.HealingPotion)
         {
-            Combat.Heal(ctx, hero.Player, PotionHeal + (hero.Class == HeroClass.Raiz ? 1 : 0));
+            Combat.Heal(ctx, hero.Player, PotionHeal);
         }
     }
 
@@ -219,13 +217,14 @@ internal static class HeroActions
 
         ctx.Room = ctx.Room.WithTerrain(altar, Terrain.Floor);
         ctx.Update(hero with { SilverKeys = hero.SilverKeys - 1, DraftOptions = [.. options] });
+        ctx.MakeNoise(hero);
         ctx.Emit(new AltarActivated(hero.Player, altar) { Audience = RoundContext.AudienceOf(hero) });
         ctx.Emit(new DraftOffered(hero.Player, [.. options]) { Audience = Audience.Only(hero.Player) });
     }
 
     /// <summary>Golpea lo que haya en la casilla. Devuelve si había un objetivo (para cortar el proyectil).</summary>
     /// <remarks>El Renegado no daña a los monstruos ni a otros Renegados: lo detienen sin efecto.</remarks>
-    private static bool StrikeAt(RoundContext ctx, PlayerId attackerId, Position position, int damage)
+    private static bool StrikeAt(RoundContext ctx, PlayerId attackerId, Position origin, Position position, int damage)
     {
         var attacker = ctx.Hero(attackerId);
         if (ctx.EnemyAt(position) is { } enemy)
@@ -235,8 +234,8 @@ internal static class HeroActions
                 return true;
             }
 
-            var dealt = IsBackstab(attacker, enemy.Position, enemy.Facing) ? damage * 2 : damage;
-            if (Combat.HitEnemy(ctx, enemy.Id, dealt, Attacker.FromHero(attacker)))
+            var dealt = damage + QuietBonus(attacker, !ctx.Start.NoisyEnemies.Contains(enemy.Id));
+            if (Combat.HitEnemy(ctx, enemy.Id, dealt, Attacker.FromHero(attacker, origin)))
             {
                 Combat.ApplyOnHitEffects(ctx, attackerId, EntityRef.ForEnemy(enemy.Id));
             }
@@ -244,17 +243,17 @@ internal static class HeroActions
             return true;
         }
 
-        if (ctx.HeroAt(position) is { IsVulnerable: true } ally && ally.Player != attackerId)
+        if (ctx.HeroAt(position) is { IsVulnerable: true } target && target.Player != attackerId)
         {
-            if (attacker.IsRenegade && ally.IsRenegade)
+            if (attacker.IsRenegade && target.IsRenegade)
             {
                 return true;
             }
 
-            var dealt = IsBackstab(attacker, ally.Position, ally.Facing) ? damage * 2 : damage;
-            if (Combat.HitHero(ctx, ally.Player, dealt, Attacker.FromHero(attacker)))
+            var dealt = damage + QuietBonus(attacker, !ctx.Start.NoisyHeroes.Contains(target.Player));
+            if (Combat.HitHero(ctx, target.Player, dealt, Attacker.FromHero(attacker, origin), position) > 0)
             {
-                Combat.ApplyOnHitEffects(ctx, attackerId, EntityRef.ForHero(ally.Player));
+                Combat.ApplyOnHitEffects(ctx, attackerId, EntityRef.ForHero(target.Player));
             }
 
             return true;
@@ -263,7 +262,7 @@ internal static class HeroActions
         return false;
     }
 
-    /// <summary>Pasiva de Cuervo: daño ×2 si golpea al objetivo por la espalda (el Renegado no tiene ese bonus).</summary>
-    private static bool IsBackstab(Hero attacker, Position target, Direction targetFacing) =>
-        attacker is { Class: HeroClass.Cuervo, IsRenegade: false } && target.DirectionTo(attacker.Position) == targetFacing.Opposite();
+    /// <summary>A tientas: la Escucha hace +1 a lo que no hizo ruido en la última resolución (no como Renegada).</summary>
+    private static int QuietBonus(Hero attacker, bool quiet) =>
+        attacker is { Class: HeroClass.Escucha, Status: HeroStatus.Active } && quiet ? HeroRules.QuietTargetBonus : 0;
 }

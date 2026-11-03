@@ -3,56 +3,56 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
-/// <summary>Quién origina un golpe. <see cref="Origin"/> decide frente/espalda.</summary>
-internal readonly record struct Attacker(PlayerId? Hero, int? EnemyId, Position? Origin)
+/// <summary>
+/// Quién origina un golpe. <see cref="Origin"/> decide frente y espalda (sin origen no hay inmunidad frontal).
+/// <see cref="Hidden"/>: golpe anónimo; <see cref="Hero"/> se lleva el crédito (golpe final, ascuas), pero el registro
+/// solo muestra a <see cref="EnemyId"/> o a nadie.
+/// </summary>
+internal readonly record struct Attacker(PlayerId? Hero, int? EnemyId, Position? Origin, bool Hidden = false)
 {
     public static Attacker None => default;
 
     public static Attacker FromHero(Hero hero) => new(hero.Player, null, hero.Position);
 
+    /// <summary>Golpe de un héroe desde otra casilla: su segundo cuerpo o su Eco.</summary>
+    public static Attacker FromHero(Hero hero, Position origin) => new(hero.Player, null, origin);
+
+    /// <summary>Golpe de un héroe sin origen (Tensar, Corrimiento): no importa hacia dónde mira el objetivo.</summary>
+    public static Attacker Originless(Hero hero) => new(hero.Player, null, null);
+
     public static Attacker FromEnemy(Enemy enemy) => new(null, enemy.Id, enemy.Position);
 
-    public EntityRef? Ref => Hero is { } player
-        ? EntityRef.ForHero(player)
-        : EnemyId is { } id ? EntityRef.ForEnemy(id) : null;
+    /// <summary>Golpe anónimo con crédito para <paramref name="credit"/>; el registro culpa a <paramref name="shownEnemy"/>.</summary>
+    public static Attacker Anonymous(PlayerId credit, int? shownEnemy, Position? origin) => new(credit, shownEnemy, origin, Hidden: true);
+
+    public EntityRef? Ref => EnemyId is { } enemy
+        ? EntityRef.ForEnemy(enemy)
+        : !Hidden && Hero is { } player ? EntityRef.ForHero(player) : null;
 }
 
-/// <summary>Daño, curación, muertes, ascuas y fuego.</summary>
+/// <summary>Daño, curación, muertes, ascuas, deudas y fuego.</summary>
 internal static class Combat
 {
     public const int FriendlyFireSteal = 1;
 
     /// <summary>
-    /// Golpea a un héroe. Orden: Muralla → bloqueo frontal → fuego amigo (½, redondeo arriba) →
-    /// GUARDAR (½, redondeo abajo) → Codicia (+1) → escudo → vida. Devuelve si el golpe conectó.
+    /// Golpea a un héroe. Orden: fuego amigo (½, redondeo arriba) → GUARDAR (½, redondeo abajo) → Codicia (+1) → escudo
+    /// → vida (o ascuas, si es el Avaro). Devuelve el daño que conectó (0 si no conectó). <paramref name="tile"/>: la
+    /// casilla del cuerpo golpeado, si no es la principal.
     /// </summary>
-    public static bool HitHero(RoundContext ctx, PlayerId targetId, int baseDamage, Attacker attacker)
+    public static int HitHero(RoundContext ctx, PlayerId targetId, int baseDamage, Attacker attacker, Position? tile = null)
     {
         var target = ctx.Hero(targetId);
         if (!target.IsVulnerable || baseDamage <= 0)
         {
-            return false;
+            return 0;
         }
 
         var targetRef = EntityRef.ForHero(targetId);
-        var audience = RoundContext.AudienceOf(target);
+        var audience = tile is { } at ? Audience.At(at) : RoundContext.AudienceOf(target);
+        ctx.MakeNoise(target);
 
-        if (IsBehindRampart(ctx, target))
-        {
-            ctx.Emit(new HitPrevented(targetRef, attacker.Ref, PreventionReason.Rampart) { Audience = audience });
-            return false;
-        }
-
-        if (target.BlockPercent > 0
-            && attacker.Origin is { } origin
-            && target.Position.DirectionTo(origin) == target.Facing
-            && ctx.Chance(target.BlockPercent))
-        {
-            ctx.Emit(new HitPrevented(targetRef, attacker.Ref, PreventionReason.Block) { Audience = audience });
-            return false;
-        }
-
-        var source = attacker.Hero is { } sourceId && sourceId != targetId ? ctx.Hero(sourceId) : null;
+        var source = !attacker.Hidden && attacker.Hero is { } sourceId && sourceId != targetId ? ctx.Hero(sourceId) : null;
         var friendly = source is not null && source.IsSameFaction(target);
         var renegadeStrike = source is { IsRenegade: true } && !target.IsRenegade;
         var damage = baseDamage;
@@ -68,7 +68,7 @@ internal static class Combat
             {
                 ctx.Update(source with { WarnedHeroes = source.WarnedHeroes.Add(targetId) });
                 ctx.Emit(new HitPrevented(targetRef, attacker.Ref, PreventionReason.WarningShield) { Audience = audience });
-                return false;
+                return 0;
             }
 
             damage = Math.Min(damage, PathRules.RenegadeMaxDamage);
@@ -87,26 +87,41 @@ internal static class Combat
         if (damage <= 0)
         {
             ctx.Emit(new HitPrevented(targetRef, attacker.Ref, PreventionReason.Guard) { Audience = audience });
-            return false;
+            return 0;
         }
 
         var absorbed = Math.Min(target.Shield, damage);
         var kindled = target.EmberShieldBy.Take(Math.Min(absorbed, target.EmberShieldBy.Count)).ToList();
-        var hp = Math.Max(0, target.Hp - (damage - absorbed));
-        target = target with
+        var remaining = damage - absorbed;
+        target = target with { Shield = target.Shield - absorbed, EmberShieldBy = target.EmberShieldBy.RemoveRange(0, kindled.Count) };
+
+        var stolen = 0;
+        if (target.IsMiser)
         {
-            Shield = target.Shield - absorbed,
-            Hp = hp,
-            EmberShieldBy = target.EmberShieldBy.RemoveRange(0, kindled.Count),
-        };
-        ctx.Emit(new EntityDamaged(targetRef, damage, attacker.Ref, hp) { Audience = audience });
-        var defeated = hp == 0 && target.IsRenegade;
-        if (hp == 0 && !defeated)
+            (target, stolen) = HitMiser(ctx, target, remaining, friendly || renegadeStrike, tile ?? target.Position);
+        }
+        else
         {
-            target = Fall(ctx, target);
+            target = target with { Hp = Math.Max(0, target.Hp - remaining) };
         }
 
         ctx.Update(target);
+        ctx.Emit(new EntityDamaged(targetRef, damage, attacker.Ref, target.Hp) { Audience = audience });
+        var defeated = target is { Hp: 0, IsRenegade: true };
+        if (target.Hp == 0 && !defeated)
+        {
+            if (target.IsInHost)
+            {
+                // Sin casa y con vida 0 dentro no ocurre: sale primero y cae afuera.
+                var host = ctx.Enemy(target.HostEnemyId ?? -1);
+                var free = host is null ? null : ctx.FreeTilesNear(host.Position).Select(p => (Position?)p).FirstOrDefault();
+                ExitHost(ctx, targetId, free ?? target.Position);
+                target = ctx.Hero(targetId);
+            }
+
+            target = Fall(ctx, target);
+            ctx.Update(target);
+        }
 
         // Cada punto que absorbió el escudo de Avivar da un eco a la Brasa que lo dio.
         foreach (var ember in kindled)
@@ -116,21 +131,45 @@ internal static class Combat
 
         if (friendly)
         {
-            OnFriendlyFire(ctx, attacker, targetId);
+            OnFriendlyFire(ctx, attacker, targetId, stolen);
         }
         else if (renegadeStrike)
         {
-            OnRenegadeStrike(ctx, source!.Player, targetId);
+            OnRenegadeStrike(ctx, source!.Player, targetId, stolen);
         }
 
         if (defeated)
         {
-            DefeatRenegade(ctx, targetId, attacker.Hero);
-            return true;
+            DefeatRenegade(ctx, targetId, attacker);
+            return damage;
         }
 
         Reflect(ctx, targetId, attacker);
-        return true;
+        return damage;
+    }
+
+    /// <summary>
+    /// Todo lo que tengo: cada punto tira 1 ascua a su casilla; con 0 ascuas y otro golpe, cae. Fuego amigo y Renegados
+    /// le roban 1; el resto cae al suelo. Devuelve lo robado para dárselo al atacante.
+    /// </summary>
+    private static (Hero Target, int Stolen) HitMiser(RoundContext ctx, Hero target, int points, bool theft, Position tile)
+    {
+        if (points <= 0)
+        {
+            return (target, 0);
+        }
+
+        var lost = Math.Min(target.Embers, points);
+        var fatal = points > target.Embers;
+        var stolen = theft && lost > 0 ? FriendlyFireSteal : 0;
+        target = target with { Embers = target.Embers - lost, Hp = fatal ? 0 : target.Hp };
+        if (lost > 0)
+        {
+            ctx.Emit(new EmbersChanged(target.Player, -lost, EmberReason.MiserHit, target.Embers) { Audience = Audience.Only(target.Player) });
+        }
+
+        DropEmbers(ctx, tile, lost - stolen);
+        return (target, stolen);
     }
 
     /// <summary>Golpea a un enemigo. Devuelve si el golpe conectó.</summary>
@@ -144,6 +183,7 @@ internal static class Combat
 
         var enemyRef = EntityRef.ForEnemy(enemyId);
         var audience = Audience.At(enemy.Position);
+        ctx.MakeNoise(enemy);
         if (enemy.Kind == EnemyKind.Warden
             && enemy.Phase == 1
             && attacker.Origin is { } origin
@@ -157,7 +197,7 @@ internal static class Combat
         ctx.Emit(new EntityDamaged(enemyRef, damage, attacker.Ref, hp) { Audience = audience });
         if (hp == 0)
         {
-            Kill(ctx, enemy, attacker.Hero);
+            Kill(ctx, enemy, attacker);
             return true;
         }
 
@@ -177,19 +217,47 @@ internal static class Combat
         return true;
     }
 
+    /// <summary>
+    /// Suma ascuas. Lo ganado paga primero la deuda con la Usurera; un extinto o una Brasa lo acumula en sus ascuas
+    /// guardadas (el Eco de Anteayer sigue dando golpes finales).
+    /// </summary>
     public static void GainEmbers(RoundContext ctx, PlayerId player, int delta, EmberReason reason)
     {
         var hero = ctx.Hero(player);
+        if (hero.Status == HeroStatus.Retired)
+        {
+            return;
+        }
+
+        if (delta > 0 && hero.Debt > 0 && hero.DebtTo is { } creditor)
+        {
+            var paid = Math.Min(delta, hero.Debt);
+            delta -= paid;
+            hero = PayDebt(ctx, hero, creditor, paid, DebtReason.Paid);
+        }
+
+        if (delta == 0)
+        {
+            return;
+        }
+
+        if (delta > 0 && hero.Status is HeroStatus.Extinct or HeroStatus.EmberSpirit)
+        {
+            ctx.Update(hero with { SavedEmbers = hero.SavedEmbers + delta });
+            return;
+        }
+
         var total = Math.Max(0, hero.Embers + delta);
-        ctx.Update(hero with { Embers = total });
+        ctx.Update(hero with { Embers = total, PeakEmbers = Math.Max(hero.PeakEmbers, total) });
         ctx.Emit(new EmbersChanged(player, total - hero.Embers, reason, total) { Audience = Audience.Only(player) });
     }
 
     public static void Heal(RoundContext ctx, PlayerId player, int amount)
     {
         var hero = ctx.Hero(player);
-        if (!hero.IsVulnerable)
+        if (!hero.IsVulnerable || hero.IsMiser)
         {
+            // Curarse no existe para el Avaro: ni pociones ni Calidez ni Préstamo.
             return;
         }
 
@@ -198,16 +266,28 @@ internal static class Combat
         ctx.Emit(new Healed(EntityRef.ForHero(player), hp - hero.Hp, hp) { Audience = RoundContext.AudienceOf(hero) });
     }
 
+    /// <summary>Un caído vuelve a estar en pie. El Avaro vuelve con ascuas en lugar de vida.</summary>
+    public static void StandUp(RoundContext ctx, Hero fallen, int hp, int miserEmbers)
+    {
+        var standing = fallen with { Status = HeroStatus.Active, Hp = Math.Min(hp, fallen.MaxHp), DownRounds = 0 };
+        ctx.Update(standing);
+        if (standing.IsMiser && standing.Embers < miserEmbers)
+        {
+            GainEmbers(ctx, standing.Player, miserEmbers - standing.Embers, EmberReason.MiserRevived);
+        }
+    }
+
     /// <summary>
-    /// Extinción: ya no se pierde la mitad de las ascuas; pasan a ser ascuas guardadas y se abre la elección
-    /// de camino (privada). Vale para un héroe caído, una grieta o un Renegado derrotado.
+    /// Extinción: ya no se pierde la mitad de las ascuas; pasan a ser ascuas guardadas (de ahí cobra la Usurera lo que
+    /// alcance) y se abre la elección de camino (privada). Vale para un héroe caído, una grieta o un Renegado derrotado.
     /// </summary>
     public static void Extinguish(RoundContext ctx, PlayerId player, ExtinctionReason reason)
     {
         var hero = ctx.Hero(player);
-        var saved = hero.SavedEmbers + hero.Embers;
+        var kept = hero.IsMiser ? Math.Max(hero.Embers, (hero.PeakEmbers + 1) / 2) : hero.Embers;
+        var saved = hero.SavedEmbers + kept;
         var extinctions = hero.Extinctions + 1;
-        ctx.Update(hero with
+        hero = hero with
         {
             Status = HeroStatus.Extinct,
             Hp = 0,
@@ -218,21 +298,104 @@ internal static class Combat
             PathOfferPending = true,
             PathChoice = null,
             DownRounds = 0,
-            StealthRounds = 0,
             BurnRounds = 0,
             Frozen = false,
             AwaitingSpawn = false,
             SpawnRound = 0,
             EmberShieldBy = [],
             WarnedHeroes = [],
-        });
+            SecondBody = null,
+            History = [],
+            Shouting = false,
+        };
+        ctx.Update(hero);
         ctx.Emit(new HeroExtinguished(player, reason, 0));
-        if (hero.Embers > 0)
+        if (kept > 0 && !hero.IsMiser)
         {
-            ctx.Emit(new EmbersChanged(player, -hero.Embers, EmberReason.Extinction, 0) { Audience = Audience.Only(player) });
+            ctx.Emit(new EmbersChanged(player, -kept, EmberReason.Extinction, 0) { Audience = Audience.Only(player) });
+        }
+
+        if (hero.Debt > 0 && hero.DebtTo is { } creditor && saved > 0)
+        {
+            var paid = Math.Min(hero.Debt, saved);
+            hero = PayDebt(ctx, hero with { SavedEmbers = saved - paid }, creditor, paid, DebtReason.Extinction);
+            saved = hero.SavedEmbers;
         }
 
         ctx.Emit(new PathOffered(player, extinctions, saved) { Audience = Audience.Only(player) });
+    }
+
+    /// <summary>Crea o aumenta una deuda con la Usurera. El interés cuenta desde que empezó la deuda vigente.</summary>
+    public static void AddDebt(RoundContext ctx, PlayerId debtor, PlayerId creditor, int amount, DebtReason reason)
+    {
+        var hero = ctx.Hero(debtor);
+        var total = hero.Debt + amount;
+        ctx.Update(hero with { Debt = total, DebtTo = creditor, DebtSinceRound = hero.Debt == 0 ? ctx.Round : hero.DebtSinceRound });
+        EmitDebt(ctx, debtor, creditor, amount, total, reason);
+    }
+
+    /// <summary>Le baja la deuda al deudor y le da las ascuas a la Usurera. Devuelve al deudor actualizado.</summary>
+    public static Hero PayDebt(RoundContext ctx, Hero debtor, PlayerId creditor, int paid, DebtReason reason)
+    {
+        var total = debtor.Debt - paid;
+        debtor = debtor with { Debt = total, DebtTo = total > 0 ? creditor : null, DebtSinceRound = total > 0 ? debtor.DebtSinceRound : 0 };
+        ctx.Update(debtor);
+        EmitDebt(ctx, debtor.Player, creditor, -paid, total, reason);
+        GainEmbers(ctx, creditor, paid, EmberReason.DebtCollected);
+        return ctx.Hero(debtor.Player);
+    }
+
+    /// <summary>La deuda de cada uno solo la ven el deudor y ella.</summary>
+    public static void EmitDebt(RoundContext ctx, PlayerId debtor, PlayerId creditor, int delta, int total, DebtReason reason)
+    {
+        var change = new DebtChanged(debtor, creditor, delta, total, reason);
+        ctx.Emit(change with { Audience = Audience.Only(debtor) });
+        ctx.Emit(change with { Audience = Audience.Only(creditor) });
+    }
+
+    public static void RecordBetrayal(RoundContext ctx, PlayerId traitorId, PlayerId victim, int damage)
+    {
+        ctx.Betrayals.Add(new Betrayal(traitorId, victim, damage));
+        var traitor = ctx.Hero(traitorId);
+        ctx.Update(traitor with { Progress = traitor.Progress with { SneakyAllyHits = traitor.Progress.SneakyAllyHits + 1 } });
+        ctx.Emit(new BetrayalRecorded(traitorId, victim, damage) { Audience = Audience.Only(traitorId) });
+    }
+
+    /// <summary>Tira ascuas al suelo: se quedan en la casilla hasta que alguien la pise o se cambie de sala.</summary>
+    public static void DropEmbers(RoundContext ctx, Position tile, int amount)
+    {
+        if (amount <= 0)
+        {
+            return;
+        }
+
+        var existing = ctx.Room.Ground.Find(g => g.Position == tile)?.Amount ?? 0;
+        ctx.Room = ctx.Room with { Ground = ctx.Room.Ground.RemoveAll(g => g.Position == tile).Add(new GroundEmbers(tile, existing + amount)) };
+        ctx.Emit(new EmbersDropped(tile, amount) { Audience = Audience.At(tile) });
+    }
+
+    /// <summary>Quien pisa una casilla con ascuas se las queda (Renegados incluidos); paga antes sus deudas.</summary>
+    public static void PickUpGroundEmbers(RoundContext ctx, PlayerId player, Position tile)
+    {
+        if (ctx.Room.Ground.Find(g => g.Position == tile) is not { } ground)
+        {
+            return;
+        }
+
+        ctx.Room = ctx.Room with { Ground = ctx.Room.Ground.Remove(ground) };
+        ctx.Emit(new EmbersPickedUp(player, tile, ground.Amount) { Audience = Audience.At(tile) });
+        GainEmbers(ctx, player, ground.Amount, EmberReason.PickedUp);
+    }
+
+    /// <summary>Polizón sale del huésped a esa casilla: reaparece y empieza el enfriamiento de Abordar.</summary>
+    public static void ExitHost(RoundContext ctx, PlayerId player, Position tile)
+    {
+        var hero = ctx.Hero(player);
+        hero = hero with { HostEnemyId = null, BoardedRound = 0, Position = tile, SkillCooldown = hero.SkillCooldownOnUse };
+        ctx.Update(hero);
+        ctx.MakeNoise(hero);
+        ctx.Emit(new HostExited(player, tile) { Audience = Audience.At(tile) });
+        PickUpGroundEmbers(ctx, player, tile);
     }
 
     /// <summary>Efectos "al atacar" de las bendiciones del atacante sobre un objetivo alcanzado.</summary>
@@ -265,7 +428,7 @@ internal static class Combat
         ctx.Emit(new FireStarted(position, fire.Rounds) { Audience = Audience.At(position) });
     }
 
-    public static void ToppleBrazier(RoundContext ctx, Position position, Hero owner)
+    public static void ToppleBrazier(RoundContext ctx, Position position, Hero? owner)
     {
         ctx.Room = ctx.Room.WithTerrain(position, Terrain.Floor);
         ctx.Emit(new BrazierToppled(position) { Audience = Audience.At(position) });
@@ -281,7 +444,7 @@ internal static class Combat
         if (target.Has(Blessing.LastBreath) && !target.LastBreathUsed)
         {
             ctx.Emit(new LastBreathTriggered(target.Player) { Audience = RoundContext.AudienceOf(target) });
-            return target with { Hp = 1, LastBreathUsed = true };
+            return target with { Hp = 1, Embers = target.IsMiser ? 1 : target.Embers, LastBreathUsed = true };
         }
 
         ctx.Emit(new HeroDowned(target.Player));
@@ -291,26 +454,11 @@ internal static class Combat
             DownRounds = 0,
             BurnRounds = 0,
             Frozen = false,
-            StealthRounds = 0,
             Progress = target.Progress with { HasFallen = true },
         };
     }
 
-    private static bool IsBehindRampart(RoundContext ctx, Hero target)
-    {
-        foreach (var (yunqueId, direction) in ctx.Ramparts)
-        {
-            var yunque = ctx.Hero(yunqueId);
-            if (yunqueId != target.Player && yunque.IsVulnerable && yunque.IsSameFaction(target) && yunque.Position.IsInLine(target.Position, direction.Opposite()))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static void OnFriendlyFire(RoundContext ctx, Attacker attacker, PlayerId victimId)
+    private static void OnFriendlyFire(RoundContext ctx, Attacker attacker, PlayerId victimId, int miserStolen)
     {
         var attackerId = attacker.Hero!.Value;
         var victim = ctx.Hero(victimId);
@@ -320,6 +468,33 @@ internal static class Combat
             ctx.Update(traitor with { Progress = traitor.Progress with { SneakyAllyHits = traitor.Progress.SneakyAllyHits + 1 } });
         }
 
+        Steal(ctx, attackerId, victimId, miserStolen);
+    }
+
+    /// <summary>Golpe de un Renegado que conecta: roba 1 ascua (como el fuego amigo) y +2 si dejó caído al héroe.</summary>
+    private static void OnRenegadeStrike(RoundContext ctx, PlayerId renegadeId, PlayerId victimId, int miserStolen)
+    {
+        Steal(ctx, renegadeId, victimId, miserStolen);
+        if (ctx.Hero(victimId).Status == HeroStatus.Down)
+        {
+            GainEmbers(ctx, renegadeId, PathRules.RenegadeDownReward, EmberReason.HeroDowned);
+        }
+    }
+
+    /// <summary>Roba 1 ascua. Al Avaro ya se le quitó con el golpe; solo falta dársela al atacante.</summary>
+    private static void Steal(RoundContext ctx, PlayerId attackerId, PlayerId victimId, int miserStolen)
+    {
+        var victim = ctx.Hero(victimId);
+        if (victim.IsMiser)
+        {
+            if (miserStolen > 0)
+            {
+                GainEmbers(ctx, attackerId, miserStolen, EmberReason.StolenFromAlly);
+            }
+
+            return;
+        }
+
         if (victim.Embers >= FriendlyFireSteal)
         {
             GainEmbers(ctx, victimId, -FriendlyFireSteal, EmberReason.StolenByAlly);
@@ -327,27 +502,11 @@ internal static class Combat
         }
     }
 
-    /// <summary>Golpe de un Renegado que conecta: roba 1 ascua (como el fuego amigo) y +2 si dejó caído al héroe.</summary>
-    private static void OnRenegadeStrike(RoundContext ctx, PlayerId renegadeId, PlayerId victimId)
-    {
-        var victim = ctx.Hero(victimId);
-        if (victim.Embers >= FriendlyFireSteal)
-        {
-            GainEmbers(ctx, victimId, -FriendlyFireSteal, EmberReason.StolenByAlly);
-            GainEmbers(ctx, renegadeId, FriendlyFireSteal, EmberReason.StolenFromAlly);
-        }
-
-        if (victim.Status == HeroStatus.Down)
-        {
-            GainEmbers(ctx, renegadeId, PathRules.RenegadeDownReward, EmberReason.HeroDowned);
-        }
-    }
-
     /// <summary>Quien derrota a un Renegado gana +2 ascuas; el Renegado se extingue de nuevo y vuelve a elegir camino.</summary>
-    private static void DefeatRenegade(RoundContext ctx, PlayerId renegadeId, PlayerId? by)
+    private static void DefeatRenegade(RoundContext ctx, PlayerId renegadeId, Attacker attacker)
     {
-        ctx.Emit(new RenegadeDefeated(renegadeId, by));
-        if (by is { } killer && killer != renegadeId)
+        ctx.Emit(new RenegadeDefeated(renegadeId, attacker.Hero) { HiddenBy = attacker.Hidden });
+        if (attacker.Hero is { } killer && killer != renegadeId)
         {
             GainEmbers(ctx, killer, PathRules.RenegadeDefeatReward, EmberReason.RenegadeDefeated);
         }
@@ -378,10 +537,11 @@ internal static class Combat
         }
     }
 
-    private static void Kill(RoundContext ctx, Enemy enemy, PlayerId? killer)
+    private static void Kill(RoundContext ctx, Enemy enemy, Attacker attacker)
     {
+        var killer = attacker.Hero;
         ctx.Enemies.RemoveAll(e => e.Id == enemy.Id);
-        ctx.Emit(new EnemyKilled(enemy.Id, enemy.Kind, killer) { Audience = Audience.At(enemy.Position) });
+        ctx.Emit(new EnemyKilled(enemy.Id, enemy.Kind, killer) { HiddenKiller = attacker.Hidden, Audience = Audience.At(enemy.Position) });
         var isWarden = enemy.Kind == EnemyKind.Warden;
         if (killer is not null)
         {
@@ -392,6 +552,19 @@ internal static class Combat
         {
             ctx.WardenSlain = true;
         }
+
+        // Si otro mata al huésped, Polizón sale en esa casilla y recibe 1 de daño.
+        if (ctx.PassengerOf(enemy.Id) is { } passenger)
+        {
+            ExitHost(ctx, passenger.Player, enemy.Position);
+            if (killer != passenger.Player)
+            {
+                HitHero(ctx, passenger.Player, HeroRules.HostDeathDamage, Attacker.None);
+            }
+        }
+
+        // El enemigo sobornado suelta lo que le pagaron.
+        DropEmbers(ctx, enemy.Position, enemy.Bribes);
 
         if (killer is { } player && ctx.Hero(player) is var hero)
         {

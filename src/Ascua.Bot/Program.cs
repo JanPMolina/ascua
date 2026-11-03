@@ -10,14 +10,15 @@ using Microsoft.AspNetCore.SignalR.Client;
 var baseUrl = new Uri(args.Length > 0 ? args[0] : "http://localhost:8080");
 var playerCount = args.Length > 1 ? Math.Clamp(int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture), 2, 4) : 2;
 var maxThinkMs = args.Length > 2 ? int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 500;
-string[] heroes = ["YUNQUE", "CHISPA", "CUERVO", "RAIZ"];
+string[] heroes = ["HILVAN", "ANTEAYER", "POLIZON", "USURERA", "ESCUCHA", "AVARO", "MAMPOSTERO", "ERRATA", "CAMPANERO"];
+var heroOffset = Random.Shared.Next(heroes.Length);
 
 using var http = new HttpClient { BaseAddress = baseUrl };
 await Api.WaitUntilReadyAsync(http);
 var players = new List<BotPlayer>();
 for (var i = 0; i < playerCount; i++)
 {
-    players.Add(await BotPlayer.RegisterAsync(http, heroes[i]));
+    players.Add(await BotPlayer.RegisterAsync(http, heroes[(i + heroOffset) % heroes.Length]));
 }
 
 var launch = await Api.PostAsync(http, players[0].Token, "/api/v1/dev/matches",
@@ -34,7 +35,7 @@ foreach (var player in players)
 
     // Solo WebSockets, sin negotiate; el ticket va en access_token (ADR-0006). JSON: el bot corre en local/dev.
     var connection = new HubConnectionBuilder()
-        .WithUrl(new Uri(baseUrl, $"realtime/match?protocolVersion=1&access_token={ticket}"), options =>
+        .WithUrl(new Uri(baseUrl, $"realtime/match?protocolVersion=2&access_token={ticket}"), options =>
         {
             options.SkipNegotiation = true;
             options.Transports = HttpTransportType.WebSockets;
@@ -69,6 +70,9 @@ foreach (var player in players)
             Console.WriteLine($"  {player.Username} ronda {opened.Round}{reply.Describe()}");
         }
     }));
+
+    // Último en hablar: si este bot es el Campanero, se entera de las órdenes de los demás.
+    connection.On<LastWord>("LastWord", heard => Console.WriteLine($"  {player.Username} oye {heard.Orders.Count} órdenes de la ronda {heard.Round}"));
 
     connection.On<RoundResolved>("RoundResolved", resolved =>
     {
@@ -207,6 +211,10 @@ internal sealed record DraftOffer(Guid OfferId, IReadOnlyList<string> Options);
 internal sealed record PathOffer(Guid OfferId, IReadOnlyList<string> Options);
 
 internal sealed record RoundOpened(int Round);
+
+internal sealed record HeardOrder(string PlayerId, string Type, string? Direction);
+
+internal sealed record LastWord(int Round, IReadOnlyList<HeardOrder> Orders, bool TypesOnly);
 
 internal sealed record VisibleEvents(IReadOnlyList<object> Events);
 
