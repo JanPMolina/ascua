@@ -87,12 +87,12 @@ Solo usan lo que su jugador ve. Estos errores gastaban rondas:
 
 | Cambio | Antes → ahora | Por qué, con el dato medido |
 |---|---|---|
-| Vida del Celador | 12 → 5 por jugador | En la pelea final aislada, con 8 por jugador cayó en 0,4 / 3,9 / 12 % (2/3/4 jugadores). Con 5 y bots enfocados, en 72 / 93 / 98,5 %, en unas 26 rondas. El resto del recorte de la partida entera lo compensa |
-| Golpe del Celador | Cada ronda → una sí y una no | Sin ventana no se le podía rodear. Solo con este cambio, en la pelea aislada, pasó a 55 / 80 / 90 % |
+| Vida del Celador | 12 → 5 por jugador | Las cuatro salas anteriores consumen unas 40 rondas de las 60. En la pelea final aislada, con 8 por jugador se tardaba unas 37 rondas; con 5 y bots enfocados, unas 26, y caía en 72 / 93 / 98,5 % (2/3/4 jugadores) |
+| Golpe del Celador | Cada ronda → una sí y una no | Sin ventana no se le podía rodear. En la pelea aislada con 8 por jugador, pasó de caer en 0,4 / 3,9 / 12 % a caer en 55 / 80 / 90 % |
 | Vida de monstruos | Carroñero, Gelatina y Ballestero 2 → 1; Tótem 3 → 2 | Cada sala tomaba de 13 a 19 rondas y no quedaba tiempo para el Celador |
 | Tótem | Invoca cada 3 → cada 5 rondas | Las invocaciones alargaban la sala 4 |
 | Monstruos por sala | Sala 3: 4 → 3; sala 4: 3 → 2; con 2 jugadores, los 2 primeros | Con 2 jugadores los mismos enemigos tardan el doble en caer |
-| Escalera | (4,0) → (4,3); entradas de fila 8 a fila 7 | El recorrido por sala baja de unas 8 casillas a 4 o 5 |
+| Escalera | (4,0) → (4,3); entradas de fila 8 a fila 7 | El recorrido por sala baja de 9 o 10 casillas a 5 o 6 |
 | Dónde nacen los monstruos | Filas 1–4 → a ≤4 de la escalera, filas ≤5 | Sin rincones lejos que recorrer. El Celador pasó de 31,0 a 37,1 % con 3 jugadores y de 43,7 a 48,3 % con 4 |
 | Castigo por Renegado | −6 con mínimo 12 → −3 con mínimo 5 | **Era un error:** con 2 jugadores, el piso de 12 le subía la vida máxima de 10 a 12 |
 
@@ -107,7 +107,7 @@ Las cifras «antes» salen de mediciones parciales de 30 partidas por combinaci�
 | Anteayer | Alcance 2 → 1 | Con los Ecos a distancia estaba muy arriba | 39,9 → 28,7 % |
 | Avaro | Ascuas iniciales 3 → 4 | Su vida y su puntuación son lo mismo: con 3 casi no ganaba | 7,0 → 28,8 % |
 | Hilván | Vida 5 → 8 | Cada golpe a un cuerpo cuenta, y caía en dos de cada tres partidas | 13,2 → 15,1 % |
-| Polizón | Vida 3 → 4 | Caía más de la mitad de las veces | 8,8 → 15,8 % |
+| Polizón | Vida 3 → 4 | Con 3 de vida casi no ganaba | 8,8 → 15,8 % |
 
 El alza del Avaro no viene solo de la ascua inicial: el mayor salto fue el arreglo del bot. Con ese arreglo y 6 ascuas iniciales llegó a 40,3 %, y por eso se quedó en 4.
 
@@ -120,7 +120,7 @@ No se movió ninguna meta.
 - **Rondas por partida, 55,9 contra 55.** La media está limitada por el tope de 60 y la mitad de las partidas llega a él. Bajarla más exigía recortar otra vez al Celador o a los monstruos, y ya están muy recortados. Se prefirió no forzarla por una ronda.
 - **Hilván (15,1 %).** Los bots casi nunca usan Tensar (0,0 por partida con un decimal). Exige alinear dos cuerpos que se mueven en espejo durante varias rondas, justo lo que un bot con reglas simples no planea, así que su resultado subestima al héroe. Las reglas de Tensar sí están probadas en `HilvanTests`. No se subió más su vida para compensar un límite del bot.
 - **Polizón (15,8 %).** Usa Abordar 1,2 veces por partida. El bot no aprovecha ir escondido ni elegir bien al huésped, que es lo que hace raro al héroe.
-- **Usurera (33,1 %) y Errata (32,9 %).** Superan el tope por 1,1 y 0,9 puntos. Se dejaron así para no quitarles lo que los define. Con 200 partidas por combinación, esa diferencia ya es real, pero es pequeña.
+- **Usurera (33,1 %) y Errata (32,9 %).** Superan el tope por 1,1 y 0,9 puntos. Se dejaron así para no quitarles lo que los define. La diferencia es pequeña y se mueve con el nivel de traición: Errata marca 34,3 / 32,9 / 30,4 % con 0 / 10 / 30 %.
 - **Celador con 2 jugadores (27,8 %).** Ver la tabla por número de jugadores.
 
 **Dúos:** ninguno pasa de 1,5×. El más alto es Errata + Usurera, con 1,26× en victoria, y son justo los dos héroes más altos.
