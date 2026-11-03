@@ -1321,6 +1321,8 @@ button.path-card.chosen { opacity: 1; filter: none; border-color: var(--ok); box
 /* ───────── Los nueve héroes ───────── */
 .hero-card .hc-breaks { grid-column: 1 / -1; font: italic .84rem var(--font-display); color: color-mix(in srgb, var(--hero-color) 70%, var(--text)); }
 .hero-pick.compact .hc-breaks { display: none; }
+.hero-pick.compact .hc-name { font-size: .92rem; line-height: 1.15; overflow-wrap: anywhere; }
+.hero-pick.compact .hc-role { font-size: .64rem; letter-spacing: .04em; }
 /* Cola rápida: el héroe elegido se abre con su pasiva, su activa y la regla que rompe. */
 .hero-pick.compact .hero-card:has(input:checked) { grid-column: 1 / -1; }
 .hero-pick.compact .hero-card:has(input:checked) .hc-breaks, .hero-pick.compact .hero-card:has(input:checked) .hc-ability { display: block; }

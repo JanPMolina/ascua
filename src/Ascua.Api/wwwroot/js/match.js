@@ -1344,7 +1344,6 @@ class MatchController {
   }
 
   eventItem(ev) {
-    if (!EVENTS[ev.type] && !EVENT_STYLE[ev.type]) return el('li', {}, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, '•'), el('span', {}, String(ev.type)));
     const [icon, tone] = EVENT_STYLE[ev.type] ?? ['•', ''];
     let cls = tone;
     if (ev.type === 'DAMAGED') cls = ev.targetId === this.playerId ? 'bad' : ev.actorId === this.playerId ? 'good' : '';
