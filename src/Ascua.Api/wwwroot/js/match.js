@@ -42,7 +42,7 @@ const EVENT_STYLE = {
 
 /** Por qué cambió una deuda (DEBT_CHANGED.detail). */
 const DEBT_REASONS = {
-  LOAN: 'préstamo', INTEREST: 'interés', PAID: 'pago', EXTINCTION: 'cobro por extinción', MATCH_END: 'cobro final', CANCELLED: 'cancelada',
+  LOAN: 'préstamo', INTEREST: 'interés', PAID: 'pago', EXTINCTION: 'cobro por muerte', MATCH_END: 'cobro final', CANCELLED: 'cancelada',
 };
 
 /** Habilidades a las que la dirección no les importa. */
