@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="La Usurera">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="#463410"/><stop offset="1" stop-color="#141006"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="url(#bg)"/>
+  <path d="M10 62c3-12 11-18 22-18s19 6 22 18z" fill="#2a2430"/>
+  <path d="M29 44l3 8 3-8" fill="#e8c44a"/>
+  <path d="M20 33c0-9 5-14 12-14s12 5 12 14c0 7-5 12-12 12s-12-5-12-12z" fill="#e4c8a8"/>
+  <path d="M4 24c9-3 17-4 28-4s19 1 28 4c-8 3-19 4-28 4s-20-1-28-4z" fill="#2a2430"/>
+  <path d="M19 22c0-9 5-15 13-15s13 6 13 15c-8 2-18 2-26 0z" fill="#463c50"/>
+  <path d="M19 19c8 2 18 2 26 0v3c-8 2-18 2-26 0z" fill="#e8c44a"/>
+  <path d="M24 33l5-1M40 33l-5-1" stroke="#1a0e10" stroke-width="1.700" stroke-linecap="round"/>
+  <circle cx="27" cy="34.500" r="1.400" fill="#1a0e10"/><circle cx="37" cy="34.500" r="1.400" fill="#1a0e10"/>
+  <path d="M27 40c3-1.500 7-1.500 10 0" stroke="#c83a4a" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <circle cx="53" cy="49" r="8" fill="#e8c44a" stroke="#b08a20" stroke-width="2"/>
+  <path d="M53 44v10M50 46c1-1 5-1 6 .5s-6 3-6 4.500 5 1.500 6 .5" stroke="#b08a20" stroke-width="1.500" fill="none"/>
+  <path d="M5 46h15v15H5z" fill="#efe3c0" stroke="#a89878"/><path d="M8 50h9M8 53h9M8 56h6" stroke="#a89878" stroke-width="1.100"/>
+</svg>

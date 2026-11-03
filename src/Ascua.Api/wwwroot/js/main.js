@@ -11,6 +11,7 @@ import { startTutorial } from './tutorial.js';
 import { initHowTo } from './howto.js';
 import { initAudio } from './audio.js';
 import { initSettingsPanel } from './settings-panel.js';
+import { HEROES } from './labels.js';
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.get('demo') === '1';
@@ -23,6 +24,23 @@ function enterMatch(matchId) {
 
 function startDemo() {
   startMatch({ transport: new DemoTransport(), onExit: startDemo });
+}
+
+/** Demo: selector del héroe propio (recarga la página con ?demo=1&hero=…). */
+function bindDemoHero() {
+  const select = $('demo-hero');
+  const current = params.get('hero') ?? 'ERRATA';
+  for (const [id, name] of Object.entries(HEROES)) {
+    const option = document.createElement('option');
+    option.value = id;
+    option.textContent = name;
+    option.selected = id === current;
+    select.append(option);
+  }
+  select.addEventListener('change', () => {
+    params.set('hero', select.value);
+    location.search = params.toString();
+  });
 }
 
 function bindAuth() {
@@ -89,6 +107,7 @@ function main() {
   }
   if (DEMO) {
     $('demo-badge').hidden = false;
+    bindDemoHero();
     startDemo();
     return;
   }

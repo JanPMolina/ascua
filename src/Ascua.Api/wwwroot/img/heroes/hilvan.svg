@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Hilván">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="#4a2240"/><stop offset="1" stop-color="#160a14"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="url(#bg)"/>
+  <path d="M6 62c3-13 12-20 26-20s23 7 26 20z" fill="#a85a88"/>
+  <path d="M20 62V47l11-4v19z" fill="#5ab0b0"/>
+  <path d="M15 34c0-12 8-21 17-21s17 9 17 21c0 7-8 12-17 12s-17-5-17-12z" fill="#ecd2bd"/>
+  <path d="M14 30c-1-13 8-23 18-23s19 10 18 23c-3-8-6-11-9-13-7 2-13 2-18 0-3 2-6 5-9 13z" fill="#6a3a58"/>
+  <path d="M32 13v33" stroke="#fff4e0" stroke-width="1.800" stroke-dasharray="3 2.400"/>
+  <path d="M28 18l8 2M28 25l8 2M28 32l8 2M28 39l8 2" stroke="#fff4e0" stroke-width="1.600"/>
+  <path d="M21 30l4 3M25 30l-4 3" stroke="#22101c" stroke-width="1.900" stroke-linecap="round"/>
+  <circle cx="41" cy="31.500" r="2.200" fill="#22101c"/>
+  <path d="M24 40h16" stroke="#22101c" stroke-width="1.400"/><path d="M26 38.500v3M30 38.500v3M34 38.500v3M38 38.500v3" stroke="#22101c"/>
+  <path d="M61 4L49 44" stroke="#dfe6ee" stroke-width="2.200" stroke-linecap="round"/><circle cx="60" cy="7.500" r="1.100" fill="#160a14"/>
+  <path d="M60 8c-8 2-8 11-3 14s5 12-3 19" stroke="#e8a0d0" stroke-width="1.300" fill="none"/>
+</svg>

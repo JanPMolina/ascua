@@ -6,17 +6,16 @@ import { DEMO_PLAYER_ID, DemoTransport } from './demo.js';
 import { DIRECTIONS, label } from './labels.js';
 
 const ME_ID = DEMO_PLAYER_ID;
-const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const ARROWS = { N: '↑', S: '↓', E: '→', W: '←' };
 
 const SCENARIO = {
   // Sin aliados: la ronda se resuelve apenas envías tu orden, sin esperar a nadie.
   roundMs: 60000,
   layout: [
-    '....S....',
+    '.........',
     '.........',
     '..#...#..',
-    '.........',
+    '....S....',
     '.........',
     '.........',
     '..C......',
@@ -25,8 +24,8 @@ const SCENARIO = {
   ],
   draftOptions: ['LAMPARA', 'BRASA_VIVA'],
   me: {
-    playerId: ME_ID, displayName: 'aprendiz', hero: 'CHISPA', state: 'ALIVE', hp: 4, maxHp: 4, shield: 0,
-    position: { x: 4, y: 8 }, facing: 'N', embers: 0, charges: 0, abilityCooldown: 0, stealthRoundsLeft: 0,
+    playerId: ME_ID, displayName: 'aprendiz', hero: 'MAMPOSTERO', state: 'ALIVE', hp: 6, maxHp: 6, shield: 0,
+    position: { x: 4, y: 7 }, facing: 'N', embers: 0, abilityCooldown: 0,
     downRoundsLeft: null, blessings: [], pact: { pactId: 'OPEN_1_CHEST', description: 'Abrir 1 cofre.' },
     decided: false, pendingOrder: null,
   },
@@ -91,7 +90,7 @@ const STEPS = [
     title: 'Bienvenida a Ascua',
     text: () => [
       'Ascua es una mazmorra por turnos simultáneos para 2 a 4 jugadores. Juntos deben derrotar al Celador antes de que se apague el fuego… pero solo gana quien reúna más ascuas.',
-      'En esta práctica juegas con Chispa, la heroína de ataque a distancia, y sin otros jugadores. Nada de lo que hagas aquí cuenta, así que puedes equivocarte sin problema.',
+      'En esta práctica juegas con El Mampostero, y sin otros jugadores. Hay nueve héroes y cada uno rompe una regla del juego: el suyo rompe «la mazmorra está quieta». Nada de lo que hagas aquí cuenta, así que puedes equivocarte sin problema.',
       'Mira tu pacto secreto en el panel de tu héroe (resaltado): es un objetivo que solo tú conoces y que da +4 ascuas si lo cumples. Aquí es «Abrir 1 cofre».',
     ],
     focus: ['#me-pact'],
@@ -137,10 +136,10 @@ const STEPS = [
     setup: (c) => { if (c.enemies().length === 0) c.spawnNear('CARRONERO', 2, 2); },
     text: (c) => {
       const target = c.nearestEnemy();
-      const lines = ['Chispa dispara a distancia: golpea al primer objetivo a 3 casillas en línea recta. Atacar es Shift + flecha (o el botón Atacar y luego una dirección).'];
+      const lines = ['El Mampostero golpea cuerpo a cuerpo, a la casilla vecina. Atacar es Shift + flecha (o el botón Atacar y luego una dirección). Otros héroes llegan más lejos.'];
       if (!target) return [...lines, 'No ves enemigos ahora: espera una ronda (Espacio).'];
       const dir = lineDir(c.me().position, target.position);
-      lines.push(dir && manhattan(c.me().position, target.position) <= 3
+      lines.push(dir && manhattan(c.me().position, target.position) <= 1
         ? `El enemigo está en línea: pulsa Shift + ${keyHint(dir)}. Tiene ${target.hp} de vida, puede que necesites más de un golpe.`
         : `Ponte en su misma fila o columna: muévete ${keyHint(stepDir(c.me().position, target.position))}.`);
       lines.push('Dar el golpe final a un enemigo da +1 ascua.');
@@ -169,18 +168,18 @@ const STEPS = [
   },
   {
     title: 'Usa tu habilidad',
-    setup: (c) => c.spawnInCross(['POLILLA', 'POLILLA']),
+    setup: (c) => c.spawnAtEdge('POLILLA'),
     text: (c) => {
-      const charges = c.me().charges;
+      const cd = c.me().abilityCooldown;
       return [
-        'Cada héroe tiene una habilidad. La de Chispa es Descarga: golpea en cruz (las 4 direcciones, hasta 3 casillas) con 1 + cargas de daño, y gasta todas las cargas.',
-        charges > 0
-          ? `Tienes ${charges} carga${charges === 1 ? '' : 's'}. Pulsa Q y luego cualquier flecha. ¡Cuidado en partidas reales: la Descarga también golpea a tus aliados!`
-          : 'No tienes cargas: Chispa gana 1 por cada ronda en que no ataca. Guarda una ronda (Espacio) y vuelve a intentarlo.',
+        'Cada héroe tiene una habilidad. La tuya es Corrimiento: desliza 1 casilla tu fila (este/oeste) o tu columna (norte/sur) con todo lo que tenga encima, también la escalera. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2 de daño.',
+        cd > 0
+          ? `La habilidad se está enfriando: lista en ${cd} ronda${cd === 1 ? '' : 's'}. Guarda (Espacio) hasta entonces.`
+          : 'Apareció una Polilla al borde de tu fila. Pulsa Q y luego la flecha hacia ella: verás la línea que se mueve antes de elegir. ¡Cuidado en partidas reales: también arrastra a tus aliados!',
       ];
     },
-    focus: ['.mode[data-mode="ABILITY"]', '#tile-charges'],
-    done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'ABILITY',
+    focus: ['.mode[data-mode="ABILITY"]', '#tile-ability'],
+    done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'ABILITY' && c.mine(c.lastResolved, 'ABILITY_USED'),
   },
   {
     title: 'Despeja la sala',
@@ -189,7 +188,7 @@ const STEPS = [
       const left = c.server.enemies.size;
       return [
         left > 0
-          ? `Quedan ${left} enemigo${left === 1 ? '' : 's'}. Usa lo que aprendiste: guarda cuando te apunten, ataca en línea y descarga cuando se junten.`
+          ? `Quedan ${left} enemigo${left === 1 ? '' : 's'}. Usa lo que aprendiste: guarda cuando te apunten, ataca a lo que tengas al lado y corre la sala cuando un enemigo esté en tu línea.`
           : '¡Sala despejada!',
         'En una partida real, al despejar una sala se baja por la escalera (casilla azul). Tras 4 salas espera el Celador, que hay que flanquear: es inmune a los golpes de frente.',
       ];
@@ -272,20 +271,11 @@ class Coach {
     this.refresh();
   }
 
-  /** Enemigos de 1 de vida en la fila o columna del jugador, a 2-3 casillas, para que la Descarga los alcance. */
-  spawnInCross(kinds) {
-    const me = this.me().position;
-    const spots = [];
-    for (const [dx, dy] of Object.values(DIRS)) {
-      for (const d of [2, 3]) {
-        const x = me.x + dx * d;
-        const y = me.y + dy * d;
-        if (x >= 0 && y >= 0 && x < 9 && y < 9 && !this.server.blocked(x, y) && this.server.tiles.get(`${x},${y}`) === 'FLOOR') { spots.push({ x, y }); break; }
-      }
-    }
-    kinds.forEach((kind, i) => {
-      if (spots[i]) this.server.spawn({ enemyId: this.nextId(), kind, hp: 1, position: spots[i] });
-    });
+  /** Enemigo de 1 de vida en la fila del jugador, pegado a un borde, para que el Corrimiento lo saque por ahí. */
+  spawnAtEdge(kind) {
+    const { y } = this.me().position;
+    const spot = [8, 0].map((x) => ({ x, y })).find((p) => !this.server.blocked(p.x, p.y));
+    if (spot) this.server.spawn({ enemyId: this.nextId(), kind, hp: 1, position: spot });
     this.refresh();
   }
 

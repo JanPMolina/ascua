@@ -3,12 +3,12 @@
 // respetar la razón de cierre (MATCH_FINISHED, SESSION_REPLACED… no reconectan). La decide match.js.
 import { createTicket } from './api.js';
 
-export const PROTOCOL_VERSION = 1;
+export const PROTOCOL_VERSION = 2;
 export const HUB_PATH = '/realtime/match';
 
 /** Mensajes que el servidor empuja (operaciones `send` del contrato). */
 export const SERVER_MESSAGES = [
-  'RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer',
+  'RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer', 'LastWord', 'SignalReceived',
   'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error',
 ];
 

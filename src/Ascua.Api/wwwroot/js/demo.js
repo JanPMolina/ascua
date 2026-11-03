@@ -7,6 +7,13 @@
 // (PathOffer) y ChoosePath, la Brasa errante con sus cinco órdenes, la Calidez y los ecos, el Renegado
 // (propio o un aliado), bajar de piso (renacer y aparición) y «El Umbral reclama». Los botones de la demo
 // (simulateExtinction, simulateRenegadeAlly, simulateDescend) los disparan sin esperar.
+//
+// Los nueve héroes se imitan en demo-heroes.js. ?demo=1&hero=ESCUCHA elige el héroe propio y &allies=USURERA,AVARO los de los bots.
+import {
+  BELL_MS, afterRound, beforeEnemies, correctedStrike, finalBetrayals, heroAbility, heroAttack, heroMove, heroStats, hostKilled, hostOrder, miserDamage, newHeroState,
+  pickAllies, placeSecondBody,
+} from './demo-heroes.js';
+import { HERO_INFO } from './heroes.js';
 
 export const DEMO_MATCH_ID = '0193a1c2-5e7f-7a10-8b2c-3d4e5f607182';
 /** Id del jugador propio en la demo y el tutorial: los eventos simulados lo usan como autor. */
@@ -14,6 +21,7 @@ export const DEMO_PLAYER_ID = '0193a1b0-1111-7c00-9a00-00000000a001';
 const ME_ID = DEMO_PLAYER_ID;
 const BETO_ID = '0193a1b0-1111-7c00-9a00-00000000a002';
 const CARO_ID = '0193a1b0-1111-7c00-9a00-00000000a003';
+const DANI_ID = '0193a1b0-1111-7c00-9a00-00000000a004';
 const OFFER_ID = '0193a1c3-0000-7d00-8000-0000000000f1';
 /** Ofertas de camino: una por extinción (prefijo + número de extinción). */
 const PATH_OFFER_PREFIX = '0193a1c4-0000-7d00-8000-';
@@ -29,16 +37,17 @@ const HINDER_COOLDOWN = 2;
 const WARMTH_EVERY = 3;
 /** Ascuas al renacer: ⌈guardadas × (25% + 8% × ecos)⌉, tope 85%. */
 const rebirthEmbers = (saved, echoes) => Math.ceil((saved * Math.min(85, 25 + 8 * echoes)) / 100);
+const SIGNAL_INTERVAL_MS = 3000;
 
 /** Escenario de la demo. El tutorial (tutorial.js) arma el suyo con la misma forma. */
 export const DEMO_SCENARIO = {
   roundMs: 20000,
   // x → 0..8; y ↓ 0..8.  # muro, C cofre, S escalera, ^ pinchos armados, B brasero, A altar
   layout: [
-    '....#...S',
+    '....#....',
     '.B......#',
     '......^..',
-    '...#.C...',
+    '...#S.C..',
     '...#.....',
     '.....##..',
     '..#......',
@@ -47,19 +56,21 @@ export const DEMO_SCENARIO = {
   ],
   draftOptions: ['LAMPARA', 'BRASA_VIVA'],
   me: {
-    playerId: ME_ID, displayName: 'ana', hero: 'CHISPA', state: 'ALIVE', hp: 4, maxHp: 4, shield: 0,
-    position: { x: 4, y: 6 }, facing: 'N', embers: 0, charges: 0, abilityCooldown: 0, stealthRoundsLeft: 0,
+    playerId: ME_ID, displayName: 'ana', hero: 'ERRATA', state: 'ALIVE', hp: 4, maxHp: 4, shield: 0,
+    position: { x: 4, y: 6 }, facing: 'N', embers: 0, abilityCooldown: 0,
     downRoundsLeft: null, blessings: [], pact: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.' },
     decided: false, pendingOrder: null, path: null,
   },
   allies: [
-    { playerId: BETO_ID, displayName: 'beto', hero: 'YUNQUE', state: 'ALIVE', hp: 6, maxHp: 6, position: { x: 4, y: 7 }, facing: 'N', embers: 1, blessingCount: 1, connected: true, decided: false },
-    { playerId: CARO_ID, displayName: 'caro', hero: 'CUERVO', state: 'ALIVE', hp: 4, maxHp: 4, position: { x: 1, y: 8 }, facing: 'E', embers: 3, blessingCount: 1, connected: true, decided: false },
+    { playerId: BETO_ID, displayName: 'beto', hero: 'HILVAN', state: 'ALIVE', hp: 8, maxHp: 8, position: { x: 4, y: 7 }, facing: 'N', embers: 1, blessingCount: 1, connected: true, decided: false },
+    { playerId: CARO_ID, displayName: 'caro', hero: 'POLIZON', state: 'ALIVE', hp: 4, maxHp: 4, position: { x: 1, y: 7 }, facing: 'E', embers: 3, blessingCount: 1, connected: true, decided: false },
+    { playerId: DANI_ID, displayName: 'dani', hero: 'CAMPANERO', state: 'ALIVE', hp: 5, maxHp: 5, position: { x: 7, y: 7 }, facing: 'W', embers: 2, blessingCount: 1, connected: true, decided: false },
   ],
   /** Pactos de los aliados: solo se revelan en MatchFinished (la vista nunca los lleva). */
   allyPacts: {
     [BETO_ID]: { pactId: 'NEVER_DOWNED', description: 'Terminar sin haber caído.', fulfilled: true },
     [CARO_ID]: { pactId: 'BETRAY_TWICE_UNSEEN', description: 'Traicionar dos veces sin ser visto.', fulfilled: false },
+    [DANI_ID]: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.', fulfilled: false },
   },
   enemies: [
     { enemyId: 12, kind: 'BALLESTERO', hp: 3, maxHp: 3, position: { x: 4, y: 0 }, facing: 'S', phase: null, telegraph: [] },
@@ -70,10 +81,10 @@ export const DEMO_SCENARIO = {
   nextFloors: [
     {
       layout: [
-        '....S....',
+        '.........',
         '.#.....#.',
         '...B.....',
-        '.....#...',
+        '....S#...',
         '.C...#...',
         '.........',
         '..#...^..',
@@ -88,10 +99,10 @@ export const DEMO_SCENARIO = {
     },
     {
       layout: [
-        '#...S...#',
+        '#.......#',
         '.........',
         '..#...#..',
-        '....C....',
+        '....S.C..',
         '.^.....^.',
         '.........',
         '..B...B..',
@@ -104,6 +115,21 @@ export const DEMO_SCENARIO = {
         { enemyId: 43, kind: 'CARRONERO', hp: 3, position: { x: 7, y: 3 } },
       ],
     },
+    {
+      // Sala del Celador: golpea una ronda sí y una no; en la otra toma aire.
+      layout: [
+        '.........',
+        '.B.....B.',
+        '.........',
+        '....S....',
+        '.........',
+        '.........',
+        '..#...#..',
+        '.........',
+        '.........',
+      ],
+      enemies: [{ enemyId: 51, kind: 'CELADOR', hp: 15, position: { x: 4, y: 3 }, phase: 1 }],
+    },
   ],
   /** Si es true, la partida termina sola al quedarse sin enemigos (el tutorial decide cuándo terminar). */
   autoFinish: true,
@@ -114,7 +140,20 @@ export const DEMO_SCENARIO = {
 };
 
 /** Casillas de llegada del grupo al bajar de piso, por asiento (la Brasa renace en la suya). */
-const ENTRANCE = [{ x: 4, y: 8 }, { x: 3, y: 8 }, { x: 5, y: 8 }];
+const ENTRANCE = [{ x: 4, y: 7 }, { x: 3, y: 7 }, { x: 5, y: 7 }, { x: 2, y: 7 }];
+
+/** Escenario de ?demo=1 con el héroe propio y los de los bots que pida la dirección. */
+export function demoScenario() {
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get('hero');
+  const hero = HERO_INFO[wanted] ? wanted : 'ERRATA';
+  const roster = pickAllies(hero, params.get('allies')?.split(','));
+  const me = { ...DEMO_SCENARIO.me, hero, ...heroStats(hero) };
+  const allies = DEMO_SCENARIO.allies.map((a, i) => ({ ...a, hero: roster[i], ...heroStats(roster[i]), embers: HERO_INFO[roster[i]].hpIsEmbers ? 4 : a.embers }));
+  // La Usurera necesita a alguien herido a quien prestarle.
+  if (hero === 'USURERA') allies[0].hp = Math.max(1, allies[0].hp - 3);
+  return { ...DEMO_SCENARIO, me, allies };
+}
 
 const clone = (v) => JSON.parse(JSON.stringify(v));
 const key = (x, y) => `${x},${y}`;
@@ -138,6 +177,8 @@ class DemoServer {
     this.me = clone(scenario.me);
     this.me.path = this.me.path ?? null;
     this.allies = clone(scenario.allies);
+    this.heroes = newHeroState();
+    this.signalAt = 0;
     this.enemies = new Map(scenario.enemies.map((e) => [e.enemyId, clone(e)]));
     this.enemies.forEach((e) => this.updateTelegraph(e));
     this.lastOrder = null;
@@ -162,6 +203,8 @@ class DemoServer {
     this.allyPlans = new Map(); // aliado extinto → { reveal, path, spawn }
     this.allyLast = new Map(); // última casilla de cada aliado (para revelar su Brasa ahí)
     this.allyCooldown = new Map(); // enfriamiento de Avivar de una Brasa aliada
+    if (this.me.hero === 'HILVAN') placeSecondBody(this, this.me);
+    for (const a of this.allies) if (a.hero === 'HILVAN') placeSecondBody(this, a);
   }
 
   // ───── utilidades ─────
@@ -177,13 +220,19 @@ class DemoServer {
     layout.forEach((row, y) => [...row].forEach((ch, x) => this.tiles.set(key(x, y), LAYOUT_KINDS[ch])));
   }
 
-  radius() { return (this.me.state === 'EMBER_SPIRIT' ? 4 : 3) + (this.me.blessings.includes('LAMPARA') ? 1 : 0); }
+  isBlind() { return this.me.hero === 'ESCUCHA' && this.me.state !== 'EMBER_SPIRIT'; }
+
+  radius() { return (this.me.state === 'EMBER_SPIRIT' ? 4 : this.isBlind() ? 1 : 3) + (this.me.blessings.includes('LAMPARA') ? 1 : 0); }
 
   /** Bando de cada portador: el grupo (héroes y Brasas) o la mazmorra (Renegados). */
   side(h) { return h.state === 'RENEGADE' ? 'dungeon' : 'group'; }
 
   visible(pos) {
+    if (this.heroes.shout) return true;
     if (manhattan(pos, this.me.position) <= this.radius()) return true;
+    if (this.me.secondBody && manhattan(pos, this.me.secondBody) <= this.radius()) return true;
+    // La Escucha oye lo que hizo ruido en cualquier parte de la sala.
+    if (this.isBlind() && this.heroes.noise.some((p) => same(p, pos))) return true;
     // El Faro de una Brasa da visión a todo el grupo, no a los Renegados.
     return this.side(this.me) === 'group' && this.beacons.some((b) => manhattan(pos, b) <= 2);
   }
@@ -211,8 +260,9 @@ class DemoServer {
     if (!inBounds(x, y)) return true;
     const kind = this.tiles.get(key(x, y));
     if (kind === 'WALL' || kind === 'BRAZIER' || kind === 'CHEST' || kind === 'CHEST_OPENED' || kind === 'ALTAR') return true;
-    if (this.solid(this.me) && this.me.position.x === x && this.me.position.y === y) return true;
-    if (this.allies.some((a) => this.solid(a) && a.position.x === x && a.position.y === y)) return true;
+    if (this.solid(this.me) && this.me.hostEnemyId == null && this.me.position.x === x && this.me.position.y === y) return true;
+    if (this.me.secondBody && this.me.secondBody.x === x && this.me.secondBody.y === y) return true;
+    if (this.allies.some((a) => this.solid(a) && ((a.position.x === x && a.position.y === y) || (a.secondBody && a.secondBody.x === x && a.secondBody.y === y)))) return true;
     return [...this.enemies.values()].some((e) => e.position.x === x && e.position.y === y);
   }
 
@@ -221,7 +271,8 @@ class DemoServer {
     const fresh = [];
     for (let y = 0; y < 9; y++) {
       for (let x = 0; x < 9; x++) {
-        if (this.visible({ x, y }) && !this.seen.has(key(x, y))) {
+        // La Escucha conoce el terreno de toda la sala.
+        if ((this.isBlind() || this.visible({ x, y })) && !this.seen.has(key(x, y))) {
           this.seen.add(key(x, y));
           fresh.push({ x, y, kind: this.tiles.get(key(x, y)) });
         }
@@ -231,7 +282,32 @@ class DemoServer {
   }
 
   enemyView(e) {
-    return { ...clone(e), telegraph: e.telegraph.filter((p) => this.visible(p)) };
+    const telegraph = e.enemyId === this.me.hostEnemyId ? [] : e.telegraph.filter((p) => this.sees(p));
+    const out = { ...clone(e), telegraph };
+    delete out.correctedBy;
+    delete out.boardedRound;
+    return out;
+  }
+
+  /** Errata ve todos los anuncios, aunque estén en la niebla. */
+  sees(tile) { return this.me.hero === 'ERRATA' || this.me.blessings.includes('OJO_DE_BUHO') || this.visible(tile); }
+
+  /** Casillas anunciadas por enemigos que no se ven, sin autor. */
+  hiddenTelegraphs() {
+    if (this.me.hero !== 'ERRATA' && !this.me.blessings.includes('OJO_DE_BUHO')) return [];
+    return [...this.enemies.values()].filter((e) => !this.visible(e.position)).flatMap((e) => e.telegraph);
+  }
+
+  /** Lo que el jugador ve de los héroes: Ecos en su visión, ascuas en casillas visibles y el ruido si es La Escucha. */
+  heroFields() {
+    const h = this.heroes;
+    return {
+      hiddenTelegraphs: clone(this.hiddenTelegraphs()),
+      echoes: clone(h.echoes.filter((e) => e.ownerId === ME_ID || this.visible(e.position))),
+      groundEmbers: clone(h.ground.filter((g) => this.visible(g.position))),
+      noiseTiles: this.isBlind() ? clone(h.noise) : [],
+      bell: h.bell && this.status === 'IN_PROGRESS' ? { ringerId: h.bell.ringerId, deadline: h.bell.closed ? null : iso(h.bell.at), closed: h.bell.closed } : null,
+    };
   }
 
   visibleEnemies() {
@@ -241,8 +317,11 @@ class DemoServer {
   /** Otro portador tal como lo ve el jugador: los del otro bando, solo dentro de la visión. */
   allyView(a) {
     const v = clone(a);
-    const shown = a.position && (this.side(a) === this.side(this.me) || this.visible(a.position));
-    if (!shown) { v.position = null; v.facing = null; }
+    const inHost = a.hero === 'POLIZON' && a.hiddenInHost;
+    const heard = !this.isBlind() || this.visible(a.position ?? { x: -9, y: -9 });
+    const shown = a.position && !inHost && heard && (this.side(a) === this.side(this.me) || this.visible(a.position));
+    if (!shown) { v.position = null; v.facing = null; v.secondBody = null; }
+    delete v.hiddenInHost;
     return v;
   }
 
@@ -252,12 +331,19 @@ class DemoServer {
       status: this.status,
       round: this.round,
       floor: this.floor,
-      roundDeadline: this.deadline,
+      roundDeadline: this.deadlineOfMe(),
       me: clone(this.me),
       allies: this.allies.map((a) => this.allyView(a)),
       enemies: this.visibleEnemies().map((e) => this.enemyView(e)),
       tiles: [...this.seen].map((k) => { const [x, y] = k.split(',').map(Number); return { x, y, kind: this.tiles.get(k) }; }),
+      ...this.heroFields(),
     };
+  }
+
+  /** Plazo de este jugador: con el Repique de otro, el reducido. */
+  deadlineOfMe() {
+    const b = this.heroes.bell;
+    return b && b.ringerId !== ME_ID && this.deadline ? iso(b.at) : this.deadline;
   }
 
   snapshot() {
@@ -285,12 +371,27 @@ class DemoServer {
         return this.choosePath(p, err);
       case 'SubmitOrder':
         return this.submit(p, err);
+      case 'SendSignal':
+        return this.signal(p, err);
       case 'LeaveMatch':
         this.dispose();
         return { matchId: DEMO_MATCH_ID, leftAt: new Date().toISOString(), abandoned: this.status === 'IN_PROGRESS' };
       default:
         return err('INVALID_PAYLOAD', `Método desconocido: ${method}`);
     }
+  }
+
+  /** Señal rápida: máximo 1 cada 3 s; llega al bando (aquí, también a quien la envía). A veces un bot contesta. */
+  signal(p, err) {
+    if (!['HERE', 'DANGER', 'HELP', 'MINE'].includes(p.kind)) return err('INVALID_PAYLOAD', 'La señal no es válida.', { details: { field: 'kind' } });
+    if (this.status !== 'IN_PROGRESS') return err('MATCH_NOT_ACTIVE', 'La partida no está en una ronda.');
+    if (Date.now() - this.signalAt < SIGNAL_INTERVAL_MS) return err('RATE_LIMITED', 'Demasiadas señales: espera unos segundos.', { retryAfterMs: SIGNAL_INTERVAL_MS });
+    this.signalAt = Date.now();
+    const sentAt = new Date().toISOString();
+    this.t.push('SignalReceived', { matchId: DEMO_MATCH_ID, fromPlayerId: ME_ID, kind: p.kind, position: p.position ?? null, sentAt });
+    const bot = this.allies.find((a) => a.state === 'ALIVE' && a.position && !a.hiddenInHost);
+    if (bot) this.later(900, () => this.t.push('SignalReceived', { matchId: DEMO_MATCH_ID, fromPlayerId: bot.playerId, kind: 'HERE', position: clone(bot.position), sentAt: new Date().toISOString() }));
+    return { matchId: DEMO_MATCH_ID, sentAt };
   }
 
   sendOffer() {
@@ -382,9 +483,11 @@ class DemoServer {
     if (this.me.state === 'EMBER_SPIRIT') {
       if (o.type === 'ABILITY' && this.me.abilityCooldown > 0) return err('INVALID_ORDER', 'Avivar se está enfriando.', { details: { field: 'order.type' } });
       if (o.type === 'ATTACK' && this.me.path.hinderCooldown > 0) return err('INVALID_ORDER', 'Estorbo se está enfriando.', { details: { field: 'order.type' } });
-    } else if (o.type === 'ABILITY' && this.me.charges === 0) {
-      return err('INVALID_ORDER', 'Descarga necesita al menos 1 carga.', { details: { field: 'order.type' } });
+    } else if (o.type === 'ABILITY' && this.me.abilityCooldown > 0 && this.me.hostEnemyId == null) {
+      return err('INVALID_ORDER', 'La habilidad se está enfriando.', { details: { field: 'order.type' } });
     }
+    const bell = this.heroes.bell;
+    if (bell && bell.ringerId !== ME_ID && (bell.closed || Date.now() >= bell.at)) return err('ORDER_TOO_LATE', 'Venció tu plazo del Repique: guardas esta ronda.');
     if (this.roundOrder) return err('ORDER_ALREADY_SUBMITTED', 'Ya hay una orden para esta ronda.');
 
     const ack = { matchId: DEMO_MATCH_ID, round: this.round, clientActionId: p.clientActionId, result: 'ACCEPTED', receivedAt: new Date().toISOString() };
@@ -409,7 +512,25 @@ class DemoServer {
     const roundMs = this.scenario.roundMs;
     this.deadline = new Date(Date.now() + roundMs).toISOString();
     const round = this.round;
-    this.t.push('RoundOpened', { matchId: DEMO_MATCH_ID, round, deadline: this.deadline, durationMs: roundMs, expectedPlayers: this.expected() });
+    // Repique de la ronda anterior: todos menos quien lo tocó deciden en 8 s.
+    const ringer = this.heroes.bellNext;
+    this.heroes.bellNext = null;
+    this.heroes.bell = ringer ? { ringerId: ringer, at: Date.now() + BELL_MS, closed: false } : null;
+    this.heroes.lastWordSent = false;
+    this.t.push('RoundOpened', {
+      matchId: DEMO_MATCH_ID, round, deadline: this.deadline, durationMs: roundMs, expectedPlayers: this.expected(),
+      ...(ringer ? { bellDeadline: iso(this.heroes.bell.at), bellRingerId: ringer } : {}),
+    });
+    if (ringer) {
+      this.later(BELL_MS, () => {
+        if (this.round !== round || this.resolving) return;
+        this.heroes.bell.closed = true;
+        this.heroes.bellExpired = ringer;
+        this.t.push('Snapshot', this.snapshot());
+        // Si quien lo tocó ya decidió, no hay nada más que esperar.
+        if (ringer !== ME_ID || this.me.decided) this.later(300, () => this.resolve());
+      });
+    }
     for (const ally of this.allies) {
       if (!this.allyCanAct(ally)) continue;
       this.later(1500 + Math.random() * 4000, () => { if (this.round === round && !this.resolving) this.decided(ally.playerId); });
@@ -444,7 +565,22 @@ class DemoServer {
       if (ally) ally.decided = true;
     }
     this.t.push('PlayerDecided', { matchId: DEMO_MATCH_ID, round: this.round, playerId, decidedCount: this.decidedCount(), expectedPlayers: this.expected() });
-    if (this.decidedCount() >= this.expected()) this.later(300, () => this.resolve());
+    if (this.decidedCount() >= this.expected()) {
+      this.later(300, () => this.resolve());
+    } else if (this.me.hero === 'CAMPANERO' && !this.me.decided && this.me.state !== 'EMBER_SPIRIT' && !this.heroes.lastWordSent && this.decidedCount() >= this.expected() - 1) {
+      this.sendLastWord();
+    }
+  }
+
+  /** Último en hablar: todos los demás decidieron y el Campanero todavía no. Como Renegado solo oye los tipos. */
+  sendLastWord() {
+    this.heroes.lastWordSent = true;
+    const typesOnly = this.me.state === 'RENEGADE';
+    const orders = this.allies.filter((a) => this.allyCanAct(a)).map((a, i) => {
+      const type = ['MOVE', 'ATTACK', 'GUARD'][(this.round + i) % 3];
+      return { playerId: a.playerId, type, direction: type === 'GUARD' || typesOnly ? null : Object.keys(DIRS)[(this.round + i) % 4] };
+    });
+    this.t.push('LastWord', { matchId: DEMO_MATCH_ID, round: this.round, typesOnly, orders });
   }
 
   /** Resuelve la ronda abierta ya (un botón de la demo preparó algo); si no hay ronda abierta, la próxima. */
@@ -462,8 +598,11 @@ class DemoServer {
     let tilesChanged = [];
     const wasDown = me.state === 'DOWN';
 
-    // Inicio: se apagan los Faros de la ronda anterior y se revelan los caminos elegidos.
+    // Inicio: se apagan los Faros y el Grito de la ronda anterior, y se revelan los caminos elegidos.
     this.beacons = [];
+    this.heroes.shout = false;
+    this.heroes.bell = null;
+    const positionsBefore = new Map([...this.allies.map((a) => [a.playerId, a.position]), ...[...this.enemies.values()].map((e) => [`enemy:${e.enemyId}`, clone(e.position)])]);
     const revealed = this.revealPaths(events);
 
     // Orden del jugador (GUARDAR —el Faro, para la Brasa— por defecto si no envió nada).
@@ -475,8 +614,10 @@ class DemoServer {
       else if (me.state === 'RENEGADE' && !this.meAwaiting()) this.actRenegade(order, events);
     }
     this.actAllies(events, revealed);
+    beforeEnemies(this, events);
     this.enemiesPhase(events, order);
     this.passives(events, wasDown);
+    afterRound(this, events, positionsBefore);
     this.applyFlags(events);
     const floorChanged = this.flags.descend ? this.descend(events) : null;
     this.flags.descend = false;
@@ -508,6 +649,9 @@ class DemoServer {
       delta: {
         status: this.status, floorChanged, me: clone(me), alliesChanged: this.allies.map((a) => this.allyView(a)),
         enemiesUpserted: nowVisible.map((e) => this.enemyView(e)), enemiesRemoved, tilesChanged, events: visibleEvents,
+        ...this.heroFields(),
+        bell: null,
+        roundDeadline: null,
       },
     };
     this.t.push('RoundResolved', msg);
@@ -529,38 +673,18 @@ class DemoServer {
   actHero(order, events, tilesChanged) {
     const me = this.me;
     if (!this.roundOrder) events.push({ type: 'DEFAULT_GUARD_APPLIED', actorId: ME_ID });
-    let attacked = false;
     const [dx, dy] = DIRS[order.direction] ?? [0, 0];
+    if (me.hostEnemyId != null) {
+      hostOrder(this, order, events, ME_ID);
+      return;
+    }
     if (order.type !== 'GUARD') me.facing = order.direction;
     if (order.type === 'MOVE') {
-      const nx = me.position.x + dx;
-      const ny = me.position.y + dy;
-      if (this.blocked(nx, ny)) {
-        events.push({ type: 'BOUNCED', actorId: ME_ID, position: clone(me.position) });
-      } else {
-        me.position = { x: nx, y: ny };
-        events.push({ type: 'MOVED', actorId: ME_ID, position: clone(me.position) });
-      }
+      heroMove(this, order, events, ME_ID);
     } else if (order.type === 'ATTACK') {
-      attacked = true;
-      // Chispa: primer objetivo a 3 casillas en línea (un enemigo o un Renegado); muros y braseros detienen el disparo.
-      for (let i = 1; i <= 3; i++) {
-        const p = { x: me.position.x + dx * i, y: me.position.y + dy * i };
-        if (!inBounds(p.x, p.y) || ['WALL', 'BRAZIER'].includes(this.tiles.get(key(p.x, p.y)))) break;
-        const enemy = [...this.enemies.values()].find((e) => same(e.position, p));
-        if (enemy) { this.hit(enemy, 1, events); break; }
-        const renegade = this.allies.find((a) => a.state === 'RENEGADE' && same(a.position, p));
-        if (renegade) { this.hitRenegade(renegade, 1, events); break; }
-      }
-      events.push({ type: 'ATTACKED', actorId: ME_ID, position: clone(me.position) });
+      heroAttack(this, order, events, ME_ID);
     } else if (order.type === 'ABILITY') {
-      attacked = true;
-      const dmg = 1 + me.charges;
-      me.charges = 0;
-      const inCross = (pos) => (pos.y === me.position.y && Math.abs(pos.x - me.position.x) <= 3) || (pos.x === me.position.x && Math.abs(pos.y - me.position.y) <= 3);
-      for (const e of [...this.enemies.values()]) if (inCross(e.position)) this.hit(e, dmg, events);
-      for (const a of this.allies) if (a.state === 'RENEGADE' && a.position && inCross(a.position)) this.hitRenegade(a, dmg, events);
-      events.push({ type: 'ABILITY_USED', actorId: ME_ID, position: clone(me.position) });
+      heroAbility(this, order, events, tilesChanged, ME_ID);
     } else if (order.type === 'INTERACT') {
       const x = me.position.x + dx;
       const y = me.position.y + dy;
@@ -578,7 +702,6 @@ class DemoServer {
         events.push({ type: 'EMBERS_GAINED', actorId: ME_ID, amount: 2 });
       }
     }
-    if (!attacked) me.charges = Math.min(3, me.charges + 1);
   }
 
   hit(enemy, dmg, events, by = ME_ID) {
@@ -586,6 +709,7 @@ class DemoServer {
     events.push({ type: 'DAMAGED', actorId: by, targetId: `enemy:${enemy.enemyId}`, amount: dmg, _at: enemy.position });
     if (enemy.hp > 0) return;
     this.enemies.delete(enemy.enemyId);
+    hostKilled(this, enemy, events);
     const killer = by === ME_ID ? this.me : this.allies.find((a) => a.playerId === by);
     if (killer) killer.embers += 1;
     events.push({ type: 'ENEMY_KILLED', actorId: by, targetId: `enemy:${enemy.enemyId}`, _at: enemy.position });
@@ -632,6 +756,7 @@ class DemoServer {
       events.push({ type: 'BLOCKED', actorId: sourceId, targetId: hero.playerId, _at: hero.position });
       return 0;
     }
+    if (hero.hero === 'AVARO') return miserDamage(this, hero, dmg, events);
     hero.hp = Math.max(hero === this.me && this.scenario.forgiving ? 1 : 0, hero.hp - dmg);
     events.push({ type: 'DAMAGED', actorId: sourceId, targetId: hero.playerId, amount: dmg, _at: hero.position });
     if (hero.hp === 0) {
@@ -723,19 +848,12 @@ class DemoServer {
     const me = this.me;
     const [dx, dy] = DIRS[order.direction] ?? [0, 0];
     if (order.type !== 'GUARD') me.facing = order.direction;
-    let attacked = false;
     if (order.type === 'MOVE') {
-      const nx = me.position.x + dx;
-      const ny = me.position.y + dy;
-      if (this.blocked(nx, ny)) events.push({ type: 'BOUNCED', actorId: ME_ID, position: clone(me.position) });
-      else {
-        me.position = { x: nx, y: ny };
-        events.push({ type: 'MOVED', actorId: ME_ID, position: clone(me.position) });
-      }
+      heroMove(this, order, events, ME_ID);
     } else if (order.type === 'ATTACK') {
-      attacked = true;
-      // El disparo se detiene en el primer cuerpo: un monstruo lo frena sin daño; un héroe recibe el golpe.
-      for (let i = 1; i <= 3; i++) {
+      // El golpe se detiene en el primer cuerpo: un monstruo lo frena sin daño; un héroe recibe el golpe.
+      const range = HERO_INFO[me.hero].range ?? 1;
+      for (let i = 1; i <= range; i++) {
         const p = { x: me.position.x + dx * i, y: me.position.y + dy * i };
         if (!inBounds(p.x, p.y) || ['WALL', 'BRAZIER'].includes(this.tiles.get(key(p.x, p.y)))) break;
         if ([...this.enemies.values()].some((e) => same(e.position, p))) break;
@@ -744,17 +862,8 @@ class DemoServer {
       }
       events.push({ type: 'ATTACKED', actorId: ME_ID, position: clone(me.position) });
     } else if (order.type === 'ABILITY') {
-      attacked = true;
-      me.charges = 0;
-      for (const a of this.allies) {
-        if (a.state !== 'ALIVE' || !a.position) continue;
-        const cross = (a.position.y === me.position.y && Math.abs(a.position.x - me.position.x) <= 3) || (a.position.x === me.position.x && Math.abs(a.position.y - me.position.y) <= 3);
-        if (cross) this.renegadeHit(me, a, events);
-      }
-      events.push({ type: 'ABILITY_USED', actorId: ME_ID, position: clone(me.position) });
+      heroAbility(this, order, events, [], ME_ID);
     }
-    // Chispa Renegada: como máximo 2 cargas.
-    if (!attacked) me.charges = Math.min(2, me.charges + 1);
   }
 
   /** Golpe de un Renegado a un héroe: el primero lo absorbe el escudo de aviso; luego 1 de daño y roba 1 ascua. */
@@ -880,8 +989,13 @@ class DemoServer {
     for (const e of this.enemies.values()) {
       // Estorbado por la Brasa: conserva el anuncio, no golpea, no se mueve ni anuncia; golpea la ronda siguiente.
       if (this.hindered.has(e.enemyId)) continue;
+      // El huésped de Polizón no anuncia ni actúa por su cuenta.
+      if (e.enemyId === this.me.hostEnemyId) continue;
+      if (e.correctedBy) correctedStrike(this, e, events);
       for (const h of this.heroTargets()) {
-        if (!e.telegraph.some((p) => same(p, h.position))) continue;
+        if (h.hostEnemyId != null || h.hiddenInHost) continue; // a Polizón no lo atacan dentro
+        const onSecond = h.secondBody && e.telegraph.some((p) => same(p, h.secondBody));
+        if (!onSecond && !e.telegraph.some((p) => same(p, h.position))) continue;
         // GUARDAR anula los golpes de 1.
         if (h === this.me && order.type === 'GUARD') {
           events.push({ type: 'BLOCKED', actorId: `enemy:${e.enemyId}`, targetId: ME_ID });
@@ -889,8 +1003,10 @@ class DemoServer {
         }
         this.damageHero(h, 1, `enemy:${e.enemyId}`, events);
       }
+      if (!this.enemies.has(e.enemyId)) continue;
       const target = this.nearestHero(e.position);
-      if (target && e.kind !== 'BALLESTERO') this.stepToward(e, target.position);
+      // El Celador golpea una ronda sí y una no: entre golpes no se mueve, no se gira ni anuncia.
+      if (target && e.kind !== 'BALLESTERO' && e.kind !== 'CELADOR') this.stepToward(e, target.position);
       this.updateTelegraph(e);
     }
     this.hindered.clear();
@@ -942,8 +1058,12 @@ class DemoServer {
     me.downRoundsLeft = null;
     me.embers = 0;
     me.shield = 0;
-    me.charges = 0;
     me.abilityCooldown = 0;
+    me.hostEnemyId = null;
+    me.secondBody = null;
+    me.rewindTile = null;
+    me.rewindHp = null;
+    this.heroes.echoes = this.heroes.echoes.filter((e) => e.ownerId !== ME_ID);
     this.extinctions += 1;
     const offerId = `${PATH_OFFER_PREFIX}${String(this.extinctions).padStart(12, '0')}`;
     me.path = { offerId, choice: null, savedEmbers: saved, echoes: 0, rebirthEmbers: null, hinderCooldown: 0, awaitingSpawn: null, spawnRound: null };
@@ -1078,7 +1198,7 @@ class DemoServer {
         me.path.hinderCooldown = 0;
         me.shield = 0;
         me.abilityCooldown = 0;
-        me.charges = 0;
+        if (me.hero === 'HILVAN') placeSecondBody(this, me);
       }
       events.push({ type: 'EMBER_REBORN', actorId: h.playerId, position: clone(h.position), amount: h.hp });
     }
@@ -1089,6 +1209,15 @@ class DemoServer {
       this.allyPlans.delete(h.playerId);
     }
     this.enemies.forEach((e) => this.updateTelegraph(e));
+    // Al cambiar de sala se pierden las ascuas del suelo, los ecos y la historia de Volver.
+    this.heroes.ground = [];
+    this.heroes.echoes = [];
+    this.heroes.history = [];
+    this.heroes.noise = [];
+    me.rewindTile = null;
+    me.rewindHp = null;
+    me.hostEnemyId = null;
+    for (const h of party) if (h.hero === 'HILVAN' && h.position) placeSecondBody(this, h);
     return this.floor;
   }
 
@@ -1132,7 +1261,17 @@ class DemoServer {
 
   updateTelegraph(e) {
     const tele = [];
-    if (e.kind === 'BALLESTERO') {
+    if (e.enemyId === this.me.hostEnemyId) {
+      e.telegraph = tele;
+      return;
+    }
+    if (e.kind === 'CELADOR') {
+      if (this.round % 2 === 1) {
+        for (const [dx, dy] of Object.values(DIRS)) {
+          if (inBounds(e.position.x + dx, e.position.y + dy)) tele.push({ x: e.position.x + dx, y: e.position.y + dy });
+        }
+      }
+    } else if (e.kind === 'BALLESTERO') {
       const [dx, dy] = DIRS[e.facing];
       for (let i = 1; i <= 3; i++) {
         const x = e.position.x + dx * i;
@@ -1194,7 +1333,7 @@ class DemoServer {
     }
     this.t.push('MatchFinished', {
       matchId: DEMO_MATCH_ID, seq: this.seq, outcome, rounds: this.round,
-      winners, standings, finishedAt: new Date().toISOString(),
+      winners, standings, finishedAt: new Date().toISOString(), betrayals: finalBetrayals(this),
       replayUrl: `${location.origin}/api/v1/matches/${DEMO_MATCH_ID}/replay`,
     });
     this.later(300, () => this.t.serverClose('MATCH_FINISHED: la partida terminó.'));
@@ -1234,7 +1373,7 @@ class DemoServer {
 
 /** Implementa la misma interfaz que RealTransport (hub.js). */
 export class DemoTransport {
-  constructor(scenario = DEMO_SCENARIO) {
+  constructor(scenario = demoScenario()) {
     this.matchId = DEMO_MATCH_ID;
     this.handlers = new Map();
     this.closeHandler = () => {};

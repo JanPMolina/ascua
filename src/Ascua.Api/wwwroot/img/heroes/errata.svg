@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Errata">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="70%"><stop offset="0" stop-color="#5a1a2a"/><stop offset="1" stop-color="#1a080e"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="12" fill="url(#bg)"/>
+  <path d="M8 62c3-13 12-20 24-20s21 7 24 20z" fill="#7a2030"/>
+  <path d="M15 42c0-17 7-30 17-32 10 2 17 15 17 32-7 3-27 3-34 0z" fill="#b8344a"/>
+  <path d="M23 36c0-8 4-13 9-13s9 5 9 13c-4 2-14 2-18 0z" fill="#efd9bd"/>
+  <circle cx="28" cy="31" r="1.7" fill="#1a0e10"/><circle cx="36" cy="31" r="1.7" fill="#1a0e10"/>
+  <path d="M25 26.500l6 1.200M39 26.500l-6 1.200" stroke="#1a0e10" stroke-width="1.600" stroke-linecap="round"/>
+  <rect x="6" y="44" width="20" height="16" rx="1.500" fill="#efe3c0" transform="rotate(-6 16 52)"/>
+  <path d="M9 49l14-1.500M9 53l14-1.500M9 57l9-1" stroke="#a89878" stroke-width="1.300"/>
+  <path d="M7 54.500l17-3" stroke="#e0263e" stroke-width="2.400" stroke-linecap="round"/>
+  <path d="M59 6c-9 3-15 11-17 21l3 1c5-3 11-11 14-22z" fill="#f4f0e0"/>
+  <path d="M59 6c-7 6-11 13-14 22" stroke="#e0566e" stroke-width="1.500" fill="none"/>
+  <path d="M45 28l-3 7" stroke="#20141c" stroke-width="2" stroke-linecap="round"/>
+</svg>
