@@ -30,7 +30,7 @@ public static class OrderValidator
 
         if (hero.Status == HeroStatus.Down)
         {
-            return new DomainError(ErrorCode.PlayerDown, "El héroe está caído y no puede actuar.");
+            return new DomainError(ErrorCode.PlayerDown, "El héroe está derribado y no puede actuar.");
         }
 
         if (!hero.CanAct)

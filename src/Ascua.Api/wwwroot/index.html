@@ -33,17 +33,17 @@
       <div class="hero-banner">
         <div class="hero-copy">
           <img class="hero-logo" src="img/logo.svg" alt="Ascua" width="320" height="96">
-          <p class="tagline">Desciende a la cripta. Aviva el Umbral. Quédate con el fuego.</p>
-          <p class="lead">Una mazmorra por turnos simultáneos para 2 a 4 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más ascuas.</p>
+          <p class="tagline">Desciende a la cripta. Derrota al Celador. Quédate con el oro.</p>
+          <p class="lead">Una mazmorra por turnos simultáneos para 2 a 4 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más oro.</p>
           <ul class="features">
             <li><span class="feat-ico" aria-hidden="true">⏳</span><span><b>Rondas de 20 s</b> todos ordenan a la vez, en secreto.</span></li>
             <li><span class="feat-ico" aria-hidden="true">🤝</span><span><b>Cooperación tensa</b> sin el grupo no hay victoria… ni reparto.</span></li>
-            <li><span class="feat-ico" aria-hidden="true">📜</span><span><b>Pactos secretos</b> que se revelan al final.</span></li>
+            <li><span class="feat-ico" aria-hidden="true">📜</span><span><b>Misiones secretas</b> que se revelan al final.</span></li>
           </ul>
         </div>
         <div class="welcome card card-glow">
           <h2>¿Primera vez en Ascua?</h2>
-          <p>Aprende moviéndote, guardando, atacando y abriendo cofres en una partida guiada.</p>
+          <p>Aprende moviéndote, defendiendo, atacando y abriendo cofres en una partida guiada.</p>
           <div class="row">
             <a class="button primary big" href="?tutorial=1">Tutorial interactivo <small>5 min, sin cuenta</small></a>
           </div>
@@ -206,13 +206,13 @@
             <div id="me-hearts" class="hearts" aria-hidden="true"></div>
             <div id="me-hpwrap" class="bar"><div id="me-hpbar" class="bar-hp"></div><span id="me-hp"></span></div>
             <div id="me-tiles" class="stat-tiles">
-              <div id="tile-embers" class="tile tile-embers" title="Ascuas: deciden quién gana">
-                <span class="tile-ico" aria-hidden="true">✦</span><b id="me-embers">0</b><small>Ascuas</small>
+              <div id="tile-embers" class="tile tile-embers" title="Oro: decide quién gana">
+                <span class="tile-ico" aria-hidden="true">✦</span><b id="me-embers">0</b><small>Oro</small>
               </div>
               <div class="tile tile-shield" title="Escudo: absorbe daño antes que la vida">
                 <span class="tile-ico" aria-hidden="true">⛨</span><b id="me-shield">0</b><small>Escudo</small>
               </div>
-              <div id="tile-ability" class="tile tile-ability" title="Enfriamiento de la habilidad">
+              <div id="tile-ability" class="tile tile-ability" title="Espera de la habilidad">
                 <span class="tile-ico" aria-hidden="true">✺</span><b id="me-cooldown">0</b><small id="me-ability">Habilidad</small>
               </div>
               <div id="tile-debt" class="tile tile-debt" hidden>
@@ -227,32 +227,32 @@
                 <div class="path-panel-id"><b id="path-panel-title"></b><small id="path-panel-sub"></small></div>
               </div>
               <div id="path-ember-stats" class="stat-tiles path-tiles">
-                <div id="tile-echoes" class="tile tile-echoes" title="Ecos: cada uno suma 8% a las ascuas con que renaces">
-                  <span class="tile-ico" aria-hidden="true">❖</span><b id="me-echoes">0</b><small>Ecos</small>
+                <div id="tile-echoes" class="tile tile-echoes" title="Apoyo: cada punto suma 8% a el oro con que renaces">
+                  <span class="tile-ico" aria-hidden="true">❖</span><b id="me-echoes">0</b><small>Apoyo</small>
                 </div>
-                <div class="tile tile-saved" title="Ascuas guardadas al extinguirte">
-                  <span class="tile-ico" aria-hidden="true">✦</span><b id="me-saved">0</b><small>Guardadas</small>
+                <div class="tile tile-saved" title="Oro guardado al morir">
+                  <span class="tile-ico" aria-hidden="true">✦</span><b id="me-saved">0</b><small>Guardado</small>
                 </div>
-                <div id="tile-rebirth" class="tile tile-rebirth" title="Ascuas con las que renacerías ahora">
+                <div id="tile-rebirth" class="tile tile-rebirth" title="Oro con el que renacerías ahora">
                   <span class="tile-ico" aria-hidden="true">↺</span><b id="me-rebirth">0</b><small>Al renacer</small>
                 </div>
-                <div id="tile-kindle" class="tile tile-ability" title="Avivar">
-                  <span class="tile-ico" aria-hidden="true">❂</span><b id="me-kindle-cd">Lista</b><small>Avivar</small>
+                <div id="tile-kindle" class="tile tile-ability" title="Escudo">
+                  <span class="tile-ico" aria-hidden="true">❂</span><b id="me-kindle-cd">Lista</b><small>Escudo</small>
                 </div>
-                <div id="tile-hinder" class="tile tile-ability" title="Estorbo">
-                  <span class="tile-ico" aria-hidden="true">⧖</span><b id="me-hinder-cd">Lista</b><small>Estorbo</small>
+                <div id="tile-hinder" class="tile tile-ability" title="Frenar">
+                  <span class="tile-ico" aria-hidden="true">⧖</span><b id="me-hinder-cd">Lista</b><small>Frenar</small>
                 </div>
               </div>
-              <div id="rebirth-meter" class="rebirth-meter" role="meter" aria-label="Ascuas que recuperas al renacer" aria-valuemin="25" aria-valuemax="85">
+              <div id="rebirth-meter" class="rebirth-meter" role="meter" aria-label="Oro que recuperas al renacer" aria-valuemin="25" aria-valuemax="85">
                 <div id="rebirth-fill" class="rebirth-fill"></div>
                 <span id="rebirth-ticks" class="rebirth-ticks" aria-hidden="true"></span>
                 <span id="rebirth-label" class="rebirth-label"></span>
               </div>
               <p id="path-panel-text" class="path-panel-text"></p>
             </div>
-            <h4>Bendiciones</h4>
+            <h4>Mejoras</h4>
             <ul id="me-blessings" class="chips"></ul>
-            <h4>Pacto secreto</h4>
+            <h4>Misión secreta</h4>
             <div id="me-pact" class="pact-card"><p>–</p></div>
           </div>
 
@@ -288,13 +288,13 @@
           </div>
           <p class="legend">
             <span><span class="sw sw-wall"></span>muro</span> <span><span class="sw sw-chest"></span>cofre</span> <span><span class="sw sw-stairs"></span>escalera</span>
-            <span><span class="sw sw-spikes"></span>pinchos</span> <span><span class="sw sw-fire"></span>fuego</span> <span><span class="sw sw-tele"></span>ataque anunciado</span>
+            <span><span class="sw sw-spikes"></span>pinchos</span> <span><span class="sw sw-fire"></span>fuego</span> <span><span class="sw sw-tele"></span>ataque marcado</span>
             <span><span class="sw sw-fog"></span>recordado</span>
-            <span id="legend-paths" hidden><span><span class="sw sw-ember"></span>Brasa</span> <span><span class="sw sw-renegade"></span>Renegado</span></span>
-            <span id="legend-hidden" hidden><span class="sw sw-proof"></span>anuncio sin autor</span>
+            <span id="legend-paths" hidden><span><span class="sw sw-ember"></span>Fantasma</span> <span><span class="sw sw-renegade"></span>Traidor</span></span>
+            <span id="legend-hidden" hidden><span class="sw sw-proof"></span>ataque marcado sin autor</span>
             <span id="legend-echo" hidden><span class="sw sw-echo"></span>Eco</span>
             <span id="legend-noise" hidden><span class="sw sw-noise"></span>ruido</span>
-            <span id="legend-ground" hidden><span class="sw sw-ground"></span>ascuas en el suelo</span>
+            <span id="legend-ground" hidden><span class="sw sw-ground"></span>oro en el suelo</span>
           </p>
         </div>
 
@@ -309,14 +309,14 @@
               <button type="button" class="mode" data-mode="MOVE" role="radio"><span class="mode-ico" aria-hidden="true">➜</span><span class="mode-name">Mover</span> <kbd>↑↓←→</kbd><small class="mode-cd" hidden></small></button>
               <button type="button" class="mode" data-mode="ATTACK" role="radio"><span class="mode-ico" aria-hidden="true">⚔</span><span class="mode-name">Atacar</span> <kbd>⇧</kbd><small class="mode-cd" hidden></small></button>
               <button type="button" class="mode" data-mode="ABILITY" role="radio"><span class="mode-ico" aria-hidden="true">✺</span><span class="mode-name">Habilidad</span> <kbd>Q</kbd><small class="mode-cd" hidden></small></button>
-              <button type="button" class="mode" data-mode="INTERACT" role="radio"><span class="mode-ico" aria-hidden="true">✋</span><span class="mode-name">Interactuar</span> <kbd>E</kbd><small class="mode-cd" hidden></small></button>
+              <button type="button" class="mode" data-mode="INTERACT" role="radio"><span class="mode-ico" aria-hidden="true">✋</span><span class="mode-name">Usar</span> <kbd>E</kbd><small class="mode-cd" hidden></small></button>
             </div>
             <p id="order-armed" class="armed-hint" hidden></p>
             <p id="order-note" class="order-note" hidden></p>
             <div class="dpad">
               <button type="button" class="dir" data-dir="N" aria-label="Norte"><span aria-hidden="true">▲</span><small>N</small></button>
               <button type="button" class="dir" data-dir="W" aria-label="Oeste"><span aria-hidden="true">◀</span><small>O</small></button>
-              <button type="button" id="btn-guard" class="dir guard"><span id="guard-ico" aria-hidden="true">⛨</span><small><span id="guard-name">Guardar</span> <kbd>␣</kbd></small></button>
+              <button type="button" id="btn-guard" class="dir guard"><span id="guard-ico" aria-hidden="true">⛨</span><small><span id="guard-name">Defender</span> <kbd>␣</kbd></small></button>
               <button type="button" class="dir" data-dir="E" aria-label="Este"><span aria-hidden="true">▶</span><small>E</small></button>
               <button type="button" class="dir" data-dir="S" aria-label="Sur"><span aria-hidden="true">▼</span><small>S</small></button>
             </div>
@@ -331,8 +331,8 @@
                 <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> mover</li>
                 <li><kbd>⇧</kbd> + flecha atacar</li>
                 <li><kbd>Q</kbd> y flecha habilidad</li>
-                <li><kbd>E</kbd> y flecha interactuar</li>
-                <li><kbd>Espacio</kbd> guardar</li>
+                <li><kbd>E</kbd> y flecha usar</li>
+                <li><kbd>Espacio</kbd> defender</li>
                 <li><kbd>Esc</kbd> cancelar Q/E</li>
               </ul>
             </details>
@@ -364,8 +364,8 @@
             <button id="btn-demo-finish" type="button" class="secondary" hidden>Simular fin de partida</button>
           </div>
           <div id="demo-paths" class="row match-actions demo-paths" hidden>
-            <button id="btn-demo-extinct" type="button" class="secondary small">🕯 Simular extinción</button>
-            <button id="btn-demo-renegade" type="button" class="secondary small">☠ Simular Renegado aliado</button>
+            <button id="btn-demo-extinct" type="button" class="secondary small">🕯 Simular muerte</button>
+            <button id="btn-demo-renegade" type="button" class="secondary small">☠ Simular Traidor aliado</button>
             <button id="btn-demo-floor" type="button" class="secondary small">⇣ Bajar de piso</button>
             <label class="inline demo-hero">Héroe <select id="demo-hero" aria-label="Héroe de la demo"></select></label>
           </div>
@@ -376,7 +376,7 @@
       <div id="draft" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="draft-title">
         <div class="dialog draft">
           <span id="draft-source" class="badge warn"></span>
-          <h2 id="draft-title">Elige una bendición</h2>
+          <h2 id="draft-title">Elige una mejora</h2>
           <p class="hint">Es privada: nadie más sabrá cuál tomaste.</p>
           <div id="draft-options" class="blessing-cards"></div>
           <p class="hint">Plazo: <b id="draft-timer" class="draft-timer"></b> (si vence, el servidor elige al azar).</p>
@@ -386,31 +386,31 @@
       <!-- Elección de camino al extinguirse (planteamiento/04-caminos-tras-morir.md) -->
       <div id="path" class="overlay path-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="path-title" aria-describedby="path-lead">
         <div class="dialog path-dialog">
-          <span class="badge bad path-badge"><span aria-hidden="true">🕯</span> Te extinguiste</span>
+          <span class="badge bad path-badge"><span aria-hidden="true">🕯</span> Moriste</span>
           <h2 id="path-title">Elige tu camino</h2>
-          <p id="path-lead" class="hint">Tus <b id="path-saved">0</b> ascuas quedan guardadas. Nadie sabrá qué elegiste hasta que se resuelva la ronda.</p>
+          <p id="path-lead" class="hint">Tus <b id="path-saved">0</b> de oro quedan guardados. Nadie sabrá qué elegiste hasta que se resuelva la ronda.</p>
           <div id="path-cards" class="path-cards">
             <button type="button" class="path-card friendship" data-path="FRIENDSHIP" aria-describedby="path-friend-text">
               <span class="path-default">Por defecto</span>
               <span class="path-emblem" aria-hidden="true"><span class="flame-css"><i></i><i></i><i></i></span></span>
-              <small class="path-kicker">Camino de la Amistad</small>
-              <b class="path-name">Brasa errante</b>
-              <span id="path-friend-text" class="path-text">Un espíritu azul que atraviesa muros y ayuda al grupo: escudos, levantar caídos, estorbar enemigos e iluminar. Cada ayuda te da <b>ecos</b>.</span>
-              <span class="path-stat"><span id="path-friend-label">Renaces en el piso siguiente con</span> <b id="path-friend-embers">0</b> <span class="path-unit">ascuas</span></span>
+              <small class="path-kicker">Ayudar</small>
+              <b class="path-name">Fantasma</b>
+              <span id="path-friend-text" class="path-text">Un espíritu azul que atraviesa muros y ayuda al grupo: escudos, levantar derribados, frenar enemigos e iluminar. Cada ayuda te da <b>puntos de apoyo</b>.</span>
+              <span class="path-stat"><span id="path-friend-label">Renaces en el piso siguiente con</span> <b id="path-friend-embers">0</b> <span class="path-unit">de oro</span></span>
               <span class="path-cta" aria-hidden="true">Elegir <kbd>←</kbd></span>
             </button>
             <button type="button" class="path-card vengeance" data-path="VENGEANCE" aria-describedby="path-veng-text">
               <span class="path-emblem" aria-hidden="true"><span class="aura-css"><i></i><i></i></span><span class="path-skull">☠</span></span>
-              <small class="path-kicker">Camino de la Venganza</small>
-              <b class="path-name">Renegado</b>
-              <span id="path-veng-text" class="path-text">Vuelves con tu héroe del lado de la mazmorra: los monstruos no te atacan y le robas ascuas a cada héroe que golpeas. Si todos caen, <b>el Umbral reclama</b>.</span>
-              <span class="path-stat"><span id="path-veng-label">Apareces en la sala siguiente con</span> <b id="path-veng-embers">0</b> <span class="path-unit">ascuas</span></span>
+              <small class="path-kicker">Vengarse</small>
+              <b class="path-name">Traidor</b>
+              <span id="path-veng-text" class="path-text">Vuelves con tu héroe del lado de la mazmorra: los monstruos no te atacan y le robas oro a cada héroe que golpeas. Si todos caen, <b>ganan los Traidores</b>.</span>
+              <span class="path-stat"><span id="path-veng-label">Apareces en la sala siguiente con</span> <b id="path-veng-embers">0</b> <span class="path-unit">de oro</span></span>
               <span class="path-cta" aria-hidden="true">Elegir <kbd>→</kbd></span>
             </button>
           </div>
-          <p id="path-warden" class="path-warden" hidden><span aria-hidden="true">👑</span> Sala del Celador: la Brasa no renace (puntúa al final con la fórmula) y el Renegado aparece en 2 rondas junto al Celador.</p>
+          <p id="path-warden" class="path-warden" hidden><span aria-hidden="true">👑</span> Sala del Celador: el Fantasma no renace (puntúa al final con la fórmula) y el Traidor aparece en 2 rondas junto al Celador.</p>
           <div class="path-timebar" aria-hidden="true"><div id="path-timebar"></div></div>
-          <p class="hint">Plazo: <b id="path-timer" class="draft-timer">15 s</b> · si vence, tomas la Amistad.</p>
+          <p class="hint">Plazo: <b id="path-timer" class="draft-timer">15 s</b> · si vence, eliges Ayudar.</p>
         </div>
       </div>
     </section>
@@ -430,12 +430,12 @@
           <h3 class="section-title">Traiciones reveladas</h3>
           <ul id="fin-betrayals" class="betrayals"></ul>
         </div>
-        <h3 class="section-title">Pactos revelados</h3>
+        <h3 class="section-title">Misiones reveladas</h3>
         <p class="hint">Las cartas se voltean solas; haz clic (o Enter) en una para darla vuelta otra vez.</p>
         <div id="fin-pacts" class="pacts"></div>
         <div id="fin-tutorial" class="fin-tutorial" hidden>
           <h3>Terminaste el tutorial</h3>
-          <p>En una partida real juegan de 2 a 4 personas, cada una con uno de los nueve héroes, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan los pactos secretos y gana quien tenga más ascuas.</p>
+          <p>En una partida real juegan de 2 a 4 personas, cada una con uno de los nueve héroes, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan las misiones secretas y gana quien tenga más oro.</p>
           <div class="row">
             <a class="button primary" href="/">Jugar en línea</a>
             <a class="button secondary" href="?tutorial=1">Repetir el tutorial</a>
@@ -483,10 +483,10 @@
 
       <section class="howto-page">
         <h3>La idea</h3>
-        <p>El <b>Umbral</b>, una hoguera antigua, se apaga. De 2 a 4 portadores bajan a la cripta a derrotar al <b>Celador</b>, que se alimenta de ella.</p>
+        <p>Una hoguera antigua se apaga. De 2 a 4 portadores bajan a la cripta a derrotar al <b>Celador</b>, que se alimenta de ella.</p>
         <ul>
           <li><b>Cooperan para sobrevivir:</b> si nadie vence al Celador antes de la ronda 60, todos pierden.</li>
-          <li><b>Compiten por el fuego:</b> si el Celador cae, gana quien tenga más <b>ascuas</b>.</li>
+          <li><b>Compiten por el oro:</b> si el Celador cae, gana quien tenga más <b>de oro</b>.</li>
           <li>La cripta tiene <b>5 salas</b> de 9×9: cuatro con enemigos, cofres y trampas, y la del Celador.</li>
         </ul>
       </section>
@@ -495,8 +495,8 @@
         <h3>Una ronda</h3>
         <ol>
           <li><b>Planifica (20 s):</b> cada jugador elige <b>una orden</b> en secreto. Los demás solo ven que ya decidiste.</li>
-          <li><b>Se resuelve todo a la vez</b> cuando todos decidieron o vence el reloj. Si no mandaste nada, tu héroe <b>guarda</b>.</li>
-          <li>Orden de resolución: guardias y escudos → movimientos → ataques de los héroes → golpes de los enemigos → los enemigos se mueven y <b>anuncian</b> su próximo golpe.</li>
+          <li><b>Se resuelve todo a la vez</b> cuando todos decidieron o vence el reloj. Si no mandaste nada, tu héroe <b>defiende</b>.</li>
+          <li>Orden de resolución: defensas y escudos → movimientos → ataques de los héroes → golpes de los enemigos → los enemigos se mueven y <b>marcan</b> su próximo golpe.</li>
         </ol>
         <p class="hint">Si dos héroes van a la misma casilla, ninguno se mueve (rebotan).</p>
       </section>
@@ -508,9 +508,9 @@
           <tbody>
             <tr><td>Mover</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></td><td>1 casilla en N/S/E/O.</td></tr>
             <tr><td>Atacar</td><td><kbd>⇧</kbd> + flecha</td><td>Ataque básico según el alcance de tu héroe.</td></tr>
-            <tr><td>Habilidad</td><td><kbd>Q</kbd> y flecha</td><td>La habilidad de tu héroe (tiene enfriamiento; si no hace nada, no lo gasta).</td></tr>
-            <tr><td>Interactuar</td><td><kbd>E</kbd> y flecha</td><td>Abrir un cofre, levantar a un aliado caído o usar un altar (casilla vecina).</td></tr>
-            <tr><td>Guardar</td><td><kbd>Espacio</kbd></td><td>Recibes la mitad de daño; anula los golpes de 1. Es la orden por defecto.</td></tr>
+            <tr><td>Habilidad</td><td><kbd>Q</kbd> y flecha</td><td>La habilidad de tu héroe (tiene espera; si no hace nada, no se gasta).</td></tr>
+            <tr><td>Usar</td><td><kbd>E</kbd> y flecha</td><td>Abrir un cofre, levantar a un aliado derribado o usar un altar (casilla vecina).</td></tr>
+            <tr><td>Defender</td><td><kbd>Espacio</kbd></td><td>Recibes la mitad de daño; anula los golpes de 1. Es la orden por defecto.</td></tr>
           </tbody>
         </table>
         <p class="hint">También puedes usar los botones del panel «Orden». Esc cancela Q o E.</p>
@@ -520,8 +520,8 @@
         <h3>Leer el tablero</h3>
         <ul>
           <li><b>Niebla:</b> ves hasta 3 casillas a tu alrededor; lo que viste antes queda en gris. Siempre ves a tus aliados, salvo a Polizón cuando va dentro de un monstruo.</li>
-          <li><span class="sw sw-tele"></span><b>Ataque anunciado:</b> los enemigos marcan dónde golpearán <b>la ronda siguiente</b>. Apártate o guarda.</li>
-          <li><span class="sw sw-chest"></span><b>Cofre:</b> ascuas y a veces una poción, escudo o la llave de plata de los altares.</li>
+          <li><span class="sw sw-tele"></span><b>Ataque marcado:</b> los enemigos marcan dónde golpearán <b>la ronda siguiente</b>. Apártate o defiende.</li>
+          <li><span class="sw sw-chest"></span><b>Cofre:</b> oro y a veces una poción, escudo o la llave de plata de los altares.</li>
           <li><span class="sw sw-stairs"></span><b>Escalera:</b> con la sala sin enemigos, pisarla lleva a todos a la sala siguiente. El Mampostero puede moverla.</li>
           <li><span class="sw sw-spikes"></span><b>Pinchos</b> (se activan en rondas pares) y <span class="sw sw-fire"></span><b>fuego</b> hacen daño.</li>
         </ul>
@@ -533,31 +533,31 @@
         <div class="heroes">
           <div class="hero-row"><img src="img/heroes/errata.svg" alt="" width="48" height="48"><dl>
             <dt>Errata · 4 de vida</dt>
-            <dd><i>Rompe: «los golpes caen donde se anunciaron».</i> Ve todos los anuncios de la sala, aunque no sepa de quién son. <b>Corregir</b> (enf. 3): todo enemigo con alguna casilla anunciada a ≤2 desplaza su anuncio entero 1 casilla en la dirección que elijas. Golpea lo que haya ahí, también a quien lo anunció.</dd></dl></div>
+            <dd><i>Rompe: «los golpes caen donde se marcaron».</i> Ve todos los ataques marcados de la sala, aunque no sepa de quién son. <b>Corregir</b> (espera 3): todo enemigo con alguna casilla marcada a ≤2 desplaza su ataque marcado entero 1 casilla en la dirección que elijas. Golpea lo que haya ahí, también a quien lo anunció.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/anteayer.svg" alt="" width="48" height="48"><dl>
             <dt>Anteayer · 4 de vida</dt>
-            <dd><i>Rompe: «lo hecho, hecho está».</i> <b>Eco:</b> 2 rondas después de cada ataque, una copia translúcida lo repite desde donde estabas, aunque ya estés caído. <b>Volver</b> (enf. 5): saltas a donde estabas hace 2 rondas y recuperas la vida que tenías entonces, si era más.</dd></dl></div>
+            <dd><i>Rompe: «lo hecho, hecho está».</i> <b>Eco:</b> 2 rondas después de cada ataque, una copia translúcida lo repite desde donde estabas, aunque ya estés derribado. <b>Volver</b> (espera 5): saltas a donde estabas hace 2 rondas y recuperas la vida que tenías entonces, si era más.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/hilvan.svg" alt="" width="48" height="48"><dl>
             <dt>Hilván · 8 de vida</dt>
-            <dd><i>Rompe: «tienes un solo cuerpo».</i> Dos cuerpos, una orden, una vida. Norte y sur los mueven igual; este y oeste, al revés. Un golpe a cada cuerpo son dos golpes. <b>Tensar</b> (enf. 3): con los cuerpos alineados, a ≥2 y sin muro entre ellos, todo lo que haya en medio recibe 2 de daño, aliados incluidos.</dd></dl></div>
+            <dd><i>Rompe: «tienes un solo cuerpo».</i> Dos cuerpos, una orden, una vida. Norte y sur los mueven igual; este y oeste, al revés. Un golpe a cada cuerpo son dos golpes. <b>Tensar</b> (espera 3): con los cuerpos alineados, a ≥2 y sin muro entre ellos, todo lo que haya en medio recibe 2 de daño, aliados incluidos.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/polizon.svg" alt="" width="48" height="48"><dl>
             <dt>Polizón · 4 de vida</dt>
-            <dd><i>Rompe: «eres tu cuerpo».</i> Dentro de un monstruo no te ve nadie, aliados incluidos. Cada 2 rondas lo drenas: pierde 1 y curas 1. <b>Abordar</b> (enf. 3): entras en el enemigo vecino. Dentro, mover lo mueve, atacar hace que golpee ya y la habilidad te saca. Al Celador solo lo giras 180°; al Tótem no se entra.</dd></dl></div>
+            <dd><i>Rompe: «eres tu cuerpo».</i> Dentro de un monstruo no te ve nadie, aliados incluidos. Cada 2 rondas lo drenas: pierde 1 y curas 1. <b>Abordar</b> (espera 3): entras en el enemigo vecino. Dentro, mover lo mueve, atacar hace que golpee ya y la habilidad te saca. Al Celador solo lo giras 180°; al Tótem no se entra.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/escucha.svg" alt="" width="48" height="48"><dl>
             <dt>La Escucha · 5 de vida</dt>
-            <dd><i>Rompe: «ves lo que tienes cerca».</i> Conoce el terreno, pero solo percibe lo que está a 1 casilla y lo que hizo ruido. Golpea a tientas hasta 4 casillas, amigo o enemigo; 2 de daño a lo que no hizo ruido. <b>Grito</b> (enf. 4): hasta la próxima resolución su bando ve la sala entera, y en esta ronda todos los monstruos la eligen a ella.</dd></dl></div>
+            <dd><i>Rompe: «ves lo que tienes cerca».</i> Conoce el terreno, pero solo percibe lo que está a 1 casilla y lo que hizo ruido. Golpea a tientas hasta 4 casillas, amigo o enemigo; 2 de daño a lo que no hizo ruido. <b>Grito</b> (espera 4): hasta la próxima resolución su bando ve la sala entera, y en esta ronda todos los monstruos la eligen a ella.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/usurera.svg" alt="" width="48" height="48"><dl>
             <dt>La Usurera · 4 de vida</dt>
-            <dd><i>Rompe: «ayudar es gratis».</i> <b>Interés:</b> cada 5 rondas la deuda sube 1 (tope 4). Lo que gane el deudor le llega a ella y al terminar cobra lo que quede. La deuda solo la ven ella y el deudor. <b>Préstamo</b> (enf. 2): al primer aliado herido o caído en línea a ≤2 le cura 3 o lo levanta con 3. No pide permiso: le crea 1 ascua de deuda.</dd></dl></div>
+            <dd><i>Rompe: «ayudar es gratis».</i> <b>Interés:</b> cada 5 rondas la deuda sube 1 (tope 4). Lo que gane el deudor le llega a ella y al terminar cobra lo que quede. La deuda solo la ven ella y el deudor. <b>Préstamo</b> (espera 2): al primer aliado herido o derribado en línea a ≤2 le cura 3 o lo levanta con 3. No pide permiso: le crea 1 de oro de deuda.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/avaro.svg" alt="" width="48" height="48"><dl>
-            <dt>El Avaro · 4 ascuas</dt>
-            <dd><i>Rompe: «la vida y la puntuación son cosas distintas».</i> Sus ascuas son su vida. Cada punto de daño tira 1 al suelo y el primero que pise la casilla se la queda. No acepta curas ni préstamos. <b>Soborno</b> (enf. 2): paga 1 ascua al primer enemigo en línea a ≤3: cancela su anuncio y esa ronda no actúa. El Celador cuesta 3 y solo cancela el anuncio.</dd></dl></div>
+            <dt>El Avaro · 4 de oro</dt>
+            <dd><i>Rompe: «la vida y la puntuación son cosas distintas».</i> Su oro es su vida. Cada punto de daño tira 1 al suelo y el primero que pise la casilla se lo queda. No acepta curas ni préstamos. <b>Soborno</b> (espera 2): paga 1 de oro al primer enemigo en línea a ≤3: cancela su ataque marcado y esa ronda no actúa. El Celador cuesta 3 y solo cancela el ataque marcado.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/mampostero.svg" alt="" width="48" height="48"><dl>
             <dt>El Mampostero · 6 de vida</dt>
-            <dd><i>Rompe: «la mazmorra está quieta».</i> Los pinchos y las grietas no le afectan. <b>Corrimiento</b> (enf. 3): desliza 1 casilla su fila (este/oeste) o su columna (norte/sur) con todo encima, escalera incluida. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2. Los anuncios no se mueven.</dd></dl></div>
+            <dd><i>Rompe: «la mazmorra está quieta».</i> Los pinchos y las grietas no le afectan. <b>Corrimiento</b> (espera 3): desliza 1 casilla su fila (este/oeste) o su columna (norte/sur) con todo encima, escalera incluida. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2. Los anuncios no se mueven.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/campanero.svg" alt="" width="48" height="48"><dl>
             <dt>El Campanero · 5 de vida</dt>
-            <dd><i>Rompe: «el reloj es igual para todos».</i> <b>Último en hablar:</b> si todos los demás decidieron y él no, recibe en privado sus órdenes. Golpea hasta 2 casillas. <b>Repique</b> (enf. 4): en la ronda siguiente los demás tienen solo 8 s y él conserva los 20. Se oye: todos ven la cuenta regresiva.</dd></dl></div>
+            <dd><i>Rompe: «el reloj es igual para todos».</i> <b>Último en hablar:</b> si todos los demás decidieron y él no, recibe en privado sus órdenes. Golpea hasta 2 casillas. <b>Repique</b> (espera 4): en la ronda siguiente los demás tienen solo 8 s y él conserva los 20. Se oye: todos ven la cuenta regresiva.</dd></dl></div>
         </div>
       </section>
 
@@ -566,68 +566,68 @@
         <ul>
           <li><b>Señales rápidas:</b> durante la ronda puedes enviar a tu bando «¡Aquí!», «¡Cuidado!», «Ayuda» o «Es mía» (teclas <kbd>1</kbd>–<kbd>4</kbd>), hasta una cada 3 s. Si antes haces clic en el tablero, la señal marca esa casilla.</li>
           <li><b>También se puede mentir:</b> la casilla la eliges tú y el servidor no la comprueba. Solo la recibe tu bando y no queda en la repetición.</li>
-          <li><b>Traición anónima:</b> si un golpe desviado por Errata o dado desde el huésped de Polizón le cae a un aliado, el registro culpa al monstruo. No hay robo de ascuas, y cuenta para el pacto de traicionar.</li>
+          <li><b>Traición anónima:</b> si un golpe desviado por Errata o dado desde el huésped de Polizón le cae a un aliado, el registro culpa al monstruo. No hay robo de oro, y cuenta para la misión de traicionar.</li>
           <li><b>Se revela al final:</b> la pantalla de resultados dice quién fue («Errata le costó 3 de vida a Ana»).</li>
-          <li><b>El Repique</b> se oye: si el Campanero lo tocó, todos ven la cuenta regresiva. Si se te acaba tu plazo, guardas (o enciendes el Faro) y una orden tardía se rechaza.</li>
+          <li><b>El Repique</b> se oye: si el Campanero lo tocó, todos ven la cuenta regresiva. Si se te acaba tu plazo, defiendes (o enciendes la Luz) y una orden tardía se rechaza.</li>
         </ul>
       </section>
 
       <section class="howto-page" hidden>
-        <h3>Ascuas, pactos y traiciones</h3>
+        <h3>Oro, misiones y traiciones</h3>
         <table class="table">
           <tbody>
             <tr><td>Golpe final a un enemigo</td><td class="num">+1</td></tr>
             <tr><td>Abrir un cofre</td><td class="num">+1</td></tr>
-            <tr><td>Levantar a un aliado caído</td><td class="num">+2</td></tr>
+            <tr><td>Levantar a un aliado derribado</td><td class="num">+2</td></tr>
             <tr><td>Golpe final al Celador</td><td class="num">+5</td></tr>
-            <tr><td>Cumplir tu pacto secreto</td><td class="num">+4</td></tr>
+            <tr><td>Cumplir tu misión secreta</td><td class="num">+4</td></tr>
           </tbody>
         </table>
         <ul>
-          <li><b>Pacto secreto:</b> un objetivo que solo tú conoces; se revela al final.</li>
-          <li><b>Caer:</b> con 0 de vida quedas caído. Un aliado puede levantarte (E); si pasan 3 rondas, te extingues: tus ascuas quedan guardadas y eliges un camino (página siguiente).</li>
-          <li><b>Fuego amigo:</b> golpear a un aliado le hace la mitad del daño y te da 1 ascua suya. Es posible, pero arriesga a todo el grupo.</li>
+          <li><b>Misión secreta:</b> un objetivo que solo tú conoces; se revela al final.</li>
+          <li><b>Derribado:</b> con 0 de vida quedas derribado. Un aliado puede levantarte (E); si pasan 3 rondas, mueres: tu oro queda guardado y eliges un camino (página siguiente).</li>
+          <li><b>Fuego amigo:</b> golpear a un aliado le hace la mitad del daño y te da 1 de su oro. Es posible, pero arriesga a todo el grupo.</li>
         </ul>
       </section>
 
       <section class="howto-page" hidden>
-        <h3>Al extinguirte: dos caminos</h3>
-        <p>Tienes <b>15 s</b> para elegir (si no, tomas la Amistad). La elección es secreta hasta que se resuelve la ronda, y cada vez que te extingas vuelves a elegir.</p>
+        <h3>Al morir: dos caminos</h3>
+        <p>Tienes <b>15 s</b> para elegir (si no, eliges Ayudar). La elección es secreta hasta que se resuelve la ronda, y cada vez que mueras vuelves a elegir.</p>
         <div class="howto-paths">
           <div class="howto-path friendship">
-            <h4><span class="path-sigil sm ember" aria-hidden="true"></span>Amistad: Brasa errante</h4>
+            <h4><span class="path-sigil sm ember" aria-hidden="true"></span>Ayudar: Fantasma</h4>
             <p>Espíritu azul e intangible: atraviesa todo y nada lo daña. Ve 4 casillas y da una orden por ronda.</p>
             <table class="table compact">
               <tbody>
-                <tr><td>Mover</td><td><b>Deriva</b>: hasta 2 casillas, atravesando todo.</td></tr>
-                <tr><td>Habilidad</td><td><b>Avivar</b>: +1 de escudo al primer aliado a ≤2. +1 eco por punto absorbido.</td></tr>
-                <tr><td>Interactuar</td><td><b>Reavivar</b>: levanta a un caído vecino. +3 ecos.</td></tr>
-                <tr><td>Atacar</td><td><b>Estorbo</b>: retrasa una ronda el golpe de un enemigo a ≤2. +1 eco.</td></tr>
-                <tr><td>Guardar</td><td><b>Faro</b>: ilumina radio 2 para el grupo. +1 eco por golpe final dentro.</td></tr>
+                <tr><td>Mover</td><td><b>Flotar</b>: hasta 2 casillas, atravesando todo.</td></tr>
+                <tr><td>Habilidad</td><td><b>Escudo</b>: +1 de escudo al primer aliado a ≤2. +1 de apoyo por punto absorbido.</td></tr>
+                <tr><td>Usar</td><td><b>Revivir</b>: levanta a un derribado vecino. +3 de apoyo.</td></tr>
+                <tr><td>Atacar</td><td><b>Frenar</b>: retrasa una ronda el golpe de un enemigo a ≤2. +1 de apoyo.</td></tr>
+                <tr><td>Defender</td><td><b>Luz</b>: ilumina radio 2 para el grupo. +1 de apoyo por golpe final dentro.</td></tr>
               </tbody>
             </table>
-            <p class="hint"><b>Calidez:</b> un aliado herido a tu lado cura 1 cada 3 rondas (+1 eco). Al bajar de piso <b>renaces</b> en la escalera con la mitad de tu vida y el 25% de tus ascuas guardadas, +8% por eco (máx. 85%).</p>
+            <p class="hint"><b>Calidez:</b> un aliado herido a tu lado cura 1 cada 3 rondas (+1 de apoyo). Al bajar de piso <b>renaces</b> en la escalera con la mitad de tu vida y el 25% de tu oro guardado, +8% por punto de apoyo (máx. 85%).</p>
           </div>
           <div class="howto-path vengeance">
-            <h4><span class="path-sigil sm renegade" aria-hidden="true"></span>Venganza: Renegado</h4>
+            <h4><span class="path-sigil sm renegade" aria-hidden="true"></span>Vengarse: Traidor</h4>
             <p>Vuelves con tu héroe en la sala siguiente (en la del Celador, 2 rondas después) del lado de la mazmorra, con aura roja.</p>
             <ul>
-              <li>Recuperas la mitad de tus ascuas guardadas. Ganas <b>+1</b> robada por golpe a un héroe y <b>+2</b> por dejarlo caído.</li>
+              <li>Recuperas la mitad de tu oro guardado. Ganas <b>+1</b> robado por golpe a un héroe y <b>+2</b> por dejarlo derribado.</li>
               <li>Los monstruos no te atacan, pero haces como máximo 1 de daño y tu habilidad tarda el doble.</li>
               <li>El primer golpe a cada héroe lo absorbe su <b>escudo de aviso</b>, y cada héroe gana +1 de escudo cuando apareces.</li>
-              <li>Quien te derrota gana <b>+2</b> ascuas, y tú vuelves a elegir camino.</li>
+              <li>Quien te derrota gana <b>+2</b> de oro, y tú vuelves a elegir camino.</li>
             </ul>
-            <p class="hint"><b>El Umbral reclama:</b> si todos los héroes caen o se extinguen, ganan los Renegados en pie (el de más ascuas).</p>
+            <p class="hint"><b>Ganan los Traidores:</b> si todos los héroes caen o mueren, ganan los Traidores en pie (el de más oro).</p>
           </div>
         </div>
       </section>
 
       <section class="howto-page" hidden>
-        <h3>Bendiciones y el Celador</h3>
+        <h3>Mejoras y el Celador</h3>
         <ul>
-          <li><b>Draft:</b> al empezar eliges 1 bendición entre 2, en privado. Los altares dan más, con la llave de plata.</li>
-          <li>Algunas bendiciones se combinan en <b>sinergias</b>: Brasa viva + Paso ígneo = Infierno.</li>
-          <li><b>El Celador</b> es inmune a los golpes de frente: hay que rodearlo. A la mitad de su vida invoca tótems y alterna golpes en área. Golpea una ronda sí y una no: la ronda en que no anuncia nada (⏸) está tomando aire, no es un fallo.</li>
+          <li><b>Elegir mejora:</b> al empezar eliges 1 mejora entre 2, en privado. Los altares dan más, con la llave de plata.</li>
+          <li>Algunas mejoras se combinan en <b>sinergias</b>: Brasa viva + Paso ígneo = Infierno.</li>
+          <li><b>El Celador</b> es inmune a los golpes de frente: hay que rodearlo. A la mitad de su vida invoca tótems y alterna golpes en área. Golpea una ronda sí y una no: la ronda en que no marca nada (⏸) está tomando aire, no es un fallo.</li>
         </ul>
         <p>La mejor forma de aprender es jugando:</p>
         <a class="button primary" href="?tutorial=1">Empezar el tutorial interactivo</a>

@@ -5,9 +5,9 @@ import { el } from './ui.js';
 export const HERO_INFO = {
   ERRATA: {
     name: 'Errata', role: 'Correctora', hp: 4, range: 1, initiative: 6, cooldown: 3, color: '#e0566e',
-    breaks: 'Los golpes caen donde se anunciaron',
-    passiveName: 'Fe de erratas', passive: 'Ve todos los ataques anunciados de la sala, aunque estén en la niebla (solo las casillas, no quién los anuncia).',
-    ability: 'Corregir', abilityText: 'Todo enemigo con alguna casilla anunciada a 2 o menos desplaza su anuncio entero 1 casilla en esa dirección. Si le cae a un aliado, nadie sabrá que fuiste tú… hasta el final.',
+    breaks: 'Los golpes caen donde se marcaron',
+    passiveName: 'Fe de erratas', passive: 'Ve todos los ataques marcados de la sala, aunque estén en la niebla (solo las casillas, no quién los marca).',
+    ability: 'Corregir', abilityText: 'Todo enemigo con alguna casilla marcada a 2 o menos desplaza su ataque marcado entero 1 casilla en esa dirección. Si le cae a un aliado, nadie sabrá que fuiste tú… hasta el final.',
   },
   ANTEAYER: {
     name: 'Anteayer', role: 'Reincidente', hp: 4, range: 1, initiative: 5, cooldown: 5, color: '#6fd8c8',
@@ -36,14 +36,14 @@ export const HERO_INFO = {
   USURERA: {
     name: 'La Usurera', role: 'Prestamista', hp: 4, range: 1, initiative: 1, cooldown: 2, color: '#e8c44a',
     breaks: 'Ayudar es gratis',
-    passiveName: 'Interés', passive: 'Cada 5 rondas la deuda sube 1 (tope 4). Las ascuas que gane el deudor le llegan a ella; al terminar cobra lo que quede.',
-    ability: 'Préstamo', abilityText: 'Al primer aliado herido o caído en línea a 2 o menos: cura 3 o lo levanta con 3. No pide permiso. Le crea 1 ascua de deuda.',
+    passiveName: 'Interés', passive: 'Cada 5 rondas la deuda sube 1 (tope 4). El oro que gane el deudor le llegan a ella; al terminar cobra lo que quede.',
+    ability: 'Préstamo', abilityText: 'Al primer aliado herido o derribado en línea a 2 o menos: cura 3 o lo levanta con 3. No pide permiso. Le crea 1 de oro de deuda.',
   },
   AVARO: {
     name: 'El Avaro', role: 'Sin vida', hp: 4, hpIsEmbers: true, range: 1, initiative: 2, cooldown: 2, color: '#ff9a3a',
     breaks: 'La vida y la puntuación son cosas distintas',
-    passiveName: 'Todo lo que tengo', passive: 'Sus ascuas son su vida: empieza con 4. Cada punto de daño tira 1 al suelo, y el primero que pise la casilla se la queda. No acepta curas ni préstamos.',
-    ability: 'Soborno', abilityText: 'Paga 1 ascua al primer enemigo en línea a 3 o menos: cancela su anuncio y esa ronda no actúa. Al Celador le cuesta 3 y solo cancela el anuncio.',
+    passiveName: 'Todo lo que tengo', passive: 'Su oro es su vida: empieza con 4. Cada punto de daño tira 1 al suelo, y el primero que pise la casilla se lo queda. No acepta curas ni préstamos.',
+    ability: 'Soborno', abilityText: 'Paga 1 de oro al primer enemigo en línea a 3 o menos: cancela su ataque marcado y esa ronda no actúa. Al Celador le cuesta 3 y solo cancela el ataque marcado.',
   },
   MAMPOSTERO: {
     name: 'El Mampostero', role: 'Albañil', hp: 6, range: 1, initiative: 1, cooldown: 3, color: '#b8aa98',

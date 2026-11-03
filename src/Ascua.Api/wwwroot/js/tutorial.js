@@ -89,18 +89,18 @@ const STEPS = [
   {
     title: 'Bienvenida a Ascua',
     text: () => [
-      'Ascua es una mazmorra por turnos simultáneos para 2 a 4 jugadores. Juntos deben derrotar al Celador antes de que se apague el fuego… pero solo gana quien reúna más ascuas.',
+      'Ascua es una mazmorra por turnos simultáneos para 2 a 4 jugadores. Juntos deben derrotar al Celador antes de que se apague el fuego… pero solo gana quien reúna más oro.',
       'En esta práctica juegas con El Mampostero, y sin otros jugadores. Hay nueve héroes y cada uno rompe una regla del juego: el suyo rompe «la mazmorra está quieta». Nada de lo que hagas aquí cuenta, así que puedes equivocarte sin problema.',
-      'Mira tu pacto secreto en el panel de tu héroe (resaltado): es un objetivo que solo tú conoces y que da +4 ascuas si lo cumples. Aquí es «Abrir 1 cofre».',
+      'Mira tu misión secreta en el panel de tu héroe (resaltado): es un objetivo que solo tú conoces y que da +4 de oro si lo cumples. Aquí es «Abrir 1 cofre».',
     ],
     focus: ['#me-pact'],
     button: 'Empezar',
   },
   {
-    title: 'Elige una bendición',
+    title: 'Elige una mejora',
     setup: (c) => c.server.sendOffer(),
     text: () => [
-      'Al empezar cada jugador elige 1 bendición entre 2. Es privada: nadie más sabe cuál tomaste.',
+      'Al empezar cada jugador elige 1 mejora entre 2. Es privada: nadie más sabe cuál tomaste.',
       'Lee lo que hace cada una y elige la que quieras. Si se acaba el plazo, se elige sola.',
     ],
     done: (c) => c.server.me.blessings.length > 0,
@@ -116,16 +116,16 @@ const STEPS = [
     done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'MOVE',
   },
   {
-    title: 'Ataques anunciados',
+    title: 'Ataques marcados',
     setup: (c) => c.spawnNear('CARRONERO', 2, 2),
     text: (c) => {
       const danger = c.dangerOnMe();
       return [
-        'Apareció un Carroñero. Los enemigos ANUNCIAN dónde van a golpear: esas casillas se marcan en rojo y el golpe cae en la ronda siguiente.',
+        'Apareció un Carroñero. Los enemigos MARCAN dónde van a golpear: esas casillas se marcan en rojo y el golpe cae en la ronda siguiente.',
         danger
-          ? '¡La casilla roja está sobre ti! Pulsa Espacio (Guardar): reduce el daño a la mitad y anula los golpes de 1. También podrías apartarte.'
-          : 'Todavía no te apunta. Pulsa Espacio (Guardar) para esperar a que se acerque y mira cómo marca su ataque.',
-        'Si una ronda no envías nada, el servidor guarda por ti.',
+          ? '¡La casilla roja está sobre ti! Pulsa Espacio (Defender): reduce el daño a la mitad y anula los golpes de 1. También podrías apartarte.'
+          : 'Todavía no te apunta. Pulsa Espacio (Defender) para esperar a que se acerque y mira cómo marca su ataque.',
+        'Si una ronda no envías nada, el servidor defiende por ti.',
       ];
     },
     focus: ['#btn-guard', '#board'],
@@ -142,7 +142,7 @@ const STEPS = [
       lines.push(dir && manhattan(c.me().position, target.position) <= 1
         ? `El enemigo está en línea: pulsa Shift + ${keyHint(dir)}. Tiene ${target.hp} de vida, puede que necesites más de un golpe.`
         : `Ponte en su misma fila o columna: muévete ${keyHint(stepDir(c.me().position, target.position))}.`);
-      lines.push('Dar el golpe final a un enemigo da +1 ascua.');
+      lines.push('Dar el golpe final a un enemigo da +1 de oro.');
       return lines;
     },
     focus: ['.mode[data-mode="ATTACK"]', '#board'],
@@ -156,11 +156,11 @@ const STEPS = [
       const me = c.me().position;
       const dist = manhattan(me, chest);
       return [
-        'Los cofres (casillas doradas) dan ascuas y a veces objetos. Su contenido solo lo ve quien lo abre.',
+        'Los cofres (casillas doradas) dan oro y a veces objetos. Su contenido solo lo ve quien lo abre.',
         dist === 1
-          ? `Estás al lado: pulsa E y luego ${keyHint(lineDir(me, chest))} para interactuar.`
+          ? `Estás al lado: pulsa E y luego ${keyHint(lineDir(me, chest))} para usar.`
           : `El cofre está en (${chest.x},${chest.y}). Acércate hasta quedar al lado: muévete ${keyHint(stepDir(me, chest))}.`,
-        'Abrirlo también cumple tu pacto secreto de esta práctica.',
+        'Abrirlo también cumple tu misión secreta de esta práctica.',
       ];
     },
     focus: ['.mode[data-mode="INTERACT"]', '#tile-embers'],
@@ -174,7 +174,7 @@ const STEPS = [
       return [
         'Cada héroe tiene una habilidad. La tuya es Corrimiento: desliza 1 casilla tu fila (este/oeste) o tu columna (norte/sur) con todo lo que tenga encima, también la escalera. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2 de daño.',
         cd > 0
-          ? `La habilidad se está enfriando: lista en ${cd} ronda${cd === 1 ? '' : 's'}. Guarda (Espacio) hasta entonces.`
+          ? `La habilidad está en espera: lista en ${cd} ronda${cd === 1 ? '' : 's'}. Defiende (Espacio) hasta entonces.`
           : 'Apareció una Polilla al borde de tu fila. Pulsa Q y luego la flecha hacia ella: verás la línea que se mueve antes de elegir. ¡Cuidado en partidas reales: también arrastra a tus aliados!',
       ];
     },
@@ -188,7 +188,7 @@ const STEPS = [
       const left = c.server.enemies.size;
       return [
         left > 0
-          ? `Quedan ${left} enemigo${left === 1 ? '' : 's'}. Usa lo que aprendiste: guarda cuando te apunten, ataca a lo que tengas al lado y corre la sala cuando un enemigo esté en tu línea.`
+          ? `Quedan ${left} enemigo${left === 1 ? '' : 's'}. Usa lo que aprendiste: defiende cuando te apunten, ataca a lo que tengas al lado y corre la sala cuando un enemigo esté en tu línea.`
           : '¡Sala despejada!',
         'En una partida real, al despejar una sala se baja por la escalera (casilla azul). Tras 4 salas espera el Celador, que hay que flanquear: es inmune a los golpes de frente.',
       ];
@@ -198,13 +198,13 @@ const STEPS = [
   },
   {
     // Opcional: se explica y se puede ver el diálogo, pero no hace falta jugarlos.
-    title: 'Si te extingues: dos caminos',
+    title: 'Si mueres: dos caminos',
     setup: (c) => { c.server.paused = true; },
     text: (c) => {
       const lines = [
-        'En una partida real, un héroe caído que nadie levanta en 3 rondas se extingue. Sus ascuas quedan guardadas y tiene 15 s para elegir:',
-        'Amistad: vagas como Brasa errante, una llama azul que atraviesa muros y ayuda al grupo. Cada ayuda da ecos, y al bajar de piso renaces con más ascuas cuantos más ecos tengas.',
-        'Venganza: vuelves como Renegado, del lado de la mazmorra. Robas ascuas a los héroes y, si todos caen, «el Umbral reclama» y ganas tú.',
+        'En una partida real, un héroe derribado que nadie levanta en 3 rondas muere. Su oro queda guardado y tiene 15 s para elegir:',
+        'Ayudar: vagas como Fantasma, un espíritu azul que atraviesa muros y ayuda al grupo. Cada ayuda da puntos de apoyo, y al bajar de piso renaces con más oro cuantos más puntos de apoyo tengas.',
+        'Vengarse: vuelves como Traidor, del lado de la mazmorra. Robas oro a los héroes y, si todos caen, ganas tú.',
       ];
       if (c.practiceResult) lines.push(c.practiceResult);
       return lines;
@@ -337,8 +337,8 @@ class Coach {
     if (type === 'RoundResolved') this.lastResolved = payload;
     if (type === 'PathChosen') {
       this.practiceResult = payload.path === 'VENGEANCE'
-        ? 'Elegiste la Venganza. Aquí no pasa nada más: en una partida volverías como Renegado en la sala siguiente.'
-        : 'Elegiste la Amistad. Aquí no pasa nada más: en una partida seguirías como Brasa errante hasta bajar de piso.';
+        ? 'Elegiste Vengarse. Aquí no pasa nada más: en una partida volverías como Traidor en la sala siguiente.'
+        : 'Elegiste Ayudar. Aquí no pasa nada más: en una partida seguirías como Fantasma hasta bajar de piso.';
       this.render();
       return;
     }
@@ -351,8 +351,8 @@ class Coach {
       return;
     }
     if (type === 'RoundResolved') {
-      if (step.title === 'Ataques anunciados' && this.dangerBefore && this.hitThisRound()) {
-        this.note = 'Te golpeó: estabas en la casilla roja sin guardar. No pasa nada, inténtalo otra vez.';
+      if (step.title === 'Ataques marcados' && this.dangerBefore && this.hitThisRound()) {
+        this.note = 'Te golpeó: estabas en la casilla roja sin defender. No pasa nada, inténtalo otra vez.';
       }
       this.dangerBefore = this.dangerOnMe();
     }
@@ -390,7 +390,7 @@ class Coach {
   finish() {
     setText('coach-step', 'Completado');
     setText('coach-title', '¡Lo lograste!');
-    $('coach-body').replaceChildren(el('p', {}, 'Ya sabes moverte, guardar, atacar, abrir cofres y usar tu habilidad.'));
+    $('coach-body').replaceChildren(el('p', {}, 'Ya sabes moverte, defender, atacar, abrir cofres y usar tu habilidad.'));
     $('coach-bar').style.width = '100%';
     $('coach-next').hidden = true;
     this.setFocus([]);

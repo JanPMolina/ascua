@@ -68,7 +68,7 @@ export const DEMO_SCENARIO = {
   ],
   /** Pactos de los aliados: solo se revelan en MatchFinished (la vista nunca los lleva). */
   allyPacts: {
-    [BETO_ID]: { pactId: 'NEVER_DOWNED', description: 'Terminar sin haber caído.', fulfilled: true },
+    [BETO_ID]: { pactId: 'NEVER_DOWNED', description: 'Terminar sin que te derriben.', fulfilled: true },
     [CARO_ID]: { pactId: 'BETRAY_TWICE_UNSEEN', description: 'Traicionar dos veces sin ser visto.', fulfilled: false },
     [DANI_ID]: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.', fulfilled: false },
   },
@@ -195,14 +195,14 @@ class DemoServer {
     this.flags = { extinguish: false, renegadeAlly: false, descend: false };
     this.forceNext = false;
     this.paused = false;
-    this.kindled = new Map(); // héroe → escudo de brasas que le dio la Brasa propia (máx. 2)
+    this.kindled = new Map(); // héroe → escudo de brasas que le dio el Fantasma propia (máx. 2)
     this.warned = new Set(); // escudo de aviso ya usado: `${renegado}>${héroe}`
     this.warmth = new Map(); // héroe → ronda desde la que puede volver a recibir Calidez
     this.hindered = new Set(); // enemigos estorbados esta ronda
     this.beacons = []; // Faros de esta resolución (dan visión al grupo)
     this.allyPlans = new Map(); // aliado extinto → { reveal, path, spawn }
     this.allyLast = new Map(); // última casilla de cada aliado (para revelar su Brasa ahí)
-    this.allyCooldown = new Map(); // enfriamiento de Avivar de una Brasa aliada
+    this.allyCooldown = new Map(); // enfriamiento de Escudo de un Fantasma aliado
     if (this.me.hero === 'HILVAN') placeSecondBody(this, this.me);
     for (const a of this.allies) if (a.hero === 'HILVAN') placeSecondBody(this, a);
   }
@@ -365,7 +365,7 @@ class DemoServer {
         return this.snapshot();
       case 'DraftPick':
         if (!this.offer || p.offerId !== this.offer.offerId) return err('DRAFT_CLOSED', 'La oferta ya se resolvió.');
-        if (!this.offer.options.includes(p.blessingId)) return err('INVALID_PICK', 'Esa bendición no estaba en la oferta.');
+        if (!this.offer.options.includes(p.blessingId)) return err('INVALID_PICK', 'Esa mejora no estaba en la oferta.');
         return this.pick(p.blessingId);
       case 'ChoosePath':
         return this.choosePath(p, err);
@@ -481,13 +481,13 @@ class DemoServer {
       return err('INVALID_PAYLOAD', 'La orden no cumple el esquema.', { details: { field: 'order' } });
     }
     if (this.me.state === 'EMBER_SPIRIT') {
-      if (o.type === 'ABILITY' && this.me.abilityCooldown > 0) return err('INVALID_ORDER', 'Avivar se está enfriando.', { details: { field: 'order.type' } });
-      if (o.type === 'ATTACK' && this.me.path.hinderCooldown > 0) return err('INVALID_ORDER', 'Estorbo se está enfriando.', { details: { field: 'order.type' } });
+      if (o.type === 'ABILITY' && this.me.abilityCooldown > 0) return err('INVALID_ORDER', 'Escudo está en espera.', { details: { field: 'order.type' } });
+      if (o.type === 'ATTACK' && this.me.path.hinderCooldown > 0) return err('INVALID_ORDER', 'Frenar está en espera.', { details: { field: 'order.type' } });
     } else if (o.type === 'ABILITY' && this.me.abilityCooldown > 0 && this.me.hostEnemyId == null) {
-      return err('INVALID_ORDER', 'La habilidad se está enfriando.', { details: { field: 'order.type' } });
+      return err('INVALID_ORDER', 'La habilidad está en espera.', { details: { field: 'order.type' } });
     }
     const bell = this.heroes.bell;
-    if (bell && bell.ringerId !== ME_ID && (bell.closed || Date.now() >= bell.at)) return err('ORDER_TOO_LATE', 'Venció tu plazo del Repique: guardas esta ronda.');
+    if (bell && bell.ringerId !== ME_ID && (bell.closed || Date.now() >= bell.at)) return err('ORDER_TOO_LATE', 'Venció tu plazo del Repique: defiendes esta ronda.');
     if (this.roundOrder) return err('ORDER_ALREADY_SUBMITTED', 'Ya hay una orden para esta ronda.');
 
     const ack = { matchId: DEMO_MATCH_ID, round: this.round, clientActionId: p.clientActionId, result: 'ACCEPTED', receivedAt: new Date().toISOString() };
@@ -1344,22 +1344,22 @@ class DemoServer {
     if (this.status !== 'IN_PROGRESS') return 'La partida no está en curso.';
     const s = this.me.state;
     if (s === 'EXTINCT') return 'Ya estás eligiendo camino.';
-    if (s === 'EMBER_SPIRIT') return 'La Brasa no se extingue: usa «Bajar de piso» para renacer.';
-    if (this.meAwaiting()) return 'Tu Renegado aún no apareció: usa «Bajar de piso».';
+    if (s === 'EMBER_SPIRIT') return 'El Fantasma no muere: usa «Bajar de piso» para renacer.';
+    if (this.meAwaiting()) return 'Tu Traidor aún no apareció: usa «Bajar de piso».';
     this.flags.extinguish = true;
     this.forceResolve();
-    return s === 'RENEGADE' ? 'beto derrota a tu Renegado: vuelves a elegir camino.' : 'Tu héroe se extingue al resolver la ronda: elegirás camino.';
+    return s === 'RENEGADE' ? 'beto derrota a tu Traidor: vuelves a elegir camino.' : 'Tu héroe muere al resolver la ronda: elegirás camino.';
   }
 
   requestRenegadeAlly() {
     if (this.status !== 'IN_PROGRESS') return 'La partida no está en curso.';
     const caro = this.allies.find((a) => a.playerId === CARO_ID);
     if (!caro) return 'No hay aliados en este escenario.';
-    if (caro.state === 'RENEGADE') return 'caro ya es Renegado.';
+    if (caro.state === 'RENEGADE') return 'caro ya es Traidor.';
     if (caro.state !== 'ALIVE' && caro.state !== 'DOWN') return 'caro ya recorre otro camino.';
     this.flags.renegadeAlly = true;
     this.forceResolve();
-    return 'caro se extingue, elige Venganza y aparecerá cerca de ti como Renegado.';
+    return 'caro muere, elige Vengarse y aparecerá cerca de ti como Traidor.';
   }
 
   requestDescend() {

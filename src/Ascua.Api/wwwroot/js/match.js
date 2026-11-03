@@ -50,17 +50,17 @@ const NO_AIM = new Set(['ANTEAYER', 'HILVAN', 'ESCUCHA', 'CAMPANERO']);
 
 const ARMED_TEXT = {
   ABILITY: 'Habilidad armada: elige una dirección (flecha o d-pad). Esc cancela.',
-  INTERACT: 'Interactuar armado: elige la casilla vecina (flecha o d-pad). Esc cancela.',
+  INTERACT: 'Usar armado: elige la casilla vecina (flecha o d-pad). Esc cancela.',
 };
 const EMBER_ARMED_TEXT = {
-  ABILITY: 'Avivar armado: elige hacia qué aliado (flecha o d-pad). Esc cancela.',
-  INTERACT: 'Reavivar armado: elige la casilla del caído (flecha o d-pad). Esc cancela.',
+  ABILITY: 'Escudo armado: elige hacia qué aliado (flecha o d-pad). Esc cancela.',
+  INTERACT: 'Revivir armado: elige la casilla del derribado (flecha o d-pad). Esc cancela.',
 };
 
 /** Nombres e íconos originales de los botones de orden (se restauran al dejar de ser Brasa). */
 const HERO_ORDERS = {
   MOVE: { name: 'Mover', icon: '➜' }, ATTACK: { name: 'Atacar', icon: '⚔' }, ABILITY: { name: 'Habilidad', icon: '✺' },
-  INTERACT: { name: 'Interactuar', icon: '✋' }, GUARD: { name: 'Guardar', icon: '⛨' },
+  INTERACT: { name: 'Usar', icon: '✋' }, GUARD: { name: 'Defender', icon: '⛨' },
 };
 
 const PATH_DEADLINE_MS = 15000;
@@ -507,7 +507,7 @@ class MatchController {
     const deadlineLocal = bell.deadline ? Date.parse(bell.deadline) - this.clockOffset : this.bell?.deadlineLocal ?? null;
     this.bell = { ringerId: bell.ringerId, deadlineLocal, closed: Boolean(bell.closed) };
     if (wasOpen && bell.closed && bell.ringerId !== this.playerId && canAct(this.me) && !this.me?.decided) {
-      toast('Se acabó tu plazo del Repique: guardas esta ronda.', 'info', 5000);
+      toast('Se acabó tu plazo del Repique: defiendes esta ronda.', 'info', 5000);
     }
   }
 
@@ -633,7 +633,7 @@ class MatchController {
     el('b', {}, label(BLESSINGS, id)),
     BLESSING_EFFECTS[id] ? el('small', {}, BLESSING_EFFECTS[id]) : null,
     el('span', { class: 'bl-cta', 'aria-hidden': 'true' }, 'Elegir'))));
-    setText('draft-source', m.source === 'ALTAR' ? '⛩ Altar' : '✦ Draft inicial');
+    setText('draft-source', m.source === 'ALTAR' ? '⛩ Altar' : '✦ Mejora inicial');
     $('draft').hidden = false;
     box.querySelector('button')?.focus();
     emit('draft:offer', { options: m.options, source: m.source });
@@ -738,7 +738,7 @@ class MatchController {
       // DUPLICATE_ACTION: la misma elección ya estaba registrada; vale igual que ACCEPTED.
       const chosen = res.path ?? path;
       if (this.me?.path) this.me.path.choice = chosen;
-      toast(`Elegiste el ${label(PATHS, chosen)}. Se revela al resolver la ronda.`, 'ok', 5000);
+      toast(`Elegiste ${label(PATHS, chosen)}. Se revela al resolver la ronda.`, 'ok', 5000);
       emit('path:chosen', { path: chosen });
       if (this.pathOffer === offer) this.closePathDialog();
       this.render();
@@ -822,18 +822,18 @@ class MatchController {
   orderBlocked(order) {
     const me = this.me;
     if (!me) return null;
-    if (me.state === 'EXTINCT') return me.path?.choice ? 'Ya elegiste camino: se revela al resolver la ronda.' : 'Te extinguiste: elige tu camino.';
-    if (awaitingSpawn(me)) return 'Todavía no apareciste como Renegado.';
-    if (this.bell && this.bell.ringerId !== this.playerId && (this.bell.closed || this.deadlineLocal <= Date.now())) return 'Se acabó tu plazo del Repique: guardas esta ronda.';
+    if (me.state === 'EXTINCT') return me.path?.choice ? 'Ya elegiste camino: se revela al resolver la ronda.' : 'Moriste: elige tu camino.';
+    if (awaitingSpawn(me)) return 'Todavía no apareciste como Traidor.';
+    if (this.bell && this.bell.ringerId !== this.playerId && (this.bell.closed || this.deadlineLocal <= Date.now())) return 'Se acabó tu plazo del Repique: defiendes esta ronda.';
     if (me.state !== 'EMBER_SPIRIT') {
       const cd = me.abilityCooldown ?? 0;
       const name = me.hostEnemyId != null ? 'Salir' : heroInfo(me.hero).ability || 'La habilidad';
       if (order.type === 'ABILITY' && cd > 0 && me.hostEnemyId == null) return `${name} se enfría: lista en ${cd} ronda${cd === 1 ? '' : 's'}.`;
       return null;
     }
-    if (order.type === 'ABILITY' && me.abilityCooldown > 0) return `Avivar se enfría: lista en ${me.abilityCooldown} ronda${me.abilityCooldown === 1 ? '' : 's'}.`;
+    if (order.type === 'ABILITY' && me.abilityCooldown > 0) return `Escudo en espera: listo en ${me.abilityCooldown} ronda${me.abilityCooldown === 1 ? '' : 's'}.`;
     const hinder = me.path?.hinderCooldown ?? 0;
-    if (order.type === 'ATTACK' && hinder > 0) return `Estorbo se enfría: listo en ${hinder} ronda${hinder === 1 ? '' : 's'}.`;
+    if (order.type === 'ATTACK' && hinder > 0) return `Frenar en espera: listo en ${hinder} ronda${hinder === 1 ? '' : 's'}.`;
     return null;
   }
 
@@ -920,7 +920,7 @@ class MatchController {
 
   async leave() {
     // eslint-disable-next-line no-alert
-    if (!window.confirm('¿Abandonar la partida? En curso cuenta como abandono y pierdes tus ascuas.')) return;
+    if (!window.confirm('¿Abandonar la partida? En curso cuenta como abandono y pierdes tu oro.')) return;
     try {
       if (this.transport.connected) await this.invoke('LeaveMatch', { matchId: this.matchId });
     } catch {
@@ -1027,19 +1027,19 @@ class MatchController {
       state = el('span', { class: 'badge p-state thinking' }, 'pensando',
         el('span', { class: 'dots', 'aria-hidden': 'true' }, el('i', {}, '.'), el('i', {}, '.'), el('i', {}, '.')));
     }
-    const marks = { ember: ['❂', 'Brasa errante'], renegade: ['☠', 'Renegado: del lado de la mazmorra'], choosing: ['🕯', 'Extinto: eligiendo camino'] };
+    const marks = { ember: ['❂', 'Fantasma'], renegade: ['☠', 'Traidor: del lado de la mazmorra'], choosing: ['🕯', 'Muerto: eligiendo camino'] };
     const mark = kind ? el('span', { class: `p-mark ${kind}`, title: marks[kind][1], 'aria-hidden': 'true' }, marks[kind][0]) : null;
     let stats;
     if (p.state === 'EMBER_SPIRIT') {
-      stats = [el('span', { class: 'p-tag ember' }, '❂ Brasa')];
+      stats = [el('span', { class: 'p-tag ember' }, '❂ Fantasma')];
     } else if (p.hero === 'AVARO') {
       // Sus ascuas son su vida: no hay barra (el número de ascuas va al final de la fila).
-      stats = [p.state === 'RENEGADE' ? el('span', { class: 'p-tag renegade' }, '☠ Renegado') : el('span', { class: 'p-tag' }, 'vive de sus ascuas')];
+      stats = [p.state === 'RENEGADE' ? el('span', { class: 'p-tag renegade' }, '☠ Traidor') : el('span', { class: 'p-tag' }, 'vive de su oro')];
     } else {
       const hp = el('span', { class: pct <= 34 ? 'mini-hp low' : 'mini-hp', 'aria-hidden': 'true' }, el('i'));
       hp.firstChild.style.width = `${pct}%`;
       stats = [
-        p.state === 'RENEGADE' ? el('span', { class: 'p-tag renegade' }, '☠ Renegado') : p.state === 'EXTINCT' ? el('span', { class: 'p-tag choosing' }, '🕯 Extinto') : hp,
+        p.state === 'RENEGADE' ? el('span', { class: 'p-tag renegade' }, '☠ Traidor') : p.state === 'EXTINCT' ? el('span', { class: 'p-tag choosing' }, '🕯 Muerto') : hp,
         el('span', {}, `♥ ${p.hp}/${p.maxHp}`),
       ];
     }
@@ -1082,7 +1082,7 @@ class MatchController {
     });
     setText('guard-name', names.GUARD.name);
     setText('guard-ico', names.GUARD.icon);
-    $('btn-guard').title = ember ? `Faro: ${EMBER_ORDERS.GUARD.text}` : '';
+    $('btn-guard').title = ember ? `Luz: ${EMBER_ORDERS.GUARD.text}` : '';
   }
 
   /** Nota bajo los modos: qué hace la orden de la Brasa, o por qué no se puede dar orden. */
@@ -1093,19 +1093,19 @@ class MatchController {
     if (me?.state === 'EMBER_SPIRIT') {
       const o = EMBER_ORDERS[mode] ?? EMBER_ORDERS.MOVE;
       kind = 'ember';
-      parts = [el('b', {}, `${o.name}: `), o.text, mode === 'GUARD' ? '' : ' Sin orden, enciendes un Faro.'];
+      parts = [el('b', {}, `${o.name}: `), o.text, mode === 'GUARD' ? '' : ' Sin orden, enciendes una Luz.'];
     } else if (me?.state === 'EXTINCT') {
       kind = 'wait';
-      parts = [me.path?.choice ? `Elegiste el ${label(PATHS, me.path.choice)}; se revela al resolver la ronda.` : 'Te extinguiste: elige tu camino.'];
+      parts = [me.path?.choice ? `Elegiste ${label(PATHS, me.path.choice)}; se revela al resolver la ronda.` : 'Moriste: elige tu camino.'];
     } else if (awaitingSpawn(me)) {
       kind = 'renegade';
       parts = [this.spawnText(me)];
     } else if (me?.state === 'RENEGADE') {
       kind = 'renegade';
-      parts = [el('b', {}, 'Renegado: '), 'tus órdenes son las de tu héroe, pero los monstruos no te atacan y solo dañas a los héroes (máx. 1 por golpe).'];
+      parts = [el('b', {}, 'Traidor: '), 'tus órdenes son las de tu héroe, pero los monstruos no te atacan y solo dañas a los héroes (máx. 1 por golpe).'];
     } else if (me?.state === 'DOWN') {
       kind = 'wait';
-      parts = ['Estás caído: un aliado (o una Brasa) puede levantarte con Interactuar.'];
+      parts = ['Estás derribado: un aliado (o un Fantasma) puede levantarte con Usar.'];
     } else if (me?.hostEnemyId != null) {
       kind = 'host';
       const o = heroOrders(me)[mode] ?? heroOrders(me).MOVE;
@@ -1148,7 +1148,7 @@ class MatchController {
       case 'ESCUCHA':
         return `A oscuras más allá de tu alcance. Oíste ${this.noiseTiles.length} ruido${this.noiseTiles.length === 1 ? '' : 's'} en la última resolución.`;
       case 'AVARO':
-        return me.embers <= 1 ? 'Te queda 1 ascua o menos: otro golpe y caes.' : 'Cada punto de daño tira 1 ascua al suelo. Pisa la casilla para recuperarla.';
+        return me.embers <= 1 ? 'Te queda 1 de oro o menos: otro golpe y caes.' : 'Cada punto de daño tira 1 de oro al suelo. Pisa la casilla para recuperarlo.';
       case 'CAMPANERO':
         return this.lastWord ? 'Ya oíste a los demás: responde con lo que quede de reloj.' : 'Si esperas a que todos decidan, oirás sus órdenes.';
       default:
@@ -1239,11 +1239,11 @@ class MatchController {
     if (me.debt) {
       setText('me-debt', me.debt);
       setText('me-debt-label', `Debes a ${this.nameOf(me.debtTo)}`);
-      debtTile.title = 'Cada ascua que ganes le llega hasta saldar la deuda. Cada 5 rondas sube 1.';
+      debtTile.title = 'Todo el oro que ganes le llega hasta saldar la deuda. Cada 5 rondas sube 1.';
     } else if (owed) {
       setText('me-debt', owed);
       setText('me-debt-label', 'Te deben');
-      debtTile.title = 'Solo tú lo ves. Cobras cada ascua que ganen y, al final, lo que quede.';
+      debtTile.title = 'Solo tú lo ves. Cobras todo el oro que ganen y, al final, lo que quede.';
     }
 
     // Enfriamiento de la habilidad.
@@ -1267,7 +1267,7 @@ class MatchController {
           el('span', { 'aria-hidden': 'true' }, BLESSING_ICONS[b] ?? '✧'), label(BLESSINGS, b)))
         : [el('li', { class: 'none' }, 'ninguna todavía')]));
     }
-    const pact = me.pact ? me.pact.description : 'sin pacto';
+    const pact = me.pact ? me.pact.description : 'sin misión';
     if (this.shown.pact !== pact) {
       this.shown.pact = pact;
       $('me-pact').replaceChildren(el('p', {}, pact));
@@ -1290,18 +1290,18 @@ class MatchController {
     const wardenRoom = (this.floor ?? 1) >= 5;
     if (kind === 'choosing') {
       setText('path-panel-title', path.choice ? label(PATHS, path.choice) : 'Eligiendo camino');
-      setText('path-panel-sub', path.choice ? 'Elegido: se revela al resolver la ronda' : 'Amistad o Venganza');
-      setText('path-panel-text', `Guardaste ${path.savedEmbers ?? 0} ascuas. ${path.choice ? 'Espera la resolución.' : 'Si vence el plazo, tomas la Amistad.'}`);
+      setText('path-panel-sub', path.choice ? 'Elegido: se revela al resolver la ronda' : 'Ayudar o Vengarse');
+      setText('path-panel-text', `Guardaste ${path.savedEmbers ?? 0} de oro. ${path.choice ? 'Espera la resolución.' : 'Si vence el plazo, eliges Ayudar.'}`);
     } else if (kind === 'renegade') {
-      setText('path-panel-title', 'Renegado');
+      setText('path-panel-title', 'Traidor');
       setText('path-panel-sub', 'Del lado de la mazmorra');
       setText('path-panel-text', awaitingSpawn(me)
         ? this.spawnText(me)
-        : 'Golpear a un héroe te da +1 ascua robada y dejarlo caído +2. El primer golpe a cada héroe lo absorbe su escudo de aviso. Si todos caen, el Umbral reclama.');
+        : 'Golpear a un héroe te da +1 de oro robado y dejarlo derribado +2. El primer golpe a cada héroe lo absorbe su escudo de aviso. Si todos caen, ganan los Traidores.');
     } else {
       const echoes = path.echoes ?? 0;
       const pct = rebirthPct(echoes);
-      setText('path-panel-title', 'Brasa errante');
+      setText('path-panel-title', 'Fantasma');
       setText('path-panel-sub', wardenRoom ? 'Sala del Celador: puntúas al final' : 'Renaces al bajar de piso');
       setText('me-echoes', echoes);
       setText('me-saved', path.savedEmbers ?? 0);
@@ -1320,13 +1320,13 @@ class MatchController {
         $(tileId).className = `tile tile-ability ${cd > 0 ? 'cooling' : 'ready'}`;
         $(tileId).title = cd > 0 ? `${name}: faltan ${cd} rondas` : `${name}: lista para usar`;
       };
-      cooldown('me-kindle-cd', 'tile-kindle', me.abilityCooldown ?? 0, 'Avivar');
-      cooldown('me-hinder-cd', 'tile-hinder', path.hinderCooldown ?? 0, 'Estorbo');
+      cooldown('me-kindle-cd', 'tile-kindle', me.abilityCooldown ?? 0, 'Escudo');
+      cooldown('me-hinder-cd', 'tile-hinder', path.hinderCooldown ?? 0, 'Frenar');
       $('rebirth-fill').style.width = `${pct}%`;
       const meter = $('rebirth-meter');
       meter.setAttribute('aria-valuenow', String(pct));
-      meter.title = `Recuperas el ${pct}% de tus ascuas guardadas (25% + 8% por eco, máx. 85%)`;
-      setText('rebirth-label', `${pct}% de tus ascuas${pct >= 85 ? ' · máximo' : ` · +8% por eco`}`);
+      meter.title = `Recuperas el ${pct}% de tu oro guardado (25% + 8% por punto de apoyo, máx. 85%)`;
+      setText('rebirth-label', `${pct}% de tu oro${pct >= 85 ? ' · máximo' : ` · +8% por punto de apoyo`}`);
       const ticks = $('rebirth-ticks');
       if (!ticks.childElementCount) {
         // Una marca por eco (25%, 33%… 81%) y el tope del 85%.
@@ -1339,7 +1339,7 @@ class MatchController {
         cap.style.left = '85%';
         ticks.append(cap);
       }
-      setText('path-panel-text', `Cada ayuda da ecos. Con ${echoes} eco${echoes === 1 ? '' : 's'} recuperas el ${pct}% de tus ${path.savedEmbers ?? 0} ascuas guardadas.`);
+      setText('path-panel-text', `Cada ayuda da puntos de apoyo. Con ${echoes} de apoyo recuperas el ${pct}% de tus ${path.savedEmbers ?? 0} de oro guardados.`);
     }
   }
 
@@ -1438,39 +1438,39 @@ class MatchController {
     const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
     switch (ev.type) {
       case 'EXTINGUISHED':
-        return `${who(ev.targetId ?? ev.actorId)} se extinguió${ev.amount ? ` (${ev.amount} ascuas)` : ''}`;
+        return `${who(ev.targetId ?? ev.actorId)} murió${ev.amount ? ` (${ev.amount} de oro)` : ''}`;
       case 'PATH_OFFERED':
-        return `Te extinguiste: elige camino (guardaste ${plural(ev.amount ?? 0, 'ascua', 'ascuas')})`;
+        return `Moriste: elige camino (guardaste ${plural(ev.amount ?? 0, 'de oro', 'de oro')})`;
       case 'PATH_SELECTED':
         return String(ev.detail ?? '').endsWith('_AUTO')
           ? `Venció el plazo: tomaste el ${path(ev.detail)}`
           : `Tu elección quedó registrada: ${path(ev.detail)}`;
       case 'PATH_CHOSEN':
-        return `${who(ev.actorId)} tomó el ${path(ev.detail)}${ev.detail === 'VENGEANCE' ? ': volverá como Renegado' : ': ahora es una Brasa errante'}`;
+        return `${who(ev.actorId)} eligió ${path(ev.detail)}${ev.detail === 'VENGEANCE' ? ': volverá como Traidor' : ': ahora es un Fantasma'}`;
       case 'EMBER_REBORN':
         return `${who(ev.actorId)} renació en la escalera con ${ev.amount ?? '?'} de vida`;
       case 'RENEGADE_SPAWNED':
-        return `${who(ev.actorId)} apareció como Renegado${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}: cada héroe gana +1 de escudo`;
+        return `${who(ev.actorId)} apareció como Traidor${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}: cada héroe gana +1 de escudo`;
       case 'RENEGADE_DEFEATED':
         return ev.actorId
-          ? `${who(ev.actorId)} derrotó al Renegado ${who(ev.targetId)} (+2 ascuas)`
-          : `El Renegado ${who(ev.targetId)} fue derrotado`;
+          ? `${who(ev.actorId)} derrotó al Traidor ${who(ev.targetId)} (+2 de oro)`
+          : `El Traidor ${who(ev.targetId)} fue derrotado`;
       case 'ECHO_GAINED':
-        return `+${plural(ev.amount ?? 1, 'eco', 'ecos')}: ${ECHO_REASONS[ev.detail] ?? 'ayudaste al grupo'}`;
+        return `+${plural(ev.amount ?? 1, 'punto de apoyo', 'puntos de apoyo')}: ${ECHO_REASONS[ev.detail] ?? 'ayudaste al grupo'}`;
       case 'SHIELD_KINDLED':
-        return ev.targetId ? `${who(ev.actorId)} avivó a ${who(ev.targetId)} (+1 de escudo)` : `${who(ev.actorId)} intentó avivar, pero no había nadie`;
+        return ev.targetId ? `${who(ev.actorId)} dio escudo a ${who(ev.targetId)} (+1 de escudo)` : `${who(ev.actorId)} intentó dar escudo, pero no había nadie`;
       case 'ATTACK_HINDERED':
         return ev.targetId
-          ? `${who(ev.actorId)} estorbó a ${who(ev.targetId)}: su golpe se retrasa una ronda`
-          : `${who(ev.actorId)} intentó estorbar, sin efecto`;
+          ? `${who(ev.actorId)} frenó a ${who(ev.targetId)}: su golpe se retrasa una ronda`
+          : `${who(ev.actorId)} intentó frenar, sin efecto`;
       case 'BEACON_LIT':
-        return `${who(ev.actorId)} encendió un Faro${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
+        return `${who(ev.actorId)} encendió una Luz${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
       case 'WARMTH_HEALED':
         return `La calidez de ${who(ev.actorId)} curó a ${who(ev.targetId)}`;
       case 'ECHO_FIRED':
         return `Disparó un Eco de ${who(ev.actorId)}${ev.position ? ` desde (${ev.position.x},${ev.position.y})` : ''}`;
       case 'ATTACK_CORRECTED':
-        return ev.targetId ? `El anuncio de ${who(ev.targetId)} se desvió: nadie sabe quién fue` : 'Un golpe anunciado se desvió: nadie sabe quién fue';
+        return ev.targetId ? `El ataque marcado de ${who(ev.targetId)} se desvió: nadie sabe quién fue` : 'Un golpe marcado se desvió: nadie sabe quién fue';
       case 'BETRAYAL_RECORDED':
         return `En secreto, le costaste ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
       case 'BETRAYAL_REVEALED':
@@ -1490,13 +1490,13 @@ class MatchController {
         return `Deuda de ${who(ev.targetId)} con ${who(ev.actorId)}: ${delta > 0 ? '+' : ''}${delta} (${DEBT_REASONS[ev.detail] ?? 'cambio'})`;
       }
       case 'EMBERS_DROPPED':
-        return `Cayeron ${plural(ev.amount ?? 1, 'ascua', 'ascuas')} al suelo${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
+        return `Cayeron ${plural(ev.amount ?? 1, 'de oro', 'de oro')} al suelo${ev.position ? ` en (${ev.position.x},${ev.position.y})` : ''}`;
       case 'EMBERS_PICKED_UP':
-        return `${who(ev.actorId)} recogió ${plural(ev.amount ?? 1, 'ascua', 'ascuas')} del suelo`;
+        return `${who(ev.actorId)} recogió ${plural(ev.amount ?? 1, 'de oro', 'de oro')} del suelo`;
       case 'EMBERS_LOST':
-        return `Perdiste ${plural(Math.abs(ev.amount ?? 1), 'ascua', 'ascuas')}`;
+        return `Perdiste ${plural(Math.abs(ev.amount ?? 1), 'de oro', 'de oro')}`;
       case 'ENEMY_BRIBED':
-        return `${who(ev.actorId)} sobornó a ${who(ev.targetId)} con ${plural(ev.amount ?? 1, 'ascua', 'ascuas')}`;
+        return `${who(ev.actorId)} sobornó a ${who(ev.targetId)} con ${plural(ev.amount ?? 1, 'de oro', 'de oro')}`;
       case 'ROOM_SHIFTED': {
         const shift = shiftFromEvent(ev);
         return shift ? `${who(ev.actorId)}: ${shiftText(shift).toLowerCase()}` : `${who(ev.actorId)} corrió la sala`;
@@ -1506,7 +1506,7 @@ class MatchController {
       case 'BELL_EXPIRED':
         return `Venció el plazo del Repique de ${who(ev.actorId)}`;
       case 'BLOCKED':
-        if (ev.detail === 'WARNING_SHIELD') return `El escudo de aviso de ${who(ev.targetId)} absorbió el golpe del Renegado ${who(ev.actorId)}`;
+        if (ev.detail === 'WARNING_SHIELD') return `El escudo de aviso de ${who(ev.targetId)} absorbió el golpe del Traidor ${who(ev.actorId)}`;
         if (ev.targetId) return `${who(ev.targetId)} bloqueó el golpe${ev.actorId ? ` de ${who(ev.actorId)}` : ''}`;
         break;
       case 'REVIVED':
@@ -1532,10 +1532,10 @@ function heroOrders(me) {
   if (me?.hostEnemyId != null) {
     return {
       MOVE: { name: 'Mover huésped', icon: '➜', text: 'mover lo mueve a su velocidad.' },
-      ATTACK: { name: 'Golpear', icon: '⚔', text: 'golpea ya, sin anunciar, con su daño y su alcance. Si le das a un aliado, nadie sabrá que fuiste tú.' },
+      ATTACK: { name: 'Golpear', icon: '⚔', text: 'golpea ya, sin marcar, con su daño y su alcance. Si le das a un aliado, nadie sabrá que fuiste tú.' },
       ABILITY: { name: 'Salir', icon: '◉', text: 'sales a esa casilla o a la libre más cercana, y el huésped no actúa esta ronda.' },
-      INTERACT: { name: 'Interactuar', icon: '✋', text: 'dentro de un huésped no hace nada.' },
-      GUARD: { name: 'Guardar', icon: '⛨', text: 'dentro de un huésped no hace nada.' },
+      INTERACT: { name: 'Usar', icon: '✋', text: 'dentro de un huésped no hace nada.' },
+      GUARD: { name: 'Defender', icon: '⛨', text: 'dentro de un huésped no hace nada.' },
     };
   }
   return {
@@ -1560,12 +1560,12 @@ function showFinished(m, myPlayerId, onBack) {
   document.querySelector('#screen-finished .fin').classList.toggle('threshold-claimed', threshold);
   $('fin-banner').className = `fin-banner${threshold ? ' threshold' : ''}${iWon ? ' victory' : lostAll ? ' defeat' : ''}`;
   setText('fin-emblem', threshold ? '☠' : iWon ? '♛' : lostAll ? '🕯' : '✦');
-  setText('fin-title', threshold ? (iWon ? '¡El Umbral reclama… para ti!' : 'El Umbral reclama') : iWon ? '¡Victoria!' : label(OUTCOMES, m.outcome));
+  setText('fin-title', threshold ? (iWon ? '¡Ganan los Traidores… y tú con ellos!' : 'Ganan los Traidores') : iWon ? '¡Victoria!' : label(OUTCOMES, m.outcome));
   let verdict = iWon ? label(OUTCOMES, m.outcome) : m.winners.length ? 'Otro portador se quedó con el fuego.' : 'Sin ganador.';
   if (threshold) {
     verdict = iWon
-      ? 'Todos los héroes cayeron: ganaste como Renegado'
-      : `Todos los héroes cayeron: ${m.winners.length > 1 ? 'los Renegados se quedan' : 'el Renegado se queda'} con el fuego`;
+      ? 'Todos los héroes cayeron: ganaste como Traidor'
+      : `Todos los héroes cayeron: ${m.winners.length > 1 ? 'los Traidores se quedan' : 'el Traidor se queda'} con el oro`;
   }
   setText('fin-summary', `${verdict} · ${m.rounds} rondas · terminó a las ${String(m.finishedAt).slice(11, 19)} UTC`);
 
@@ -1587,7 +1587,7 @@ function showFinished(m, myPlayerId, onBack) {
       heroAvatar(s.hero, 'sm'),
       el('span', { class: 's-who' }, el('b', {}, `${s.displayName}${you(s)}`),
         el('small', {}, `${label(HEROES, s.hero)} · ${stateIcon}${label(HERO_STATES, s.finalState)}`)),
-      el('span', { class: 'em' }, String(s.embers), el('small', {}, 'ascuas')));
+      el('span', { class: 'em' }, String(s.embers), el('small', {}, 'de oro')));
     li.style.animationDelay = `${0.9 + i * 0.08}s`;
     return li;
   }));
@@ -1611,14 +1611,14 @@ function showFinished(m, myPlayerId, onBack) {
   const withPact = sorted.filter((s) => s.pact);
   $('fin-pacts').replaceChildren(...withPact.map((s, i) => {
     const done = Boolean(s.pact.fulfilled);
-    const card = el('div', { class: 'flip', tabindex: 0, role: 'button', 'aria-pressed': 'false', 'aria-label': `Pacto de ${s.displayName}: ${s.pact.description}. ${done ? 'Cumplido' : 'No cumplido'}` },
+    const card = el('div', { class: 'flip', tabindex: 0, role: 'button', 'aria-pressed': 'false', 'aria-label': `Misión de ${s.displayName}: ${s.pact.description}. ${done ? 'Cumplido' : 'No cumplido'}` },
       el('div', { class: 'flip-inner' },
         el('div', { class: 'flip-face flip-front', 'aria-hidden': 'true' },
-          el('span', { class: 'seal' }, '✶'), el('b', {}, `Pacto de ${s.displayName}`), el('small', {}, 'secreto')),
+          el('span', { class: 'seal' }, '✶'), el('b', {}, `Misión de ${s.displayName}`), el('small', {}, 'secreta')),
         el('div', { class: `flip-face flip-back ${done ? 'done' : 'failed'}`, 'aria-hidden': 'true' },
           el('span', { class: 'who' }, `${s.displayName}${you(s)}`),
           el('p', {}, s.pact.description),
-          el('span', { class: 'verdict' }, done ? '✔ Cumplido (+4 ascuas)' : '✖ No cumplido'))));
+          el('span', { class: 'verdict' }, done ? '✔ Cumplido (+4 de oro)' : '✖ No cumplido'))));
     const flip = () => {
       card.classList.toggle('revealed');
       card.setAttribute('aria-pressed', String(card.classList.contains('revealed')));
@@ -1628,7 +1628,7 @@ function showFinished(m, myPlayerId, onBack) {
     setTimeout(() => { if (!card.classList.contains('revealed')) flip(); }, 1400 + i * 450);
     return card;
   }));
-  if (!withPact.length) $('fin-pacts').replaceChildren(el('p', { class: 'hint' }, 'Nadie tenía un pacto que revelar.'));
+  if (!withPact.length) $('fin-pacts').replaceChildren(el('p', { class: 'hint' }, 'Nadie tenía una misión que revelar.'));
 
   const back = $('btn-back-lobby');
   back.onclick = () => onBack();

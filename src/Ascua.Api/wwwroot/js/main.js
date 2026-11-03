@@ -71,7 +71,7 @@ function bindAuth() {
         await api.register(username.trim(), email.trim(), password);
         await api.login(username.trim(), password);
         form.reset();
-        toast('Cuenta creada. ¡Bienvenido al Umbral!', 'ok');
+        toast('Cuenta creada. ¡Bienvenido!', 'ok');
       } catch (err) {
         toast(`No se pudo registrar: ${err.message}`, 'bad', 7000);
       }

@@ -506,12 +506,12 @@ export class BoardRenderer {
     this.known.fill(0);
     this.vision.fill(0);
     this.teleAlpha = 0;
-    let sub = floor >= 5 ? 'La sala del Celador' : 'Las brasas os guían más abajo';
+    let sub = floor >= 5 ? 'La sala del Celador' : 'Seguid bajando';
     // Al bajar renacen las Brasas (en la escalera) y aparecen los Renegados (lejos del grupo).
     const events = (detail?.events ?? []).filter((ev) => ev.type === 'EMBER_REBORN' || ev.type === 'RENEGADE_SPAWNED');
     const mine = events.find((ev) => ev.actorId === this.state.me?.playerId);
     if (mine?.type === 'EMBER_REBORN') sub = `Renaces en la escalera con ${mine.amount ?? '?'} de vida`;
-    else if (mine?.type === 'RENEGADE_SPAWNED') sub = 'Vuelves como Renegado, lejos de los héroes';
+    else if (mine?.type === 'RENEGADE_SPAWNED') sub = 'Vuelves como Traidor, lejos de los héroes';
     this.banner = { text: `Piso ${floor}`, sub, start: this.now, dur: 2600, color: mine?.type === 'RENEGADE_SPAWNED' ? '#ff8a7a' : undefined };
     this.syncEntities();
     for (const v of this.ents.values()) { v.x = v.tx; v.y = v.ty; }
@@ -1137,7 +1137,7 @@ export class BoardRenderer {
         if (!target) return;
         target.downTarget = 1;
         const [cx, cy] = this.center(target);
-        this.floaters.add('¡caído!', cx, cy - 0.4, { color: '#ff8a7a', size: 0.24, life: 1.4 });
+        this.floaters.add('¡derribado!', cx, cy - 0.4, { color: '#ff8a7a', size: 0.24, life: 1.4 });
         this.particles.burst(cx, cy, rm ? 4 : 14, { speed: 1, life: 0.9, size: 0.07, colors: ['#5a4a44', '#8a7a70'], drag: 2, up: 0.4 });
         if (target.isMe) { this.shake(0.6); this.screenFlash('#ff2a1a', 0.8); }
         break;
@@ -1151,7 +1151,7 @@ export class BoardRenderer {
           this.particles.spawn(cx - 0.3 + Math.random() * 0.6, cy - Math.random() * 0.3, (Math.random() - 0.5) * 0.4, -0.3 - Math.random() * 0.7, 1.6, 0.1, i % 3 ? '#4a4448' : '#ff6a2a', 0, 0.6, i % 3 === 0);
         }
         if (ev.amount) this.floaters.add(`${ev.amount} ✦`, cx, cy - 0.4, { color: '#a8a0a0', size: 0.28, life: 1.5 });
-        this.floaters.add('se extinguió', cx, cy - 0.05, { color: '#c8c0c0', size: 0.18, life: 1.6, delay: 0.2 });
+        this.floaters.add('murió', cx, cy - 0.05, { color: '#c8c0c0', size: 0.18, life: 1.6, delay: 0.2 });
         if (target.isMe) { this.shake(0.7); this.screenFlash('#000000', 0.9); }
         break;
       }
@@ -1203,7 +1203,7 @@ export class BoardRenderer {
           g.globalCompositeOperation = 'source-over';
           g.globalAlpha = 1;
         });
-        this.floaters.add('bendición', cx, cy - 0.45, { color: '#ffe9a0', size: 0.2 });
+        this.floaters.add('mejora', cx, cy - 0.45, { color: '#ffe9a0', size: 0.2 });
         break;
       }
       case 'ENEMY_SPAWNED': {
@@ -1274,18 +1274,18 @@ export class BoardRenderer {
             actor.downT = 0; actor.downTarget = 0; actor.alphaTarget = 1;
             this.pillar(cx, cy, '#6fc8ff');
             this.particles.vortex(cx, cy, rm ? 8 : 26, { radius: 0.9, life: 0.8, colors: SPIRIT_COLORS, inward: true });
-            this.floaters.add('Amistad', cx, cy - 0.45, { color: '#c8ecff', size: 0.22, life: 1.4 });
+            this.floaters.add('Ayudar', cx, cy - 0.45, { color: '#c8ecff', size: 0.22, life: 1.4 });
           } else {
             // Se hunde en humo rojo: volverá del lado de la mazmorra.
             this.particles.vortex(cx, cy + 0.1, rm ? 8 : 28, { radius: 0.2, life: 1, colors: ['#3a0604', '#a8160e', '#ff4a3a'], inward: false, glow: false });
             this.ring(cx, cy + 0.3, '#ff4a3a', 0.9, 600);
-            this.floaters.add('Venganza', cx, cy - 0.45, { color: '#ff9a8c', size: 0.22, life: 1.4 });
+            this.floaters.add('Vengarse', cx, cy - 0.45, { color: '#ff9a8c', size: 0.22, life: 1.4 });
           }
         }
         const who = nameOf(ev.actorId);
         this.banner = mine
-          ? { text: friendship ? 'Camino de la Amistad' : 'Camino de la Venganza', sub: friendship ? 'Eres una Brasa errante: ayuda al grupo y gana ecos' : 'Volverás como Renegado, del lado de la mazmorra', start: this.now, dur: 2600, color: friendship ? '#9ad8ff' : '#ff8a7a' }
-          : { text: friendship ? `${who}: Amistad` : `${who}: Venganza`, sub: friendship ? 'Vaga como Brasa errante y ayuda al grupo' : 'Volverá como Renegado', start: this.now, dur: 2000, color: friendship ? '#9ad8ff' : '#ff8a7a' };
+          ? { text: friendship ? 'Ayudar' : 'Vengarse', sub: friendship ? 'Eres un Fantasma: ayuda al grupo y gana puntos de apoyo' : 'Volverás como Traidor, del lado de la mazmorra', start: this.now, dur: 2600, color: friendship ? '#9ad8ff' : '#ff8a7a' }
+          : { text: friendship ? `${who}: Ayudar` : `${who}: Vengarse`, sub: friendship ? 'Vaga como Fantasma y ayuda al grupo' : 'Volverá como Traidor', start: this.now, dur: 2000, color: friendship ? '#9ad8ff' : '#ff8a7a' };
         if (mine) this.screenFlash(friendship ? '#6fc8ff' : '#a8160e', 0.6);
         return true;
       }
@@ -1327,7 +1327,7 @@ export class BoardRenderer {
         });
         target.frozen = false;
         target.jolt = rm ? 0 : 0.2;
-        this.floaters.add('⧖ ¡estorbado!', cx, cy - 0.42, { color: '#d8c8ff', size: 0.22, life: 1.3 });
+        this.floaters.add('⧖ ¡frenado!', cx, cy - 0.42, { color: '#d8c8ff', size: 0.22, life: 1.3 });
         return true;
       }
       case 'BEACON_LIT': {
@@ -1354,7 +1354,7 @@ export class BoardRenderer {
         if (!who) return true;
         const [cx, cy] = this.center(who);
         const n = ev.amount ?? 1;
-        this.floaters.add(`+${n} eco${n === 1 ? '' : 's'}`, cx, cy - 0.5, { color: '#9ad8ff', size: 0.24, life: 1.4 });
+        this.floaters.add(`+${n} de apoyo`, cx, cy - 0.5, { color: '#9ad8ff', size: 0.24, life: 1.4 });
         this.particles.vortex(cx, cy, rm ? 5 : 14, { radius: 0.5, life: 0.6, size: 0.05, colors: SPIRIT_COLORS, inward: true });
         return true;
       }
@@ -1373,7 +1373,7 @@ export class BoardRenderer {
         this.floaters.add('¡renace!', cx, cy - 0.5, { color: '#ffe9a0', size: 0.26, life: 1.5 });
         if (ev.actorId === me?.playerId) { this.screenFlash('#ffe9a0', 0.7); this.shake(0.25); }
         if (!fromFloor && ev.actorId !== me?.playerId) {
-          this.banner = { text: `${nameOf(ev.actorId)} renace`, sub: 'La Brasa vuelve como héroe', start: this.now, dur: 1800, color: '#ffe9a0' };
+          this.banner = { text: `${nameOf(ev.actorId)} renace`, sub: 'El Fantasma vuelve como héroe', start: this.now, dur: 1800, color: '#ffe9a0' };
         }
         return true;
       }
@@ -1401,7 +1401,7 @@ export class BoardRenderer {
           });
           this.particles.vortex(cx, cy, rm ? 8 : 30, { radius: 0.2, life: 1.1, size: 0.07, colors: BLOOD_COLORS, inward: false });
           this.ring(cx, cy, '#ff4a3a', 1.1, 700);
-          this.floaters.add('¡Renegado!', cx, cy - 0.7, { color: '#ff8a7a', size: 0.26, life: 1.5 });
+          this.floaters.add('¡Traidor!', cx, cy - 0.7, { color: '#ff8a7a', size: 0.26, life: 1.5 });
         }
         this.shake(0.3);
         this.screenFlash('#a8160e', mine ? 0.7 : 0.4);
@@ -1414,8 +1414,8 @@ export class BoardRenderer {
         }
         if (!fromFloor) {
           this.banner = mine
-            ? { text: 'Vuelves como Renegado', sub: 'Del lado de la mazmorra: los monstruos no te atacan', start: this.now, dur: 2400, color: '#ff8a7a' }
-            : { text: '¡Un Renegado aparece!', sub: `${nameOf(ev.actorId)} vuelve del lado de la mazmorra`, start: this.now, dur: 2200, color: '#ff8a7a' };
+            ? { text: 'Vuelves como Traidor', sub: 'Del lado de la mazmorra: los monstruos no te atacan', start: this.now, dur: 2400, color: '#ff8a7a' }
+            : { text: '¡Un Traidor aparece!', sub: `${nameOf(ev.actorId)} vuelve del lado de la mazmorra`, start: this.now, dur: 2200, color: '#ff8a7a' };
         }
         return true;
       }
@@ -1424,7 +1424,7 @@ export class BoardRenderer {
         const [cx, cy] = this.center(target);
         this.ring(cx, cy, '#ff4a3a', 1.2, 600);
         this.particles.burst(cx, cy, rm ? 8 : 30, { speed: 3, life: 0.9, size: 0.07, colors: [...BLOOD_COLORS, '#2a0503'], drag: 2, glow: true });
-        this.floaters.add('¡Renegado derrotado!', cx, cy - 0.5, { color: '#ffd08a', size: 0.22, life: 1.5 });
+        this.floaters.add('¡Traidor derrotado!', cx, cy - 0.5, { color: '#ffd08a', size: 0.22, life: 1.5 });
         target.downTarget = 1;
         target.alphaTarget = 0.35;
         this.shake(0.4);
