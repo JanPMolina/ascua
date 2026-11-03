@@ -77,8 +77,8 @@ public static class PathRules
     public const int RenegadeMinDistance = 4;
     public const int RenegadeDownReward = 2;
     public const int RenegadeDefeatReward = 2;
-    public const int WardenHpPerRenegade = 6;
-    public const int WardenMinHp = 12;
+    public const int WardenHpPerRenegade = 3;
+    public const int WardenMinHp = EnemyCatalog.WardenHpPerPlayer;
 
     /// <summary>Porcentaje de las ascuas guardadas que recupera la Brasa: 25% + 8% por eco, tope 85%.</summary>
     public static int RebirthPercent(int echoes) =>

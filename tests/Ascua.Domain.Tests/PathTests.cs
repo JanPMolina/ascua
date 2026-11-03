@@ -384,19 +384,19 @@ public sealed class PathTests
         Assert.Equal(2, renegade.Hp);
         Assert.Equal(PathRules.RenegadeFinalSkillLock, renegade.SkillCooldown);
         Assert.Equal(1, renegade.Position.DistanceTo(spawned.E(1)!.Position));
-        Assert.Equal(18, spawned.E(1)!.MaxHp);
-        Assert.Equal(18, spawned.E(1)!.Hp);
+        Assert.Equal(24 - PathRules.WardenHpPerRenegade, spawned.E(1)!.MaxHp);
+        Assert.Equal(24 - PathRules.WardenHpPerRenegade, spawned.E(1)!.Hp);
         Assert.Equal(1, spawned.H(B).Shield);
         Assert.Equal("SKILL_ON_COOLDOWN", OrderValidator.Validate(spawned, A, spawned.Round, Skill(Direction.North))?.Code);
     }
 
     [Fact]
-    public void The_warden_never_drops_below_twelve_maximum_life_and_summons_a_single_totem_with_renegades()
+    public void The_warden_never_drops_below_his_minimum_life_and_summons_a_single_totem_with_renegades()
     {
-        var weak = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 12);
+        var weak = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: PathRules.WardenMinHp + 1);
         var chooser = Hero(A, HeroClass.Usurera, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true, SpawnRound = 1 };
         var (next, _) = Resolve(State([chooser, Hero(B, HeroClass.Mampostero, 8, 8, seat: 1)], [weak]), (B, Interact(Direction.East)));
-        Assert.Equal(12, next.E(1)!.MaxHp);
+        Assert.Equal(PathRules.WardenMinHp, next.E(1)!.MaxHp);
 
         var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Hp = 13 };
         var mampostero = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1, facing: Direction.South);
