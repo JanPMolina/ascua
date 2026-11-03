@@ -81,7 +81,7 @@ public sealed class RedisMatchHotState(IConnectionMultiplexer redis, RealtimeOpt
         }
         catch (JsonException)
         {
-            // Instantánea de otra versión (héroes viejos, ver ADR-0008): Redis no es la fuente de verdad.
+            // Instantánea de otra versión (héroes viejos, ver ADR-0009): Redis no es la fuente de verdad.
             return null;
         }
     }

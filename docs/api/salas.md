@@ -4,8 +4,8 @@ Referencia viva en `/docs` (Scalar) y `/openapi/v1.json`. Decisiones de diseño 
 [ADR-0007](../adr/0007-salas-y-emparejamiento.md). Todo exige `Authorization: Bearer <JWT>` y usa la
 política de límite de tasa por usuario (`Ascua:RateLimiting:User`).
 
-Los enums viajan como texto en MAYÚSCULAS: héroes `YUNQUE`, `CHISPA`, `CUERVO`, `RAIZ`
-(los mismos del tiempo real, [ADR-0008](../adr/0008-nombres-de-heroes.md)); visibilidad
+Los enums viajan como texto en MAYÚSCULAS: héroes `ERRATA`, `ANTEAYER`, `HILVAN`, `POLIZON`, `ESCUCHA`, `USURERA`, `AVARO`, `MAMPOSTERO`, `CAMPANERO`
+(los mismos del tiempo real, [ADR-0009](../adr/0009-nueve-heroes-contrato-2.md)); visibilidad
 `PUBLIC`/`PRIVATE`; estado de sala `OPEN`/`STARTING`/`STARTED`; estado de cola
 `IDLE`/`QUEUED`/`MATCHING`/`MATCHED`/`EXPIRED`.
 
@@ -39,7 +39,7 @@ Ejemplo de sala:
   "capacity": 4,
   "hostId": "6a2e…",
   "members": [
-    { "userId": "6a2e…", "username": "ana", "hero": "YUNQUE", "ready": true, "isHost": true },
+    { "userId": "6a2e…", "username": "ana", "hero": "ERRATA", "ready": true, "isHost": true },
     { "userId": "93bd…", "username": "beto", "hero": null, "ready": false, "isHost": false }
   ],
   "inviteCode": "K7M2QXRA",

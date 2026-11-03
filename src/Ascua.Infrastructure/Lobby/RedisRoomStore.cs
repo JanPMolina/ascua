@@ -68,7 +68,7 @@ public sealed class RedisRoomStore(IConnectionMultiplexer redis, LobbyPolicy pol
         }
         catch (JsonException)
         {
-            // Sala guardada con héroes que ya no existen (ADR-0008): para el lobby es como si no estuviera.
+            // Sala guardada con héroes que ya no existen (ADR-0009): para el lobby es como si no estuviera.
             return null;
         }
     }

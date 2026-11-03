@@ -10,7 +10,7 @@ using Npgsql;
 namespace Ascua.Integration.Tests;
 
 /// <summary>
-/// ADR-0008: la migración <c>HeroesRework</c> borra las partidas guardadas con héroes que ya no existen aunque estén
+/// ADR-0009: la migración <c>HeroesRework</c> borra las partidas guardadas con héroes que ya no existen aunque estén
 /// protegidas por triggers de inmutabilidad, y los deja activos otra vez. Corre en una base aparte, creada para la
 /// prueba, porque la de la colección ya está en la última migración.
 /// </summary>

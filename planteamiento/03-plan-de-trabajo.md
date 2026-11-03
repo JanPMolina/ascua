@@ -66,6 +66,7 @@ Jan entrega y Juan Pablo consume:
 | `Ascua__TrustForwardedHeaders` | `false` | `true` (detrás del ingress de Container Apps, para que el *rate limiting* vea la IP real) |
 | `Ascua__Cors__AllowedOrigins` | `http://localhost:8080` (lista blanca de CORS de la API REST **y** de orígenes del WebSocket) | dominio público con `https://` (`Ascua__Cors__AllowedOrigins__0`); el ingress con `allowInsecure: false`, porque la app no redirige a HTTPS por su cuenta |
 | `Ascua__Realtime__RoundDuration` / `__DraftDuration` | `00:00:20` / `00:00:30` | igual (en pruebas de carga se baja la ronda a 3 s) |
+| `Ascua__Realtime__BellDuration` / `__SignalInterval` | `00:00:08` / `00:00:03` | igual (plazo de los demás en una ronda de Repique; límite de señales rápidas por jugador) |
 | `Ascua__Realtime__ReconnectGrace` / `__JoinTimeout` / `__InactivityTimeout` | `00:01:00` / `00:02:00` / `00:10:00` | igual |
 | `Ascua__Realtime__MaxConnectionsPerUser` / `__HubTokenLimit` / `__HubTokensPerSecond` | `3` / `20` / `5` | igual |
 | `Ascua__Realtime__PublicBaseUrl` | `http://localhost:8080` | URL pública (arma `replayUrl` en `MatchFinished`) |
@@ -114,7 +115,7 @@ Si una clave cambia, se actualiza esta tabla en el mismo PR.
 ## Recortes si el tiempo no alcanza (en este orden)
 
 1. Reducir bendiciones a 6 y eliminar las sinergias.
-2. Quitar el sigilo de Cuervo.
+2. Dejar 6 héroes en lugar de 9.
 3. Dejar 3 salas en lugar de 5.
 4. Hacer el cliente web solo de texto o tabla.
 

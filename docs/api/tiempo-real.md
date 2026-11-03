@@ -8,14 +8,14 @@ explica cómo lo implementa el servidor y cómo probarlo.
 1. `POST /api/v1/realtime/tickets` con `Authorization: Bearer <JWT>` y cuerpo `{ "matchId": "<uuid>" }`
    → `201 { ticket, expiresAt }`. Partida inexistente o ajena: `404 not-found` (no se distingue).
    Partida terminada: `409 match-not-active`.
-2. WebSocket a `/realtime/match?protocolVersion=1&access_token=<ticket>` con `skipNegotiation` y
+2. WebSocket a `/realtime/match?protocolVersion=2&access_token=<ticket>` con `skipNegotiation` y
    transporte WebSockets. El ticket vale 30 s, sirve una sola vez (`GETDEL`) y solo para esa partida.
 3. `JoinMatch { matchId }` → ACK con asiento y `Snapshot`. Si hay draft pendiente llega también `DraftOffer`,
    y si hay una elección de camino abierta, `PathOffer` (también tras `GetSnapshot`).
 
 | Rechazo del upgrade | HTTP | `code` (Problem Details) |
 |---|---|---|
-| Sin `protocolVersion=1` (se revisa antes de gastar el ticket) | 400 | `unsupported-protocol-version` |
+| Sin `protocolVersion=2` (se revisa antes de gastar el ticket; la 1 se rechaza, [ADR-0009](../adr/0009-nueve-heroes-contrato-2.md)) | 400 | `unsupported-protocol-version` |
 | Ticket ausente, vencido, ya usado | 401 | `ticket-invalid` |
 | Más de 3 conexiones del usuario | 429 | `connection-limit` |
 
@@ -70,6 +70,20 @@ CloseRound N+1 ─► Resolver revela: PathChosen (todos) ─► la Brasa actúa
 - **Reproducción.** Todo pasa por el log de eventos y `match_states` como cualquier mutación; el `Resolver`
   sigue siendo puro y determinista.
 
+## Héroes: señales, Último en hablar y Repique (contrato 2.0.0)
+
+Las reglas están en [05-heroes.md](../../planteamiento/05-heroes.md); aquí, cómo las implementa el servidor.
+
+- **Vistas.** `PlayerViewProjector` sigue siendo el único filtro, y las vistas y los eventos pasan por él. Polizón dentro de un huésped no aparece para nadie; La Escucha solo recibe su radio y lo que hizo ruido en la ronda; Errata recibe todos los anuncios sin el autor; cada deuda la ven solo el deudor y la Usurera.
+- **Señales.** `SendSignal { matchId, kind, position? }` valida la casilla contra el tablero y pasa por `TryTakeSignalSlotAsync`: una clave de Redis con vencimiento de `SignalInterval` por jugador, además del *token bucket* del hub. `SignalReceived` llega solo al bando de quien la envía. No pasa por el `Resolver` ni se guarda, así que no aparece en la reproducción.
+- **Último en hablar.** Cuando todos los demás decidieron y el Campanero no, `NotifyLastWordAsync` le manda `LastWord` en privado. Si reconecta en esa situación, `MatchHub` se lo vuelve a mandar. Como Renegado solo recibe los tipos de orden. Quien está en su periodo de gracia no cuenta para «todos decidieron».
+- **Repique.**
+  - El dominio guarda `BellRound`, `BellRinger` y `BellClosed`. El plazo reducido (`matches.bell_duration_ms`, 8 s por defecto) se deriva del plazo de la ronda, igual que el de la elección de camino, y `MatchSnapshot.WakeAt` lo agenda en `ascua:deadlines`.
+  - Al vencer, `ExpireBellAsync` cierra el Repique: `BELL_EXPIRED`, un `Snapshot` a todos con `view.bell.closed` y las órdenes tardías reciben `ORDER_TOO_LATE`.
+  - Los demás conservan sus 8 s aunque el Campanero decida primero. La ronda se cierra cuando todos decidieron o venció su plazo, con un máximo de `RoundDuration`.
+  - El plazo sobrevive a un reinicio porque vuelve de Postgres.
+- **Traiciones.** El daño a un aliado desviado por Errata o dado desde un huésped se registra en `GameState.Betrayals`. `BETRAYAL_RECORDED` solo lo recibe quien la cometió. `MatchFinished.betrayals` y `BETRAYAL_REVEALED` las revelan al final, sumadas por traidor y víctima.
+
 ## Estado y claves
 
 | Dónde | Qué |
@@ -82,6 +96,7 @@ CloseRound N+1 ─► Resolver revela: PathChosen (todos) ─► la Brasa actúa
 | `ascua:{m:<id>}:r:<N>:orders` / `:sealed` | Órdenes de la ronda y marca de ronda sellada |
 | `ascua:{m:<id>}:act:<clientActionId>` | ACK guardado para la idempotencia |
 | `ascua:{m:<id>}:path:<user>:<offerId>` | ACK guardado de `ChoosePath` |
+| `ascua:{m:<id>}:signal:<user>` | Marca de señal reciente (vence a los `SignalInterval`) |
 | `ascua:{m:<id>}:presence` | Conexión vigente por usuario (`SESSION_REPLACED` al abrir otra) |
 | `ascua:deadlines`, `ascua:graces` | Sorted sets de plazos y gracias que leen los temporizadores de todas las réplicas |
 | `ascua:ticket:<sha256>` | Tickets (se guarda el hash, no el ticket) |
@@ -119,6 +134,8 @@ La concurrencia entre réplicas (dos cerradores, una sola resolución) está en 
 |---|---|
 | `RoundDuration` / `DraftDuration` | 20 s / 30 s |
 | `PathChoiceDuration` | 15 s (elección de camino; al vencer, Amistad) |
+| `BellDuration` | 8 s (plazo de los demás en una ronda de Repique; se fija al crear la partida) |
+| `SignalInterval` | 3 s (una señal rápida por jugador) |
 | `ReconnectGrace` / `JoinTimeout` | 60 s / 120 s |
 | `InactivityTimeout` | 10 min |
 | `TicketLifetime` / `MaxConnectionsPerUser` | 30 s / 3 |

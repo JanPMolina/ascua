@@ -79,8 +79,8 @@ Ejemplo con 10 ascuas guardadas:
 |---|---|---|
 | Vida con la que reaparece | 60% de su vida máxima (⌈⌉) | **40%** (⌈⌉) |
 | Daño | Máximo 1 por golpe contra héroes (sin bonus de Puño de piedra ni de espalda) | Igual, **y no puede usar su habilidad las primeras 3 rondas** |
-| Enfriamiento de la habilidad | **×2** (Chispa: máximo 2 cargas) | ×2 |
-| Monstruos de la sala | **1 monstruo menos por Renegado** (mínimo 1) | El Celador pierde **6 de vida máxima por Renegado** (nunca menos de 12) y su fase 2 invoca **1 tótem** en lugar de 2 |
+| Enfriamiento de la habilidad | **×2** | ×2 |
+| Monstruos de la sala | **1 monstruo menos por Renegado** (mínimo 1) | El Celador pierde **3 de vida máxima por Renegado** (nunca menos de 5) y su fase 2 invoca **1 tótem** en lugar de 2 |
 | Escudo de los héroes | Cuando aparece un Renegado, cada héroe vivo recibe **+1 de escudo** | Igual |
 | Primer golpe | **El primer golpe del Renegado a cada héroe no hace daño** (lo absorbe el escudo de aviso) | Igual |
 
@@ -143,13 +143,13 @@ Decisiones tomadas al implementar el motor (`src/Ascua.Domain`, sobre todo `Rule
 **Renegado**
 - Recibe ⌈guardadas / 2⌉ ascuas al **revelarse** el camino (no al aparecer); así puntúa aunque no llegue a aparecer.
 - Aparece al entrar a la sala siguiente, en la casilla libre más lejana de los héroes (a ≥4 si se puede; si no, la más lejana; en empate, fila y columna menores; nunca en la escalera). Si se reveló en la sala del Celador, aparece al terminar la ronda R + 2 (R = ronda de la revelación) en la casilla libre más cercana al Celador.
-- Al bajar de piso, los Renegados presentes también pasan y **aparecen otra vez** en la sala nueva con su vida actual. Cada aparición cuenta para todo el balance: un monstruo menos, +1 de escudo a cada héroe activo y, en la sala del Celador, 3 rondas sin habilidad y −6 de vida máxima del Celador.
+- Al bajar de piso, los Renegados presentes también pasan y **aparecen otra vez** en la sala nueva con su vida actual. Cada aparición cuenta para todo el balance: un monstruo menos, +1 de escudo a cada héroe activo y, en la sala del Celador, 3 rondas sin habilidad y −3 de vida máxima del Celador.
 - **Un monstruo menos:** se quitan los primeros de la lista de la sala, dejando al menos 1.
-- **Celador:** cada aparición en su sala le quita 6 de vida máxima (nunca menos de 12) y lo mismo de vida actual (mínimo 1). Con algún Renegado en la partida (esperando o presente), la fase 2 invoca un solo tótem.
-- **Daño:** máximo 1 por golpe contra héroes, aplicado antes de GUARDAR y de Codicia del objetivo; la Descarga de un Renegado hace 1; sin bonus por espalda ni de Puño de piedra. El enfriamiento ×2 se aplica al usar la habilidad (Yunque 6, Cuervo 8, Raíz 6); Chispa tiene como máximo 2 cargas.
+- **Celador:** cada aparición en su sala le quita 3 de vida máxima (nunca menos de 5) y lo mismo de vida actual (mínimo 1). Con algún Renegado en la partida (esperando o presente), la fase 2 invoca un solo tótem.
+- **Daño:** máximo 1 por golpe contra héroes, aplicado antes de GUARDAR y de Codicia del objetivo; sin bonus de Puño de piedra. El enfriamiento ×2 se aplica al usar la habilidad. Las notas de cada héroe están en [05-heroes.md](05-heroes.md).
 - **Escudo de aviso:** el primer golpe de cada Renegado a cada héroe se anula (`HitPrevented` con `WarningShield`); la cuenta se reinicia cada vez que vuelve a extinguirse.
 - **Ascuas:** +1 robada por cada golpe que conecta (si el héroe tiene ascuas) y +2 si lo deja caído.
-- Los Renegados no se dañan entre sí. Su Muralla protege y su Brote cura solo a otros Renegados (si no hay, Brote lo cura a él).
+- Los Renegados no se dañan entre sí.
 - Los monstruos no lo atacan ni lo eligen como objetivo, y el entorno tampoco lo daña (trampas, fuego, quemaduras, congelación). Él no daña a los monstruos (el golpe se detiene sin efecto). No puede `INTERACTUAR` (cofres, altares ni levantar) y la escalera solo la activan héroes activos.
 - Un héroe que golpea a un Renegado le hace el daño completo (no es fuego amigo ni roba). Al llegar a 0 el Renegado se extingue directamente (Último aliento no aplica), quien lo derrotó gana +2 y se abre una oferta nueva.
 - Un Renegado en pie es elegible para ganar cuando cae el Celador (con sus ascuas más el pacto). En «El Umbral reclama» ganan los Renegados en pie con más `ascuas + pacto`; si empatan, ganan todos los empatados. En el historial cuenta como `VICTORY` (o `DRAW` si empatan) para ellos y `DEFEAT` para los demás.

@@ -1,6 +1,6 @@
 # Los nueve héroes
 
-> **Estado:** aprobado por el equipo el 2-nov-2026; en implementación. **Reemplaza** a Yunque, Chispa, Cuervo y Raíz: esos héroes se borran del juego, del contrato y del código. Sustituye a [01-juego.md](01-juego.md) §9 y a las reglas de héroes de §14. Los números son punto de partida: el motor se balancea con simulación (§14 de este documento) y aquí queda el valor final.
+> **Estado:** aprobado por el equipo el 2-nov-2026; en implementación. **Reemplaza** a Yunque, Chispa, Cuervo y Raíz: esos héroes se borran del juego, del contrato y del código. Sustituye a [01-juego.md](01-juego.md) §9 y a las reglas de héroes de §14. Los números ya son los finales de la simulación (§14 y §16), a confirmar jugando.
 
 ## 1. La idea
 
@@ -15,10 +15,10 @@ Reglas de diseño:
 
 | Héroe (en el cable) | Rompe la regla | Vida | Alcance | Inic. | Enf. | Pasiva | Activa |
 |---|---|---|---|---|---|---|---|
-| **Errata** (`ERRATA`) | Los golpes caen donde se anunciaron | 4 | 1 | 6 | 2 | Fe de erratas | Corregir |
-| **Anteayer** (`ANTEAYER`) | Lo hecho, hecho está | 4 | 2 | 5 | 5 | Eco | Volver |
-| **Hilván** (`HILVAN`) | Tienes un solo cuerpo | 5 | 1 | 3 | 3 | Espejo | Tensar |
-| **Polizón** (`POLIZON`) | Eres tu cuerpo | 3 | 1 | 7 | 3 | Sin casa | Abordar |
+| **Errata** (`ERRATA`) | Los golpes caen donde se anunciaron | 4 | 1 | 6 | 3 | Fe de erratas | Corregir |
+| **Anteayer** (`ANTEAYER`) | Lo hecho, hecho está | 4 | 1 | 5 | 5 | Eco | Volver |
+| **Hilván** (`HILVAN`) | Tienes un solo cuerpo | 8 | 1 | 3 | 3 | Espejo | Tensar |
+| **Polizón** (`POLIZON`) | Eres tu cuerpo | 4 | 1 | 7 | 3 | Sin casa | Abordar |
 | **La Escucha** (`ESCUCHA`) | Ves lo que tienes cerca | 5 | 4 | 2 | 4 | Ciega | Grito |
 | **La Usurera** (`USURERA`) | Ayudar es gratis | 4 | 1 | 1 | 2 | Interés | Préstamo |
 | **El Avaro** (`AVARO`) | La vida y la puntuación son cosas distintas | ascuas | 1 | 2 | 2 | Todo lo que tengo | Soborno |
@@ -48,7 +48,7 @@ Las fases de 01-juego.md §3 conservan su contenido; solo cambia la numeración 
 
 **Pasiva, Fe de erratas.** Ve todos los ataques anunciados de la sala, aunque estén en la niebla (solo las casillas, no quién los anuncia). Si un monstruo muere por un golpe que ella desvió, el golpe final es de ella.
 
-**Activa, Corregir** (`ABILITY dir`, enf. 2). Cada enemigo que tenga **alguna** casilla anunciada a ≤2 de ella desplaza **todo** su anuncio 1 casilla en esa dirección. La casilla que caería en un muro o fuera de la sala se pierde. Sin anuncios en rango no hace nada.
+**Activa, Corregir** (`ABILITY dir`, enf. 3). Cada enemigo que tenga **alguna** casilla anunciada a ≤2 de ella desplaza **todo** su anuncio 1 casilla en esa dirección. La casilla que caería en un muro o fuera de la sala se pierde. Sin anuncios en rango no hace nada.
 
 **Un golpe desviado golpea todo lo que haya en sus casillas:** héroes activos, monstruos y Renegados, con el daño de quien lo anunció.
 
@@ -117,10 +117,10 @@ Casos:
 
 ## 9. La Usurera
 
-**Activa, Préstamo** (`ABILITY dir`, enf. 2). Al primer aliado en línea a ≤2 casillas, herido o caído: le cura 3, o lo levanta con 3 de vida. No pide permiso. Le crea una **deuda de 2 ascuas**, que se suma a la que tenga. A sí misma no se puede prestar. Un aliado con la vida llena no cuenta.
+**Activa, Préstamo** (`ABILITY dir`, enf. 2). Al primer aliado en línea a ≤2 casillas, herido o caído: le cura 3, o lo levanta con 3 de vida. No pide permiso. Le crea una **deuda de 1 ascua**, que se suma a la que tenga. A sí misma no se puede prestar. Un aliado con la vida llena no cuenta.
 
 **Pasiva, Interés.**
-- Cada 3 rondas con deuda, la deuda sube 1 (tope 6).
+- Cada 5 rondas con deuda, la deuda sube 1 (tope 4).
 - **Cada ascua que gane el deudor le llega a ella** hasta saldar la deuda.
 - **Si se extingue,** cobra de las ascuas guardadas lo que alcance.
 - **Al terminar la partida, cobra lo que quede** de las ascuas del deudor, **antes** de decidir al ganador.
@@ -135,7 +135,7 @@ Casos:
 
 ## 10. El Avaro
 
-**Pasiva, Todo lo que tengo.** No tiene barra de vida: **su vida son sus ascuas**. Empieza con 3. Cada punto de daño, después de guardia y escudo, tira 1 ascua a una casilla (la suya) y el primero que la pise se la queda. Con 0 ascuas y otro golpe, cae.
+**Pasiva, Todo lo que tengo.** No tiene barra de vida: **su vida son sus ascuas**. Empieza con 4. Cada punto de daño, después de guardia y escudo, tira 1 ascua a una casilla (la suya) y el primero que la pise se la queda. Con 0 ascuas y otro golpe, cae.
 
 **Activa, Soborno** (`ABILITY dir`, enf. 2). Paga **1 ascua** al primer enemigo en línea a ≤3 casillas: cancela su anuncio y esa ronda no actúa. No se puede pagar con la última. El Celador cuesta **3** y solo cancela el anuncio. El enemigo se queda con el pago y **lo suelta al morir**.
 
@@ -167,7 +167,7 @@ Casos:
 
 **Pasiva, Último en hablar.** Si todos los demás ya decidieron y él todavía no, recibe en privado **las órdenes de todos** (tipo y dirección) y puede responder con lo que quede de reloj. Como Renegado solo ve los tipos.
 
-**Activa, Repique** (`ABILITY`, la dirección no importa, enf. 4). En la ronda siguiente, **todos los demás tienen solo 8 s**; él conserva los 20. Quien no decidió a tiempo guarda (o enciende el Faro). La ronda se cierra cuando él decide, o a los 20 s.
+**Activa, Repique** (`ABILITY`, la dirección no importa, enf. 4). En la ronda siguiente, **todos los demás tienen solo 8 s**; él conserva los 20. Quien no decidió a tiempo guarda (o enciende el Faro). La ronda se cierra cuando todos decidieron o venció su plazo, con un máximo de 20 s: si él decide primero, los demás conservan sus 8 s.
 
 Casos:
 - **Sigue siendo simultáneo:** su orden se resuelve con las demás; solo tiene más información.
@@ -208,8 +208,48 @@ Cualquier jugador puede enviar a su bando, durante la ronda, una frase fija («�
 | Héroes que terminan caídos o extintos al menos una vez | 30%–70% |
 | Partidas con Renegado en que gana «El Umbral reclama» | Menos de 25% |
 
+**Resultado** (246 combinaciones, 200 partidas cada una, 10 % de traición; detalle en [docs/balance.md](../docs/balance.md)):
+
+| Métrica | Meta | Resultado |
+|---|---|---|
+| Celador cae | 35–65 % | 45,5 % (con 2 jugadores, solo 27,8 %) |
+| Victoria por héroe | 18–32 % | **15,1–33,1 %:** Hilván y Polizón por debajo; Usurera y Errata apenas por encima |
+| Peor dúo | < 1,5× | 1,26× |
+| Rondas por partida | 25–55 | **55,9** |
+| Caídos o extintos | 30–70 % | 39,7 % |
+| Umbral | < 25 % | 6,6 % |
+
+Los números de este documento ya son los ajustados.
+
 **Límite honesto:** los bots no mienten, no faroleán ni aprovechan a fondo a Errata, al Campanero o a La Escucha. La simulación detecta héroes rotos y bugs, pero no reemplaza partidas entre personas: los números finales van a necesitar ajuste jugando.
 
 ## 15. Lo que cambia en el contrato
 
 Es un cambio incompatible, por lo que el contrato sube a **2.0.0** y `protocolVersion` a **2**: nuevos valores de `HeroClass` en REST y tiempo real, campos y eventos nuevos, y se quitan los de los héroes viejos.
+
+## 16. Aclaraciones de implementación
+
+Lo que este documento no fijaba y se decidió al implementar.
+
+**Reglas**
+- **Monstruos con camino más corto.** Persiguen con BFS, rodeando lo que estorba; antes daban un paso codicioso y se atascaban tras un muro. En campo abierto van primero por el eje con más distancia. Si no hay camino, se quedan quietos.
+- **El Repique no acorta la ronda del resto.** Si el Campanero decide primero, los demás conservan sus 8 s (§12). Así pueden aguantar para negarle Último en hablar. Una orden que llega después de su plazo se rechaza con `ORDER_TOO_LATE`.
+- **Último en hablar también tras reconectar.** Si el Campanero vuelve a entrar con todos los demás decididos, recibe `LastWord` otra vez.
+- **Entrada de Hilván.** Su segundo cuerpo va a 2 casillas al este; si esa casilla es la entrada de otro asiento, al oeste.
+- **Partidas viejas.** La migración `HeroesRework` borra las partidas con héroes antiguos, porque su estado no se puede interpretar con las reglas nuevas. Un estado en Redis que no se pueda leer cuenta como ausente.
+
+**Números ajustados por el balance** (detalle y motivos en [docs/balance.md](../docs/balance.md))
+
+| Dato | Antes | Ahora |
+|---|---|---|
+| Vida del Celador | 12 × jugadores | **5 × jugadores** |
+| Golpe del Celador | Cada ronda | **Una ronda sí y una no.** Entre golpes no se mueve, no se gira ni anuncia |
+| Castigo al Celador por Renegado | −6 de vida máxima, mínimo 12 | **−3, mínimo 5** |
+| Carroñero, Gelatina y Ballestero | 2 de vida | **1** |
+| Tótem | 3 de vida; invoca cada 3 rondas | **2 de vida; invoca cada 5** |
+| Escalera | (4,0) | **(4,3)** |
+| Celador al empezar | (4,2) | **(4,3)** |
+| Entradas | Fila 8 | **Fila 7** |
+| Dónde nacen los monstruos | Filas 1–4 | **A ≤4 de la escalera, en filas ≤5** |
+| Monstruos con 2 jugadores | Todos los de la sala | **Los 2 primeros** |
+| Tope de vida en el contrato | 8 | **10** |

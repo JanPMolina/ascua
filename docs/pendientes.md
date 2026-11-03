@@ -1,6 +1,6 @@
 # Pendientes hacia `v1.0.0`
 
-Actualizado el **30-oct-2026** con `main` en `e0155f0`. La entrega es el **12-nov-2026**: ese día se pone el tag `v1.0.0` y el profesor evalúa esa versión.
+Actualizado el **2-nov-2026**. La entrega es el **12-nov-2026**: ese día se pone el tag `v1.0.0` y el profesor evalúa esa versión.
 
 Esta lista se contrastó con el enunciado ([Proyecto3.pdf](../Proyecto3.pdf)) y su rúbrica. Cada pendiente indica qué criterio afecta.
 - **Al cerrar un pendiente:** se marca `[x]` en el mismo PR que lo resuelve.
@@ -56,6 +56,12 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 
   El runbook de rollback lo escribe Juan Pablo.
 - [x] **Limpieza:** quitar el `TODO(Jan)` obsoleto de `src/Ascua.Bot/Program.cs`; los escenarios de NBomber ya viven en `loadtests/`.
+
+### Los nueve héroes ([05-heroes.md](../planteamiento/05-heroes.md))
+- [x] Motor, vistas, servidor, contrato 2.0.0 ([ADR-0009](adr/0009-nueve-heroes-contrato-2.md)), simulador y balance ([balance.md](balance.md)).
+- [ ] **Cliente web:** `wwwroot/js/hub.js` sigue con `protocolVersion=1`, así que no se conecta hasta actualizarlo. Debe dibujar lo nuevo de cada héroe. La API y el cliente se publican juntos.
+- [ ] **Confirmar el balance jugando:** los números se calibraron contra bots. Lo primero que se debe mirar es si el Celador (5 de vida por jugador) cae demasiado fácil entre personas.
+- [ ] **Metas sin cumplir:** rondas por partida (55,9 contra 55), Hilván y Polizón bajos, Celador con 2 jugadores (27,8 %). Detalle en [balance.md](balance.md).
 
 ### Mantenimiento del repositorio
 - [x] **PRs de Dependabot:** #5 cerrado (`main` ya tenía trivy-action `v0.36.0`); #4 (gitleaks-action v3), #6, #7 y #9 fusionados con el CI en verde. Los próximos los abre Dependabot solo.
