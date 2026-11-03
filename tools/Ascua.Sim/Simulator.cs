@@ -42,6 +42,11 @@ public static class MatchSimulator
         var roundsToClear = new int[state.Rooms.Count];
 
         state = PickDrafts(state, bots);
+        if (options.StartRoom > 0)
+        {
+            state = state with { RoomIndex = options.StartRoom, Enemies = state.Rooms[options.StartRoom].InitialEnemies };
+        }
+
         var guard = 0;
         while (state.Phase == MatchPhase.InProgress)
         {

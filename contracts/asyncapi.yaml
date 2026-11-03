@@ -1566,7 +1566,7 @@ components:
     Hp:
       type: integer
       minimum: 0
-      maximum: 8
+      maximum: 10
 
     # ───────────── Órdenes ─────────────
     Order:
@@ -1864,7 +1864,7 @@ components:
         maxHp:
           type: integer
           minimum: 1
-          maximum: 8
+          maximum: 10
         shield:
           type: integer
           minimum: 0
@@ -2008,7 +2008,7 @@ components:
         maxHp:
           type: integer
           minimum: 1
-          maximum: 8
+          maximum: 10
         position:
           $ref: '#/components/schemas/NullablePosition'
         facing:

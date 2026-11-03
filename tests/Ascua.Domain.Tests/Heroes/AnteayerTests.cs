@@ -14,7 +14,7 @@ public sealed class AnteayerTests
     public void An_attack_repeats_two_rounds_later_from_where_she_was_and_in_that_direction()
     {
         var anteayer = Hero(A, HeroClass.Anteayer, 4, 5);
-        var totem = Enemy(1, EnemyKind.Totem, 4, 3);
+        var totem = Enemy(1, EnemyKind.Totem, 4, 4);
         var state = State([anteayer], [totem]);
 
         state = Resolve(state, (A, Attack(Direction.North))).State;
@@ -53,7 +53,7 @@ public sealed class AnteayerTests
             EchoQueue = [new PendingEcho(1, At(4, 5), Direction.North)],
             Blessings = [Blessing.StoneFist],
         };
-        var totem = Enemy(1, EnemyKind.Totem, 4, 3);
+        var totem = Enemy(1, EnemyKind.Totem, 4, 4);
 
         var (next, _) = Resolve(State([anteayer], [totem]), (A, Attack(Direction.North)));
 
@@ -82,8 +82,9 @@ public sealed class AnteayerTests
 
         var (next, _) = Resolve(State([anteayer], [totem]), (A, Order.DefaultGuard));
 
+        // Su casilla era el alcance del Eco: a ella no le hace nada, y al Tótem de atrás no llega.
         Assert.Equal(4, next.H(A).Hp);
-        Assert.Equal(2, next.E(1)!.Hp);
+        Assert.Equal(3, next.E(1)!.Hp);
     }
 
     [Fact]
@@ -240,10 +241,10 @@ public sealed class AnteayerTests
     [Fact]
     public void Changing_room_erases_history_and_pending_echoes()
     {
-        var anteayer = Hero(A, HeroClass.Anteayer, 4, 1) with
+        var anteayer = Hero(A, HeroClass.Anteayer, 4, 4) with
         {
-            EchoQueue = [new PendingEcho(3, At(4, 1), Direction.West)],
-            History = [new HeroTrace(1, At(4, 1), 4)],
+            EchoQueue = [new PendingEcho(3, At(4, 4), Direction.West)],
+            History = [new HeroTrace(1, At(4, 4), 4)],
         };
 
         var (next, _) = Resolve(TwoRooms([anteayer]), (A, Move(Direction.North)));

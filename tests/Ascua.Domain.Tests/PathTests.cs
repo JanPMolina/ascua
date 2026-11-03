@@ -185,8 +185,8 @@ public sealed class PathTests
     public void Rekindle_lifts_an_adjacent_fallen_ally_with_one_life_for_three_echoes()
     {
         // Sin la Calidez (que lo curaría al terminar la ronda junto a la Brasa) para ver la vida de Reavivar.
-        var fallen = Hero(B, HeroClass.Usurera, 4, 3, seat: 1) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1, WarmthCooldown = 3 };
-        var state = TwoRooms([Ember(A, 4, 4), fallen, Hero(C, HeroClass.Campanero, 8, 8, seat: 2)]);
+        var fallen = Hero(B, HeroClass.Usurera, 4, 5, seat: 1) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 1, WarmthCooldown = 3 };
+        var state = TwoRooms([Ember(A, 4, 6), fallen, Hero(C, HeroClass.Campanero, 8, 8, seat: 2)]);
 
         var (next, events) = Resolve(state, (A, Interact(Direction.North)));
 
@@ -291,7 +291,7 @@ public sealed class PathTests
             SkillCooldown = 1,
             HinderCooldown = 2,
         };
-        var state = TwoRooms([ember, Hero(B, HeroClass.Usurera, 4, 1, seat: 1)]);
+        var state = TwoRooms([ember, Hero(B, HeroClass.Usurera, 4, 4, seat: 1)]);
 
         var (next, events) = Resolve(state, (B, Move(Direction.North)));
 
@@ -333,7 +333,7 @@ public sealed class PathTests
     {
         var second = EmptyRoom(1) with { InitialEnemies = [Enemy(7, EnemyKind.Scavenger, 4, 4), Enemy(8, EnemyKind.Moth, 2, 2)] };
         var renegade = Hero(A, HeroClass.Mampostero, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true, Embers = 3 };
-        var state = TwoRooms([renegade, Hero(B, HeroClass.Usurera, 4, 1, seat: 1), Hero(C, HeroClass.Campanero, 8, 8, seat: 2)], second: second);
+        var state = TwoRooms([renegade, Hero(B, HeroClass.Usurera, 4, 4, seat: 1), Hero(C, HeroClass.Campanero, 8, 8, seat: 2)], second: second);
 
         var (next, events) = Resolve(state, (B, Move(Direction.North)));
 
@@ -356,7 +356,7 @@ public sealed class PathTests
     {
         var second = EmptyRoom(1) with { InitialEnemies = [Enemy(7, EnemyKind.Scavenger, 4, 4)] };
         var renegade = Hero(A, HeroClass.Mampostero, 0, 0) with { Status = HeroStatus.Renegade, AwaitingSpawn = true };
-        var state = TwoRooms([renegade, Hero(B, HeroClass.Usurera, 4, 1, seat: 1)], second: second);
+        var state = TwoRooms([renegade, Hero(B, HeroClass.Usurera, 4, 4, seat: 1)], second: second);
 
         var (next, _) = Resolve(state, (B, Move(Direction.North)));
 
@@ -409,8 +409,8 @@ public sealed class PathTests
     [Fact]
     public void The_first_hit_of_a_renegade_on_each_hero_is_absorbed_and_later_hits_deal_at_most_one_and_steal_an_ember()
     {
-        var renegade = PresentRenegade(A, HeroClass.Errata, 4, 4) with { Blessings = [Blessing.StoneFist] };
-        var mampostero = Hero(B, HeroClass.Mampostero, 4, 3, seat: 1, facing: Direction.North) with { Embers = 3 };
+        var renegade = PresentRenegade(A, HeroClass.Errata, 4, 7) with { Blessings = [Blessing.StoneFist] };
+        var mampostero = Hero(B, HeroClass.Mampostero, 4, 6, seat: 1, facing: Direction.North) with { Embers = 3 };
         var state = TwoRooms([renegade, mampostero, Hero(C, HeroClass.Campanero, 8, 8, seat: 2)]);
 
         var (warned, events) = Resolve(state, (A, Attack(Direction.North)), (B, Interact(Direction.East)));

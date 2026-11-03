@@ -185,6 +185,14 @@ internal static class EnemyTurn
     /// </summary>
     private static void WardenTurn(RoundContext ctx, Enemy warden, Position? target)
     {
+        if (warden.WardenRests)
+        {
+            // Golpe pesado: entre uno y otro toma aire, sin moverse ni girarse. Es la ventana para rodearlo.
+            ctx.Update(warden with { WardenRests = false });
+            return;
+        }
+
+        warden = warden with { WardenRests = true };
         if (target is { } tile)
         {
             if (warden.Position.DistanceTo(tile) > WardenReach)

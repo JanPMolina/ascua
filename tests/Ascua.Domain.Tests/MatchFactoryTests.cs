@@ -32,6 +32,39 @@ public sealed class MatchFactoryTests
     }
 
     [Fact]
+    public void Monsters_appear_near_the_stairs_and_away_from_the_entrance()
+    {
+        foreach (var seed in Enumerable.Range(1, 20))
+        {
+            var (state, _) = MatchFactory.Create(ThreePlayers, new SeededRandom((ulong)seed));
+            var monsters = state.Rooms.Take(4).SelectMany(room => room.InitialEnemies).ToList();
+
+            Assert.NotEmpty(monsters);
+            Assert.All(monsters, e => Assert.True(e.Position.DistanceTo(MatchFactory.StairsPosition) <= MatchFactory.MonsterSpread, $"{e.Kind} en {e.Position}"));
+            Assert.All(monsters, e => Assert.DoesNotContain(e.Position, MatchFactory.SpawnPoints));
+        }
+    }
+
+    [Fact]
+    public void With_two_players_each_room_brings_at_most_two_monsters()
+    {
+        var (duo, _) = MatchFactory.Create([new(A, HeroClass.Mampostero), new(B, HeroClass.Usurera)], new SeededRandom(42));
+        var (trio, _) = MatchFactory.Create(ThreePlayers, new SeededRandom(42));
+
+        Assert.All(duo.Rooms.Take(4), room => Assert.Equal(2, room.InitialEnemies.Count));
+        Assert.Equal(3, trio.Rooms[0].InitialEnemies.Count);
+    }
+
+    [Fact]
+    public void The_miser_and_the_second_body_start_with_the_catalog_values()
+    {
+        var (state, _) = MatchFactory.Create([new(A, HeroClass.Avaro), new(B, HeroClass.Hilvan)], new SeededRandom(42));
+
+        Assert.Equal(HeroRules.MiserStartEmbers, state.H(A).Embers);
+        Assert.Equal(HeroCatalog.For(HeroClass.Hilvan).MaxHp, state.H(B).Hp);
+    }
+
+    [Fact]
     public void Every_bearer_gets_a_distinct_secret_pact_and_a_private_draft_of_two()
     {
         var (state, events) = MatchFactory.Create(ThreePlayers, new SeededRandom(7));

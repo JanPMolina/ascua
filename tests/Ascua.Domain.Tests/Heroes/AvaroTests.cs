@@ -19,9 +19,9 @@ public sealed class AvaroTests
     private static Enemy Striker(int x, int y, EnemyKind kind = EnemyKind.Scavenger) => Enemy(9, kind, 0, 0) with { Telegraph = [At(x, y)] };
 
     [Fact]
-    public void He_starts_with_three_embers_and_no_life_bar()
+    public void He_starts_with_his_embers_and_no_life_bar()
     {
-        var avaro = Avaro(4, 4);
+        var avaro = Model.Hero.Create(A, 0, HeroClass.Avaro, At(4, 4));
 
         Assert.Equal(HeroRules.MiserStartEmbers, avaro.Embers);
         Assert.Equal(1, avaro.MaxHp);
@@ -118,7 +118,7 @@ public sealed class AvaroTests
         var (drift, _) = Resolve(State([Avaro(8, 8), ember], room: room), (B, Move(Direction.North)));
         Assert.Single(drift.CurrentRoom.Ground);
 
-        var hero = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1);
+        var hero = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
         var (next, _) = Resolve(TwoRooms([Avaro(8, 8), hero], first: room), (B, Move(Direction.North)));
         Assert.Equal(1, next.RoomIndex);
         Assert.Empty(next.CurrentRoom.Ground);
@@ -333,8 +333,8 @@ public sealed class AvaroTests
         Assert.True(renegade.H(A).IsRenegade);
         Assert.Equal(HeroRules.MiserMinReturnEmbers, renegade.H(A).Embers);
 
-        var ember = Ember(A, 4, 4, saved: 2, heroClass: HeroClass.Avaro);
-        var hero = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1);
+        var ember = Ember(A, 2, 2, saved: 2, heroClass: HeroClass.Avaro);
+        var hero = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
         var (reborn, _) = Resolve(TwoRooms([ember, hero]), (B, Move(Direction.North)));
         Assert.True(reborn.H(A).IsActive);
         Assert.Equal(HeroRules.MiserMinReturnEmbers, reborn.H(A).Embers);

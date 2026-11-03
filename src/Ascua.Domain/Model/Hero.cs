@@ -66,10 +66,10 @@ public static class HeroCatalog
 
     public static HeroStats For(HeroClass heroClass) => heroClass switch
     {
-        HeroClass.Errata => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 6, SkillCooldown: 2),
-        HeroClass.Anteayer => new(MaxHp: 4, Range: 2, Damage: 1, Initiative: 5, SkillCooldown: 5),
-        HeroClass.Hilvan => new(MaxHp: 5, Range: 1, Damage: 1, Initiative: 3, SkillCooldown: 3),
-        HeroClass.Polizon => new(MaxHp: 3, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
+        HeroClass.Errata => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 6, SkillCooldown: 3),
+        HeroClass.Anteayer => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 5, SkillCooldown: 5),
+        HeroClass.Hilvan => new(MaxHp: 8, Range: 1, Damage: 1, Initiative: 3, SkillCooldown: 3),
+        HeroClass.Polizon => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
         HeroClass.Escucha => new(MaxHp: 5, Range: 4, Damage: 1, Initiative: 2, SkillCooldown: 4),
         HeroClass.Usurera => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 2),
 
@@ -117,11 +117,11 @@ public static class HeroRules
     public const int LoanReach = 2;
     public const int LoanHeal = 3;
     public const int LoanReviveHp = 3;
-    public const int LoanDebt = 2;
-    public const int InterestEvery = 3;
-    public const int DebtCap = 6;
+    public const int LoanDebt = 1;
+    public const int InterestEvery = 5;
+    public const int DebtCap = 4;
 
-    public const int MiserStartEmbers = 3;
+    public const int MiserStartEmbers = 4;
     public const int MiserReviveEmbers = 2;
     public const int MiserRekindleEmbers = 1;
 

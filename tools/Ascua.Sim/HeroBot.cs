@@ -8,7 +8,8 @@ namespace Ascua.Sim;
 /// <param name="BetrayalPercent">Probabilidad de golpear a un aliado cuando se puede (fuego amigo o anónimo).</param>
 /// <param name="VengeancePercent">Probabilidad de elegir el Camino de la Venganza al extinguirse.</param>
 /// <param name="BellMissPercent">Con el Repique, probabilidad de que otro jugador no decida a tiempo (guarda).</param>
-public sealed record BotOptions(int BetrayalPercent = 10, int VengeancePercent = 30, int BellMissPercent = 20);
+/// <param name="StartRoom">Sala en la que empieza (0 = partida normal; 4 = solo la pelea con el Celador, para medirla aparte).</param>
+public sealed record BotOptions(int BetrayalPercent = 10, int VengeancePercent = 30, int BellMissPercent = 20, int StartRoom = 0);
 
 /// <summary>
 /// Un jugador simulado. Decide solo con su <see cref="PlayerView"/> (más lo que recuerda de lo que vio en esta sala):
@@ -26,6 +27,10 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private List<Position> _lastBodies = [];
     private readonly List<Position> _trail = [];
     private bool _triedStairs;
+    private const int FinishingBlow = 4;
+
+    private int _heldStairs;
+    private int _waits;
     private int _room = -1;
 
     // Foto de la ronda que se está decidiendo.
@@ -96,6 +101,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             _openedChests.Clear();
             _bumped.Clear();
             _triedStairs = false;
+            _heldStairs = 0;
+            _waits = 0;
             _lastOrder = null;
             _trail.Clear();
         }
@@ -229,7 +236,13 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
                     return 0;
                 }
 
-                return enemy.Hp <= AttackDamage() ? 6 : 4;
+                // Al Tótem hay que apagarlo antes de que siga invocando, salvo en la pelea final: ahí todo es el Celador.
+                if (_view.RoomIndex == _view.RoomCount - 1)
+                {
+                    return enemy.Kind == EnemyKind.Warden ? 7 : enemy.Hp <= AttackDamage() ? 3 : 2;
+                }
+
+                return enemy.Hp <= AttackDamage() ? 6 : enemy.Kind == EnemyKind.Totem ? 5 : 4;
             }
 
             if (_others.TryGetValue(position, out var other) && other.Status != HeroStatus.Down)
@@ -417,20 +430,34 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             return sidesteps.Count > 0 ? new Order(OrderType.Move, sidesteps[rng.Next(sidesteps.Count)]) : Order.DefaultGuard;
         }
 
-        var (step, length) = PathTo(isGoal, safeFirstStep: !charge);
-        if (!charge && !InDanger)
+        var (direct, _) = PathTo(isGoal, safeFirstStep: false);
+        if (direct is { } step && (charge || !AfterMove(step).Exists(_danger.Contains)))
         {
-            // Si por el camino seguro hay que dar un rodeo, conviene esperar a que pase el golpe o se bajen los pinchos.
-            var (_, direct) = PathTo(isGoal, safeFirstStep: false);
-            if (length > direct + 1)
-            {
-                return Order.DefaultGuard;
-            }
+            _waits = 0;
+            return new Order(OrderType.Move, step);
         }
 
-        if (step is { } direction)
+        if (direct is { } risky)
         {
-            return new Order(OrderType.Move, direction);
+            // El paso directo duele: lo normal es esperar a que pase el golpe o se bajen los pinchos. Rodear
+            // no sirve: con los pinchos, al volver a la misma casilla toca otra vez la ronda mala.
+            if (!InDanger && _waits < 2)
+            {
+                _waits++;
+                return Order.DefaultGuard;
+            }
+
+            _waits = 0;
+            if (CanTakeAHit)
+            {
+                return new Order(OrderType.Move, risky);
+            }
+
+            var (around, _) = PathTo(isGoal, safeFirstStep: true);
+            if (around is { } safeStep)
+            {
+                return new Order(OrderType.Move, safeStep);
+            }
         }
 
         if (!InDanger)
@@ -476,7 +503,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private Position StairsTile() =>
         _known.FirstOrDefault(k => k.Value == Terrain.Stairs).Key is var stairs && TerrainAt(stairs) == Terrain.Stairs
             ? stairs
-            : new Position(4, 0);
+            : Ascua.Domain.Rules.MatchFactory.StairsPosition;
 
     // ───────────── Héroe ─────────────
 
@@ -485,6 +512,22 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         if (KillThreat() is { } kill)
         {
             return new Order(OrderType.Attack, kill);
+        }
+
+        if (IsRunner() && !_triedStairs && (!InDanger || CanTakeAHit))
+        {
+            var stairs = StairsTile();
+            return Walk(p => p == stairs, stairs, charge: CanTakeAHit);
+        }
+
+        if (AdjacentFallen() is { } liftFirst && (!InDanger || CanTakeAHit))
+        {
+            return liftFirst;
+        }
+
+        if (_view.Enemies.FirstOrDefault(e => e.Kind == EnemyKind.Warden) is { } boss)
+        {
+            return FightWarden(boss, heard);
         }
 
         if (InDanger)
@@ -506,6 +549,13 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
                 return Walk(spots.Contains, prey.Position, charge: true);
             }
 
+            // Le disparan desde donde no ve: esquivar no sirve (el tirador se vuelve a alinear); mejor seguir avanzando.
+            if (_view.Enemies.IsEmpty && CanTakeAHit && _view.RoomIndex < _view.RoomCount - 1)
+            {
+                var stairs = StairsTile();
+                return Walk(p => p == stairs, stairs, charge: true);
+            }
+
             return SafestMove(StairsTile()) is { } dodge ? new Order(OrderType.Move, dodge) : Order.DefaultGuard;
         }
 
@@ -524,6 +574,11 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             return new Order(OrderType.Attack, betrayal);
         }
 
+        if (_self.Class == HeroClass.Hilvan && SkillReady && _view.Enemies.FirstOrDefault(e => e.Kind == EnemyKind.Totem) is { } totem && StretchAround(totem) is { } around)
+        {
+            return around;
+        }
+
         if (BestAttack() is { } attack)
         {
             return new Order(OrderType.Attack, attack);
@@ -534,7 +589,61 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             return interaction;
         }
 
+        // Quien ya llegó a la escalera no la suelta mientras otros dos pelean: cuando caiga el último, se baja esa misma ronda.
+        if (_view.RoomIndex < _view.RoomCount - 1 && _bodies.Contains(StairsTile()) && _heldStairs < 8
+            && _view.Allies.Count(a => a.Status == HeroStatus.Active) >= 2)
+        {
+            _heldStairs++;
+            return Order.DefaultGuard;
+        }
+
         return Advance();
+    }
+
+    /// <summary>
+    /// La pelea con el Celador: mira y golpea a quien tiene más cerca, así que el más cercano esquiva sin alejarse y los
+    /// demás lo golpean desde donde no los ve (de frente no le hacen nada). Nadie entra a su golpe si puede evitarlo.
+    /// </summary>
+    private Order FightWarden(EnemyView warden, IReadOnlyList<(PlayerId Player, Order Order)>? heard)
+    {
+        if (SkillReady && InDanger && SkillToEscape() is { } escape)
+        {
+            return escape;
+        }
+
+        // Errata y el Mampostero aquí rinden más golpeando: sus habilidades quedan para salvarse.
+        if (SkillReady && !InDanger && _self.Class is not (HeroClass.Errata or HeroClass.Mampostero) && SkillOfOpportunity(heard) is { } skill)
+        {
+            return skill;
+        }
+
+        // Hilván lo cruza desde los dos lados: a Tensar no le importa hacia dónde mire, y rinde el doble que un golpe.
+        if (_self.Class == HeroClass.Hilvan && SkillReady && !InDanger && StretchAround(warden) is { } stretch)
+        {
+            return stretch;
+        }
+
+        // Al final de la pelea ya nadie esquiva: con el Celador casi muerto, un golpe vale más que la vida que cuesta.
+        if (BestAttack() is { } attack && (!InDanger || CanTakeAHit || warden.Hp <= FinishingBlow))
+        {
+            return new Order(OrderType.Attack, attack);
+        }
+
+        if (InDanger)
+        {
+            return SafestMove(warden.Position) is { } dodge ? new Order(OrderType.Move, dodge) : Order.DefaultGuard;
+        }
+
+        var fallen = _view.Allies.FirstOrDefault(a => a is { Status: HeroStatus.Down, Position: not null });
+        if (fallen?.Position is { } fallenAt && PathTo(p => p.DistanceTo(fallenAt) == 1, safeFirstStep: true).First is { } toFallen)
+        {
+            return new Order(OrderType.Move, toFallen);
+        }
+
+        var spots = AttackSpots(warden);
+        spots.ExceptWith(_danger);
+        var (step, _) = PathTo(spots.Contains, safeFirstStep: true);
+        return step is { } direction ? new Order(OrderType.Move, direction) : Order.DefaultGuard;
     }
 
     private Order? AdjacentFallen()
@@ -578,6 +687,24 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         return null;
     }
 
+    /// <summary>
+    /// Quien va primero rumbo a la escalera no se detiene a pelear: la sala se cruza más rápido si alguien espera ya
+    /// sobre ella cuando cae el último. Con 3 o más en pie, el resto se encarga de los monstruos.
+    /// </summary>
+    private bool IsRunner()
+    {
+        if (_view.RoomIndex >= _view.RoomCount - 1)
+        {
+            return false;
+        }
+
+        var stairs = StairsTile();
+        var others = _view.Allies.Where(a => a is { Status: HeroStatus.Active, Position: not null }).Select(a => a.Position!.Value).ToList();
+        var mine = _bodies.Min(b => b.DistanceTo(stairs));
+        var engaged = _view.Enemies.Any(e => _bodies.Exists(b => b.DistanceTo(e.Position) <= 2));
+        return mine > 0 && others.TrueForAll(o => o.DistanceTo(stairs) >= mine) && (others.Count >= 2 || (others.Count == 1 && !engaged));
+    }
+
     /// <summary>Un enemigo que vale la pena perseguir aunque el camino duela: el Ballestero huye a distancia y dispara en línea.</summary>
     private EnemyView? ChargeTarget() =>
         _self.Hp + _self.Shield >= 4 || (_self.Class == HeroClass.Avaro && _self.Embers >= 4)
@@ -605,8 +732,9 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             return toDebtor;
         }
 
-        // Los monstruos vienen solos: no hace falta ir a buscarlos lejos mientras se avanza hacia la escalera.
-        var enemy = NearestEnemy(e => e.Kind is EnemyKind.Warden or EnemyKind.Totem or EnemyKind.Crossbowman || _triedStairs || _bodies.Min(b => b.DistanceTo(e.Position)) <= 3);
+        // Los monstruos vienen solos: se les pega cuando llegan, sin dejar de avanzar hacia la escalera. Al Ballestero
+        // y al Tótem sí hay que ir a buscarlos (uno dispara de lejos y el otro no se mueve).
+        var enemy = NearestEnemy(e => e.Kind is EnemyKind.Warden or EnemyKind.Totem or EnemyKind.Crossbowman || _triedStairs || _bodies.Min(b => b.DistanceTo(e.Position)) <= 2);
         if (enemy is not null)
         {
             if (_self.Class == HeroClass.Hilvan && StretchAround(enemy) is { } stretch)
@@ -642,11 +770,19 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         var stairsTile = StairsTile();
         if (_view.RoomIndex < _view.RoomCount - 1 && !_triedStairs)
         {
-            _triedStairs = _bodies.Contains(stairsTile);
-            if (!_triedStairs)
+            if (!_bodies.Contains(stairsTile))
             {
                 return Walk(p => p == stairsTile, stairsTile);
             }
+
+            // Ya en la escalera: si quedaba pelea, en cuanto termine se baja. Se espera un poco antes de ir a buscar al que falta.
+            if (_heldStairs < 3 && _view.Allies.Any(a => a.Status == HeroStatus.Active))
+            {
+                _heldStairs++;
+                return Order.DefaultGuard;
+            }
+
+            _triedStairs = true;
         }
 
         var oldest = Room.AllPositions().Where(IsPassable).OrderBy(p => _lastSeen.GetValueOrDefault(p)).ThenBy(p => _self.Position.DistanceTo(p)).FirstOrDefault();
@@ -873,7 +1009,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private Order? ShoutPlan()
     {
         var allies = _view.Allies.Count(a => a.Status == HeroStatus.Active);
-        return _view.Enemies.IsEmpty && _self.Hp >= 4 && allies > 0 ? new Order(OrderType.Skill, Direction.North) : null;
+        return _view.Enemies.IsEmpty && _view.Noise.IsEmpty && _self.Hp >= 4 && allies > 0 ? new Order(OrderType.Skill, Direction.North) : null;
     }
 
     /// <summary>La Usurera presta a quien esté caído o con la mitad de vida o menos; si no hay a quién, se acerca sola.</summary>
@@ -915,7 +1051,11 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
                 var cost = enemy.Kind == EnemyKind.Warden ? HeroRules.WardenBribeCost : HeroRules.BribeCost;
                 var threatensMe = _view.Telegraphs.Any(t => t.EnemyId == enemy.Id && t.Tiles.Intersect(_bodies).Any());
                 var threatensAlly = _view.Telegraphs.Any(t => t.EnemyId == enemy.Id && t.Tiles.Any(_others.ContainsKey));
-                if (_self.Embers > cost + (mustSaveMe ? 0 : 3) && (threatensMe || (!mustSaveMe && threatensAlly)))
+
+                // Sus ascuas son su vida y su puntuación: para salvarse paga si le alcanza; por un aliado, solo si le sobra.
+                // Al Celador no le paga por sí mismo: cuesta 3 y el golpe le quita 2.
+                var worthIt = enemy.Kind == EnemyKind.Warden ? !mustSaveMe && threatensMe && threatensAlly : threatensMe || (!mustSaveMe && threatensAlly);
+                if (_self.Embers > cost + (mustSaveMe ? 0 : 5) && worthIt)
                 {
                     return new Order(OrderType.Skill, direction);
                 }
@@ -942,7 +1082,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             }
         }
 
-        return best is { } chosen ? new Order(OrderType.Skill, chosen) : null;
+        return best is { } chosen && bestScore >= 3 ? new Order(OrderType.Skill, chosen) : null;
     }
 
     private int ShiftScore(Direction direction)
@@ -959,7 +1099,12 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             var wraps = from.DistanceTo(to) > 1;
             if (_enemies.TryGetValue(from, out var enemy))
             {
-                if (wraps)
+                // Mandar al Celador al otro lado de la sala cuesta más rondas de las que vale su daño.
+                if (enemy.Kind == EnemyKind.Warden)
+                {
+                    score -= 6;
+                }
+                else if (wraps)
                 {
                     score += enemy.Hp <= HeroRules.WrapDamage ? 6 : 4;
                 }
@@ -990,7 +1135,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             return null;
         }
 
-        return _view.Enemies.Count >= 2 && BestAttack() is null && _view.Allies.Any(a => a.Status == HeroStatus.Active)
+        // A los bots no les sirve para farolear: lo toca de vez en cuando, cuando no tiene nada mejor que hacer.
+        return _view.Enemies.Count >= 2 && BestAttack() is null && _view.Allies.Any(a => a.Status == HeroStatus.Active) && Roll(25)
             ? new Order(OrderType.Skill, Direction.North)
             : null;
     }

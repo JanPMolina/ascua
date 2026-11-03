@@ -118,16 +118,16 @@ public sealed class EnemyTests
     }
 
     [Fact]
-    public void Totem_summons_a_scavenger_every_three_rounds_and_goes_out_after_three()
+    public void Totem_summons_a_scavenger_every_few_rounds_and_goes_out_after_three()
     {
         var state = State([Hero(A, HeroClass.Mampostero, 0, 8)], [Enemy(1, EnemyKind.Totem, 8, 0)]);
         var events = new List<DomainEvent>();
-        for (var round = 1; round <= 9; round++)
+        for (var round = 1; round <= 3 * EnemyCatalog.TotemSummonEvery; round++)
         {
             var (next, roundEvents) = Resolve(state, FixedRandom.Never);
             state = next;
             events.AddRange(roundEvents);
-            if (round == 2)
+            if (round == EnemyCatalog.TotemSummonEvery - 1)
             {
                 Assert.DoesNotContain(events, e => e is EnemySpawned);
             }
@@ -152,6 +152,24 @@ public sealed class EnemyTests
         Assert.Equal(24, front.E(1)!.Hp);
         Assert.Contains(frontEvents, e => e is HitPrevented { Reason: PreventionReason.FrontImmunity });
         Assert.Equal(23, flank.E(1)!.Hp);
+    }
+
+    [Fact]
+    public void Warden_rests_every_other_round_without_moving_or_turning()
+    {
+        var warden = Model.Enemy.Create(1, EnemyKind.Warden, new Position(4, 2), maxHp: 24) with { Facing = Direction.South };
+        var state = State([Hero(A, HeroClass.Mampostero, 7, 2)], [warden]);
+
+        var (struck, _) = Resolve(state, (A, Order.DefaultGuard));
+        Assert.NotEmpty(struck.E(1)!.Telegraph);
+
+        var (resting, _) = Resolve(struck, (A, Move(Direction.South)));
+        Assert.Empty(resting.E(1)!.Telegraph);
+        Assert.Equal(struck.E(1)!.Position, resting.E(1)!.Position);
+        Assert.Equal(struck.E(1)!.Facing, resting.E(1)!.Facing);
+
+        var (again, _) = Resolve(resting, (A, Order.DefaultGuard));
+        Assert.NotEmpty(again.E(1)!.Telegraph);
     }
 
     [Fact]
@@ -182,7 +200,11 @@ public sealed class EnemyTests
         Assert.Contains(new Position(0, 2), boss.Telegraph);
         Assert.Contains(new Position(4, 8), boss.Telegraph);
 
-        var (after, _) = Resolve(next, (A, Move(Direction.West)));
+        // Entre golpe y golpe toma aire: el siguiente anuncio llega una ronda después.
+        var (resting, _) = Resolve(next, (A, Order.DefaultGuard));
+        Assert.Empty(resting.E(1)!.Telegraph);
+
+        var (after, _) = Resolve(resting, (A, Move(Direction.West)));
         Assert.DoesNotContain(new Position(4, 8), after.E(1)!.Telegraph);
         Assert.Equal(9, after.E(1)!.Telegraph.Count);
     }

@@ -149,16 +149,18 @@ public sealed class MamposteroTests
     [Fact]
     public void If_the_stairs_would_be_cut_off_it_does_not_happen_and_keeps_the_cooldown()
     {
-        // La escalera (4,0) solo se alcanza por (4,1); al correr la fila 1, el muro de (3,1) la tapa.
+        // La escalera solo se alcanza desde el sur; al correr esa fila, el muro de su izquierda la tapa.
+        var south = Stairs.Step(Direction.South);
         var room = EmptyRoom()
-            .WithTerrain(At(3, 0), Terrain.Wall)
-            .WithTerrain(At(5, 0), Terrain.Wall)
-            .WithTerrain(At(3, 1), Terrain.Wall)
-            .WithTerrain(At(5, 1), Terrain.Wall);
+            .WithTerrain(Stairs.Step(Direction.North), Terrain.Wall)
+            .WithTerrain(Stairs.Step(Direction.West), Terrain.Wall)
+            .WithTerrain(Stairs.Step(Direction.East), Terrain.Wall)
+            .WithTerrain(south.Step(Direction.West), Terrain.Wall)
+            .WithTerrain(south.Step(Direction.East), Terrain.Wall);
 
-        var (next, events) = Resolve(TwoRooms([Mason(0, 1)], first: room), (A, Skill(Direction.East)));
+        var (next, events) = Resolve(TwoRooms([Mason(0, south.Y)], first: room), (A, Skill(Direction.East)));
 
-        Assert.Equal(At(0, 1), next.H(A).Position);
+        Assert.Equal(At(0, south.Y), next.H(A).Position);
         Assert.Equal(0, next.H(A).SkillCooldown);
         Assert.DoesNotContain(events, e => e is RoomShifted);
     }
@@ -185,13 +187,13 @@ public sealed class MamposteroTests
     [Fact]
     public void The_stairs_slide_too_and_still_work()
     {
-        var hero = Mason(4, 0);
+        var hero = Mason(Stairs.X, Stairs.Y);
 
         var (next, _) = Resolve(TwoRooms([hero, Hero(B, HeroClass.Campanero, 0, 8, seat: 1)]), (A, Skill(Direction.East)), (B, Interact(Direction.East)));
 
         // Escalera y Mampostero se movieron juntos: sigue encima y la sala está despejada.
         Assert.Equal(1, next.RoomIndex);
-        Assert.Equal(Terrain.Stairs, next.Rooms[0].TerrainAt(At(5, 0)));
+        Assert.Equal(Terrain.Stairs, next.Rooms[0].TerrainAt(Stairs.Step(Direction.East)));
     }
 
     [Fact]

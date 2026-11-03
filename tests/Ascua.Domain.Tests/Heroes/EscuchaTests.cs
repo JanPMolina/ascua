@@ -251,7 +251,7 @@ public sealed class EscuchaTests
     [Fact]
     public void Noise_does_not_carry_over_to_the_next_room()
     {
-        var ally = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1);
+        var ally = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
 
         var (next, _) = Resolve(TwoRooms([Escucha(0, 8), ally]), (A, Order.DefaultGuard), (B, Move(Direction.North)));
 

@@ -136,7 +136,7 @@ public sealed class PathRealtimeTests(AscuaApiFactory factory)
             Rooms = [FirstRoom(), second, BossRoom()],
             RoomIndex = 0,
             Enemies = [],
-            Heroes = [Extinct(state.Heroes[0], saved: 6), state.Heroes[1] with { Position = new Position(4, 1) }],
+            Heroes = [Extinct(state.Heroes[0], saved: 6), state.Heroes[1] with { Position = Stairs.Step(Direction.South) }],
         });
 
         await ca.GetSnapshotAsync(matchId);
@@ -192,7 +192,7 @@ public sealed class PathRealtimeTests(AscuaApiFactory factory)
             Rooms = [FirstRoom(), new Room { Index = 1, SpawnPoints = MatchFactory.SpawnPoints }, BossRoom()],
             RoomIndex = 0,
             Enemies = [],
-            Heroes = [Extinct(state.Heroes[0], saved: 10) with { Position = new Position(4, 3) }, state.Heroes[1] with { Position = new Position(4, 1) }],
+            Heroes = [Extinct(state.Heroes[0], saved: 10) with { Position = new Position(2, 3) }, state.Heroes[1] with { Position = Stairs.Step(Direction.South) }],
         });
 
         await ca.GetSnapshotAsync(matchId);

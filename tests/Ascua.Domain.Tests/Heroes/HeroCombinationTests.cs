@@ -91,7 +91,7 @@ public sealed class HeroCombinationTests
     }
 
     [Fact]
-    public void Echo_with_a_fallen_ally_the_blow_passes_over_and_does_not_hurt()
+    public void Echo_with_a_fallen_ally_the_blow_does_not_hurt()
     {
         var anteayer = Hero(A, HeroClass.Anteayer, 4, 5) with { EchoQueue = [new PendingEcho(1, At(4, 5), Direction.North)] };
         var fallen = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1) with { Hp = 0, Status = HeroStatus.Down };
@@ -99,7 +99,7 @@ public sealed class HeroCombinationTests
 
         var (next, _) = Resolve(State([anteayer, fallen], [totem]), (A, Order.DefaultGuard));
 
-        Assert.Equal(2, next.E(1)!.Hp);
+        Assert.Equal(3, next.E(1)!.Hp);
         Assert.Equal(0, next.H(B).Hp);
     }
 
@@ -128,7 +128,7 @@ public sealed class HeroCombinationTests
         var polizon = Hero(B, HeroClass.Polizon, 4, 4, seat: 1) with { HostEnemyId = 1, BoardedRound = 1, Debt = 2, DebtTo = A, DebtSinceRound = 1 };
         var host = Enemy(1, EnemyKind.Scavenger, 4, 4);
 
-        var (interest, _) = Resolve(State([usurera, polizon], [host], round: 4), (A, Order.DefaultGuard), (B, Order.DefaultGuard));
+        var (interest, _) = Resolve(State([usurera, polizon], [host], round: 1 + HeroRules.InterestEvery), (A, Order.DefaultGuard), (B, Order.DefaultGuard));
 
         Assert.Equal(3, interest.H(B).Debt);
 
@@ -155,7 +155,7 @@ public sealed class HeroCombinationTests
     public void Miser_with_the_paths_the_ember_keeps_half_of_his_peak_and_the_formula_applies()
     {
         var fallen = Hero(A, HeroClass.Avaro, 4, 4) with { Hp = 0, Status = HeroStatus.Down, DownRounds = 2, Embers = 0, PeakEmbers = 20 };
-        var other = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1);
+        var other = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
 
         var (extinct, _) = Resolve(TwoRooms([fallen, other]), (B, Order.DefaultGuard));
         Assert.Equal(10, extinct.H(A).SavedEmbers);

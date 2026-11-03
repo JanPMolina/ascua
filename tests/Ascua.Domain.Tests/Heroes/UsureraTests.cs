@@ -97,15 +97,15 @@ public sealed class UsureraTests
 
         var (next, _) = Resolve(State([Usurera(4, 5), ally], round: 2), (A, Skill(Direction.North)));
 
-        Assert.Equal(4, next.H(B).Debt);
+        Assert.Equal(2 + HeroRules.LoanDebt, next.H(B).Debt);
         Assert.Equal(1, next.H(B).DebtSinceRound);
     }
 
     [Fact]
-    public void Every_three_rounds_with_debt_it_grows_by_one_up_to_six()
+    public void Every_few_rounds_with_debt_it_grows_by_one_up_to_the_cap()
     {
         var state = State([Usurera(0, 0), Debtor(2) with { DebtSinceRound = 1 }]);
-        for (var i = 0; i < 2; i++)
+        for (var i = 0; i < HeroRules.InterestEvery; i++)
         {
             state = Resolve(state, (A, Order.DefaultGuard), (B, Order.DefaultGuard)).State;
         }
@@ -113,9 +113,6 @@ public sealed class UsureraTests
         Assert.Equal(2, state.H(B).Debt);
 
         var (grown, events) = Resolve(state, (A, Order.DefaultGuard), (B, Order.DefaultGuard));
-        Assert.Equal(2, grown.H(B).Debt);
-
-        (grown, events) = Resolve(grown, (A, Order.DefaultGuard), (B, Order.DefaultGuard));
         Assert.Equal(3, grown.H(B).Debt);
         Assert.Contains(events, e => e is DebtChanged { Reason: DebtReason.Interest, Delta: 1 });
 
@@ -162,7 +159,7 @@ public sealed class UsureraTests
     public void What_cannot_be_collected_on_extinction_survives_and_rebirth_pays_it()
     {
         var chooser = ExtinctHero(B, seat: 1, saved: 10) with { PathChoice = PathKind.Friendship, Debt = 3, DebtTo = A };
-        var other = Hero(C, HeroClass.Mampostero, 4, 1, seat: 2);
+        var other = Hero(C, HeroClass.Mampostero, 4, 4, seat: 2);
 
         var (ember, _) = Resolve(TwoRooms([Usurera(0, 0), chooser, other]), (A, Order.DefaultGuard), (C, Order.DefaultGuard));
         Assert.True(ember.H(B).IsEmber);

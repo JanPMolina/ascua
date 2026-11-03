@@ -228,7 +228,7 @@ public sealed class HilvanTests
     [Fact]
     public void A_single_body_on_the_stairs_is_enough()
     {
-        var (next, _) = Resolve(TwoRooms([Hilvan(2, 4, 4, 1)]), (A, Move(Direction.North)));
+        var (next, _) = Resolve(TwoRooms([Hilvan(2, 5, 4, 4)]), (A, Move(Direction.North)));
 
         Assert.Equal(1, next.RoomIndex);
     }
@@ -236,14 +236,14 @@ public sealed class HilvanTests
     [Fact]
     public void Entering_a_room_places_the_second_body_two_tiles_away_in_the_same_row()
     {
-        var hilvan = Hilvan(4, 1, 2, 1);
+        var hilvan = Hilvan(4, 4, 2, 4);
         var ally = Hero(B, HeroClass.Mampostero, 0, 0, seat: 1);
 
         var (next, _) = Resolve(TwoRooms([hilvan, ally]), (A, Move(Direction.North)));
 
-        Assert.Equal(At(3, 8), next.H(A).Position);
-        Assert.Equal(At(1, 8), next.H(A).SecondBody);
-        Assert.Equal(At(5, 8), next.H(B).Position);
+        Assert.Equal(MatchFactory.SpawnPoints[0], next.H(A).Position);
+        Assert.Equal(MatchFactory.SpawnPoints[0].Step(Direction.West, HeroRules.BodySpacing), next.H(A).SecondBody);
+        Assert.Equal(MatchFactory.SpawnPoints[1], next.H(B).Position);
     }
 
     [Fact]
@@ -268,7 +268,7 @@ public sealed class HilvanTests
     public void The_ember_is_a_single_one_on_the_main_body_and_the_second_body_comes_back_on_rebirth()
     {
         var chooser = ExtinctHero(A, HeroClass.Hilvan, saved: 4) with { Position = At(2, 4), PathChoice = PathKind.Friendship };
-        var ally = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1);
+        var ally = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
 
         var (ember, _) = Resolve(TwoRooms([chooser, ally]), (B, Order.DefaultGuard));
         Assert.True(ember.H(A).IsEmber);
@@ -276,15 +276,15 @@ public sealed class HilvanTests
 
         var (reborn, _) = Resolve(ember, (B, Move(Direction.North)));
         Assert.True(reborn.H(A).IsActive);
-        Assert.Equal(At(3, 8), reborn.H(A).Position);
-        Assert.Equal(At(1, 8), reborn.H(A).SecondBody);
+        Assert.Equal(MatchFactory.SpawnPoints[0], reborn.H(A).Position);
+        Assert.Equal(MatchFactory.SpawnPoints[0].Step(Direction.West, HeroRules.BodySpacing), reborn.H(A).SecondBody);
     }
 
     [Fact]
     public void A_renegade_hilvan_reappears_with_a_second_body_and_tug_deals_at_most_one()
     {
-        var hilvan = PresentRenegade(A, HeroClass.Hilvan, 4, 1) with { AwaitingSpawn = true };
-        var ally = Hero(B, HeroClass.Mampostero, 4, 1, seat: 1);
+        var hilvan = PresentRenegade(A, HeroClass.Hilvan, 4, 4) with { AwaitingSpawn = true };
+        var ally = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
 
         var (next, _) = Resolve(TwoRooms([hilvan, ally]), (B, Move(Direction.North)));
         Assert.True(next.H(A).IsPresentRenegade);

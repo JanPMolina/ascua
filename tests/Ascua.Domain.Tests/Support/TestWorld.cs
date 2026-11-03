@@ -36,8 +36,21 @@ internal static class TestWorld
 
     public static readonly Position Stairs = MatchFactory.StairsPosition;
 
-    public static Hero Hero(PlayerId player, HeroClass heroClass, int x, int y, int seat = 0, Direction facing = Direction.North) =>
-        Model.Hero.Create(player, seat, heroClass, new Position(x, y)) with { Facing = facing };
+    /// <summary>
+    /// Un héroe con vida y ascuas fijas: estas pruebas son de reglas, no de balance, así que un ajuste en
+    /// <see cref="HeroCatalog"/> no debe romperlas. Los valores reales los cubre <c>MatchFactoryTests</c>.
+    /// </summary>
+    public static Hero Hero(PlayerId player, HeroClass heroClass, int x, int y, int seat = 0, Direction facing = Direction.North)
+    {
+        var hero = Model.Hero.Create(player, seat, heroClass, new Position(x, y)) with { Facing = facing };
+        return heroClass switch
+        {
+            HeroClass.Hilvan => hero with { Hp = 5 },
+            HeroClass.Polizon => hero with { Hp = 3 },
+            HeroClass.Avaro => hero with { Embers = 3, PeakEmbers = 3 },
+            _ => hero,
+        };
+    }
 
     public static Hero ExtinctHero(PlayerId player, HeroClass heroClass = HeroClass.Mampostero, int seat = 0, int saved = 0) =>
         Hero(player, heroClass, 2, 2, seat) with
@@ -71,8 +84,17 @@ internal static class TestWorld
             Rooms = [(first ?? EmptyRoom(0)).WithTerrain(Stairs, Terrain.Stairs), second ?? EmptyRoom(1), EmptyRoom(2)],
         };
 
-    public static Enemy Enemy(int id, EnemyKind kind, int x, int y, Direction facing = Direction.South) =>
-        Model.Enemy.Create(id, kind, new Position(x, y)) with { Facing = facing };
+    /// <summary>Un enemigo con vida fija, por lo mismo que <see cref="Hero"/>: resiste un golpe aunque el catálogo baje.</summary>
+    public static Enemy Enemy(int id, EnemyKind kind, int x, int y, Direction facing = Direction.South)
+    {
+        int? hp = kind switch
+        {
+            EnemyKind.Scavenger or EnemyKind.Slime or EnemyKind.Crossbowman => 2,
+            EnemyKind.Totem => 3,
+            _ => null,
+        };
+        return Model.Enemy.Create(id, kind, new Position(x, y), hp) with { Facing = facing };
+    }
 
     public static Room EmptyRoom(int index = 0) => new() { Index = index, SpawnPoints = MatchFactory.SpawnPoints };
 
