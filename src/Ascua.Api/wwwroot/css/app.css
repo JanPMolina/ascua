@@ -1368,6 +1368,7 @@ button.path-card.chosen { opacity: 1; filter: none; border-color: var(--ok); box
 
 .demo-hero { display: inline-flex; align-items: center; gap: .3rem; font-size: .78rem; color: var(--muted); }
 .demo-hero select { width: auto; padding: .15rem .3rem; font-size: .78rem; }
+#me-tiles { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .heroes dd i { color: var(--ember-hi); }
 .hero-minis { flex-wrap: wrap; }
 .hero-mini:nth-child(n + 5) { animation-delay: .3s; }

@@ -1146,7 +1146,7 @@ class MatchController {
         return host ? `A bordo de ${label(ENEMIES, host.kind)} (${host.hp}/${host.maxHp}). Nadie te ve.` : 'A bordo. Nadie te ve.';
       }
       case 'ESCUCHA':
-        return `A oscuras más allá de 1 casilla. Oíste ${this.noiseTiles.length} ruido${this.noiseTiles.length === 1 ? '' : 's'} en la última resolución.`;
+        return `A oscuras más allá de tu alcance. Oíste ${this.noiseTiles.length} ruido${this.noiseTiles.length === 1 ? '' : 's'} en la última resolución.`;
       case 'AVARO':
         return me.embers <= 1 ? 'Te queda 1 ascua o menos: otro golpe y caes.' : 'Cada punto de daño tira 1 ascua al suelo. Pisa la casilla para recuperarla.';
       case 'CAMPANERO':
@@ -1603,7 +1603,7 @@ function showFinished(m, myPlayerId, onBack) {
     const li = el('li', { dataset: traitor ? { hero: traitor.hero } : {} },
       traitor ? heroAvatar(traitor.hero, 'sm') : null,
       el('span', {}, el('b', {}, label(HEROES, traitor?.hero ?? '—')), ` le costó ${b.damage} de vida a `, el('b', {}, `${victim?.displayName ?? 'alguien'}${victim ? you(victim) : ''}`),
-        traitor ? el('small', {}, ` (${traitor.displayName}${you(traitor)})`) : null));
+        traitor ? el('small', {}, ` · la jugaba ${traitor.displayName}${you(traitor)}`) : null));
     li.style.animationDelay = `${1 + i * 0.2}s`;
     return li;
   }));
