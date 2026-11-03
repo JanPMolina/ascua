@@ -250,13 +250,13 @@ export const SFX = {
   },
   /** Cobro: cascada de monedas hacia la Usurera. */
   collect(t, out, { amount = 1 } = {}) {
-    const n = clamp(3 + amount * 2, 3, 10);
+    const n = Math.min(10, Math.max(3, 3 + amount * 2));
     for (let i = 0; i < n; i++) bell({ freq: rand(2200, 3800), t: t + i * 0.05, dur: 0.18, peak: 0.05, metal: true, out });
     return 0.2 + n * 0.05;
   },
   /** Ascuas que caen al suelo y rebotan. */
   embersDrop(t, out, { amount = 1 } = {}) {
-    const n = clamp(amount * 3, 3, 9);
+    const n = Math.min(9, Math.max(3, amount * 3));
     for (let i = 0; i < n; i++) tone({ freq: rand(1400, 2600), t: t + i * 0.055 + i * i * 0.004, dur: 0.05, peak: 0.08 / (1 + i * 0.25), out });
     crackles(t, out, { count: 4, span: 0.3, peak: 0.12 });
     return 0.6;
