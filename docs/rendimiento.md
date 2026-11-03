@@ -130,6 +130,21 @@ de la réplica (compilación JIT por niveles, conexiones nuevas a Postgres y Red
 a la vez). Con carga fija pasa lo mismo: el p95 baja durante los primeros 2-3 minutos y después se estabiliza
 (§4.1). En Azure conviene una etapa de calentamiento antes de medir.
 
+**Repetida con los nueve héroes** (3-nov-2026, contrato 2.0.0, misma rampa y mismos límites;
+`loadtests/reports/rampa-heroes.md`): el motor nuevo no empeora la capacidad.
+
+| Partidas | p95 | p99 | Tasa de error | CPU (de 50 % máx.) | RAM | Meta |
+|---:|---:|---:|---:|---:|---:|:---:|
+| 16 | 69,3 | 101,7 | 0,00 % | 19,5 % | 284 MiB | ✅ |
+| 64 | 21,3 | 60,8 | 0,00 % | 38,9 % | 225 MiB | ✅ |
+| 112 | 113,5 | 216,8 | 0,00 % | 48,9 % | 245 MiB | ✅ |
+| 128 | 170,0 | 210,3 | 0,00 % | 49,9 % | 248 MiB | ✅ |
+
+Tampoco hubo jugadas perdidas ni duplicadas, huecos de `seq` ni difusiones faltantes. Esta vez 128 partidas
+quedó dentro de la meta, pero con la CPU en la cuota y por una sola corrida, así que **se sigue declarando
+~112 partidas por réplica**, sin buscar un punto de quiebre más alto. Los bots de carga juegan órdenes al azar:
+esta corrida no mide el costo de cada habilidad por separado. Las cifras de §3.2 y §4 son de la versión anterior.
+
 ### 3.2 CPU y memoria por partida activa
 
 Con carga fija de 64 partidas, en estado estable (minutos 3 y 4, `loadtests/reports/fijo64-despues.md`):
