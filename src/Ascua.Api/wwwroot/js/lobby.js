@@ -25,7 +25,7 @@ function heroPicker(fieldset, name, selected) {
       el('span', { class: 'hc-breaks' }, `Rompe: «${info.breaks}»`),
       el('span', { class: 'hc-stats' }, el('span', { class: 'hp' }, info.hpIsEmbers ? `✦ ${info.hp} de oro como vida` : `♥ ${info.hp} de vida`), '·', el('span', {}, `alcance ${info.range}`), '·', el('span', {}, `iniciativa ${info.initiative}`)),
       el('span', { class: 'hc-ability' }, el('b', {}, info.passiveName), `: ${info.passive}`),
-      el('span', { class: 'hc-ability' }, el('b', {}, `${info.ability} (enf. ${info.cooldown})`), `: ${info.abilityText}`),
+      el('span', { class: 'hc-ability' }, el('b', {}, `${info.ability} (espera ${info.cooldown})`), `: ${info.abilityText}`),
       el('span', { class: 'hc-taken' }));
   });
   fieldset.append(...cards);
@@ -42,9 +42,21 @@ function explain(err) {
 
 // ───────────── Lobby ─────────────
 
-export async function showLobby() {
+/** Con `resume` (al entrar o recargar) vuelve directo a la partida en curso del jugador, si la tiene. */
+export async function showLobby({ resume = false } = {}) {
   stopPolling();
   currentRoom = null;
+  if (resume) {
+    try {
+      const matchId = await api.activeMatch();
+      if (matchId) {
+        enter(matchId);
+        return;
+      }
+    } catch {
+      // Sin respuesta: se muestra el lobby y el jugador puede reintentar.
+    }
+  }
   showScreen('lobby');
   refreshRooms();
   // Si el usuario ya estaba en una sala (p. ej. volvió a iniciar sesión), se retoma.

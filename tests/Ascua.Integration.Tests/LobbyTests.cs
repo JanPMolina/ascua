@@ -184,9 +184,19 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         using var started = await SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/start", host);
         var matchId = (await ReadAsync(started)).GetProperty("matchId").GetGuid();
 
+        using (var active = await SendAsync(HttpMethod.Get, "/api/v1/users/me/active-match", guest))
+        {
+            Assert.Equal(matchId, (await ReadAsync(active)).GetProperty("matchId").GetGuid());
+        }
+
         var engine = factory.Services.GetRequiredService<MatchEngine>();
         Assert.Null((await engine.RetireAsync(matchId, host.Id, default)).Error);
         Assert.Null((await engine.RetireAsync(matchId, guest.Id, default)).Error);
+
+        using (var none = await SendAsync(HttpMethod.Get, "/api/v1/users/me/active-match", guest))
+        {
+            Assert.Equal(System.Text.Json.JsonValueKind.Null, (await ReadAsync(none)).GetProperty("matchId").ValueKind);
+        }
 
         var registry = factory.Services.GetRequiredService<IActiveMatchRegistry>();
         Assert.Null(await registry.GetAsync(host.Id, default));
