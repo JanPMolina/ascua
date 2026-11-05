@@ -19,7 +19,7 @@ const TUTORIAL = params.get('tutorial') === '1';
 const USE_JSON = params.get('json') === '1';
 
 function enterMatch(matchId) {
-  startMatch({ transport: new RealTransport(matchId, { json: USE_JSON }), onExit: showLobby });
+  startMatch({ transport: new RealTransport(matchId, { json: USE_JSON }), onExit: () => showLobby() });
 }
 
 function startDemo() {
@@ -84,7 +84,7 @@ function bindAuth() {
     $('btn-logout').hidden = !loggedIn;
     setText('user-label', loggedIn ? api.currentUsername() : '');
     if (loggedIn) {
-      showLobby();
+      showLobby({ resume: true });
     } else {
       stopMatch();
       stopLobby();
@@ -114,6 +114,7 @@ function main() {
   bindAuth();
   initLobby({ onEnterMatch: enterMatch });
   showScreen('auth');
+  api.restoreSession();
 }
 
 main();

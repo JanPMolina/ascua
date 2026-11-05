@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Ascua.Api.Security;
+using Ascua.Application.Matches;
 using Ascua.Application.Users;
 using Ascua.Infrastructure.Auth;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -30,7 +31,22 @@ public static class UserEndpoints
             .WithValidation<UpdateProfileRequest>()
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        me.MapGet("/active-match", GetActiveMatchAsync)
+            .WithName("GetMyActiveMatch")
+            .WithSummary("Partida en curso del usuario, para volver a ella tras recargar o iniciar sesión (matchId null si no tiene).");
+
         return app;
+    }
+
+    private static async Task<Results<Ok<ActiveMatchResponse>, ProblemHttpResult>> GetActiveMatchAsync(
+        ClaimsPrincipal principal, IActiveMatchRegistry activeMatches, CancellationToken cancellationToken)
+    {
+        if (!TryGetUserId(principal, out var userId))
+        {
+            return Problems.Unauthorized.ToResult();
+        }
+
+        return TypedResults.Ok(new ActiveMatchResponse(await activeMatches.GetAsync(userId, cancellationToken)));
     }
 
     private static async Task<Results<Ok<UserProfileResponse>, ProblemHttpResult>> GetAsync(
