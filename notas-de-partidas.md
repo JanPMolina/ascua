@@ -50,6 +50,25 @@ Jugadores que caminan con intención a la escalera, atacan con paso y golpe, sab
 
 **Sin probar todavía:** una victoria real contra el Celador (estos bots llegan al límite de 60 rondas), si los sonidos se oyen bien (el navegador de prueba no tiene audio) y un celular físico.
 
+## Prueba de victoria y salas (5 partidas, 4 navegadores con jugadores que van a la escalera y al Celador)
+
+Datos revisados en la base. Los bots no usan habilidades, así que 1 victoria de 5 no mide la dificultad real.
+
+| Comprobado | Resultado |
+|---|---|
+| Vencer al Celador | 1 de 5. Pantalla de victoria correcta para ganador y demás |
+| Reparto del Celador | Daño 14, 9 y 1 dio +4, +2 y 0, más +1 al golpe final: correcto |
+| Tesoro | 4 cofres y 1 monstruo más |
+| Arena | 0 cofres, +1 o +2 monstruos y +2 de oro por golpe final |
+| Santuario | 1 monstruo, 6 pinchos contra 3, altar abierto sin llave |
+| Oscura | Visión 2 (La Escucha sigue en 1), 3 cofres |
+| Errores de JS o CSP | Ninguno |
+
+**A vigilar**
+- Un Fantasma que murió antes ganó con 10 de oro, y quien hizo 14 de daño quedó último con 5.
+- Escarcha congela pero no daña: un bot con ella congeló a un monstruo durante 26 rondas sin matarlo. Una persona que la elija debe pedir ayuda.
+- Nada avisa que quedan monstruos si pisas la escalera y no pasa nada.
+
 ## Qué mirar en las partidas reales (versión 3)
 
 Antes que nada: **todo lo de 06-version-3.md está sin probar con personas**. Los números salen de bots, y el mayor riesgo es que sea fácil.
