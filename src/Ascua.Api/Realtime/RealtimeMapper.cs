@@ -263,18 +263,20 @@ public static class RealtimeMapper
         };
     }
 
+    private static string Count(int value, string one, string many) => $"{value} {(value == 1 ? one : many)}";
+
     private static AwardDto AwardDtoOf(Award award)
     {
         var (code, title, reason) = award.Kind switch
         {
-            AwardKind.MostBetrayals => ("MOST_BETRAYALS", "El más traidor", $"{award.Value} traiciones"),
+            AwardKind.MostBetrayals => ("MOST_BETRAYALS", "El más traidor", Count(award.Value, "traición", "traiciones")),
             AwardKind.MostWardenDamage => ("MOST_WARDEN_DAMAGE", "Azote del Celador", $"{award.Value} de daño al Celador"),
-            AwardKind.MostRevives => ("MOST_REVIVES", "Buen samaritano", $"Levantó a {award.Value} aliados"),
+            AwardKind.MostRevives => ("MOST_REVIVES", "Buen samaritano", $"Levantó a {Count(award.Value, "aliado", "aliados")}"),
             AwardKind.MostTrialGoldLost => ("MOST_TRIAL_GOLD_LOST", "Carne de juzgado", $"Perdió {award.Value} de oro en juicios"),
             AwardKind.RichestDeath => ("RICHEST_DEATH", "Murió rico", $"Murió con {award.Value} de oro"),
-            AwardKind.MostKills => ("MOST_KILLS", "Matamonstruos", $"{award.Value} golpes finales"),
-            AwardKind.MostChests => ("MOST_CHESTS", "Saqueador de cofres", $"Abrió {award.Value} cofres"),
-            _ => ("MOST_PUSHES", "Manos largas", $"{award.Value} empujones"),
+            AwardKind.MostKills => ("MOST_KILLS", "Matamonstruos", Count(award.Value, "golpe final", "golpes finales")),
+            AwardKind.MostChests => ("MOST_CHESTS", "Saqueador de cofres", $"Abrió {Count(award.Value, "cofre", "cofres")}"),
+            _ => ("MOST_PUSHES", "Manos largas", Count(award.Value, "empujón", "empujones")),
         };
         return new AwardDto { AwardId = code, PlayerId = award.Player.Value, Title = title, Reason = reason, Value = award.Value };
     }
