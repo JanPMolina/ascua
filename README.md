@@ -22,6 +22,8 @@ docker compose up --build
 - API (OpenAPI 3.1 con Scalar): http://localhost:8080/docs
 - Salud: http://localhost:8080/health/live · http://localhost:8080/health/ready
 
+Para jugar entre varios equipos de la misma red: [docs/jugar-en-red-local.md](docs/jugar-en-red-local.md).
+
 ## Desarrollar y probar
 
 Requisitos: [.NET SDK 10](https://dotnet.microsoft.com/download/dotnet/10.0).

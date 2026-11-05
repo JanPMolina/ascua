@@ -1,0 +1,17 @@
+# Partida en red local: se usa con jugar-en-red.ps1, que detecta la IP y define ASCUA_HOST_IP.
+# Solo la app queda visible en la red; Postgres y Redis, con credenciales de desarrollo, sin publicar ningún puerto.
+services:
+  api:
+    environment:
+      Ascua__Realtime__EnableDevEndpoints: "false"
+      Ascua__Realtime__PublicBaseUrl: "http://${ASCUA_HOST_IP:?falta ASCUA_HOST_IP}:8080"
+      Ascua__Cors__AllowedOrigins__0: "http://${ASCUA_HOST_IP}:8080"
+      Ascua__Cors__AllowedOrigins__1: "http://localhost:8080"
+      # Tras el NAT de Docker Desktop todos los jugadores pueden verse con la misma IP.
+      Ascua__RateLimiting__Auth__PermitLimit: "200"
+
+  postgres:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
