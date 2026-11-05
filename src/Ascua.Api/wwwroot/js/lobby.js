@@ -25,7 +25,7 @@ function heroPicker(fieldset, name, selected) {
       el('span', { class: 'hc-breaks' }, `Rompe: «${info.breaks}»`),
       el('span', { class: 'hc-stats' }, el('span', { class: 'hp' }, info.hpIsEmbers ? `✦ ${info.hp} de oro como vida` : `♥ ${info.hp} de vida`), '·', el('span', {}, `alcance ${info.range}`), '·', el('span', {}, `iniciativa ${info.initiative}`)),
       el('span', { class: 'hc-ability' }, el('b', {}, info.passiveName), `: ${info.passive}`),
-      el('span', { class: 'hc-ability' }, el('b', {}, `${info.ability} (enf. ${info.cooldown})`), `: ${info.abilityText}`),
+      el('span', { class: 'hc-ability' }, el('b', {}, `${info.ability} (espera ${info.cooldown})`), `: ${info.abilityText}`),
       el('span', { class: 'hc-taken' }));
   });
   fieldset.append(...cards);
