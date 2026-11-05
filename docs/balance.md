@@ -1,10 +1,96 @@
-# Balance de los nueve héroes
+# Balance
 
-Resultados del simulador `tools/Ascua.Sim` contra las metas de [05-heroes.md §14](../planteamiento/05-heroes.md). Los valores finales del juego están en ese documento, §2 y §16.
+Resultados del simulador `tools/Ascua.Sim` contra las metas de [05-heroes.md §14](../planteamiento/05-heroes.md). No se movió ninguna meta.
+
+## Versión 3
+
+Reglas en [06-version-3.md](../planteamiento/06-version-3.md); valores finales en su §12.
+
+**En resumen:** con 10 % de traición se cumplen las 6 metas. **El riesgo sigue siendo que entre personas sea fácil,** y no se pudo subir más la dificultad: el tope que manda es el de rondas, no el Celador. Las maldiciones existen para eso: `WARDEN_PLUS` y `FIERCE` son lo primero que hay que probar si el grupo arrasa.
+
+| Métrica | Meta | Traición 10 % | ¿Cumple? | Traición 0 % | Traición 30 % |
+|---|---|---|---|---|---|
+| Partidas en que cae el Celador | 35–65 % | **49,1 %** (2 jug.: 44,2; 3: 47,1; 4: 51,7) | Sí | 60,5 % | **31,1 %** (bajo la meta) |
+| Victoria por héroe (4 jugadores) | 18–32 % | **19,8–29,3 %** | Sí | 18,7–29,8 % | 19,5–31,1 % |
+| Peor dúo | < 1,5× | **1,12×** en victoria, 1,07× en caída del Celador | Sí | 1,14× | 1,18× |
+| Rondas por partida | 25–55 | **54,8** (2 jug.: 52,9; 3: 54,9; 4: 55,3) | Sí, por poco | 53,4 | **56,5** (sobre la meta) |
+| Caídos o extintos | 30–70 % | **46,8 %** | Sí | **28,9 %** (bajo la meta) | 63,8 % |
+| Umbral | < 25 % | **8,5 %** (de 10 287) | Sí | 5,4 % | 11,8 % |
+
+**Método:** las 246 combinaciones de 2, 3 y 4 jugadores, 200 partidas por combinación (49 200 por corrida), semilla `20261102`. Los bots deciden solo con su `PlayerView` y lo que reciben por eventos. Para reproducirla:
+
+```bash
+dotnet run -c Release --project tools/Ascua.Sim -- --games 200 --seed 20261102 --betrayal 10
+```
+
+La meta se mide con 10 % de traición, como antes. Con 30 % falla por abajo y con 0 % los caídos quedan un punto bajo la meta: la traición ahora pesa de verdad, porque un sabotaje es 1 de daño seguro por sala. Un grupo que se sabotea mucho no llega. Es lo que se busca, pero a 30 % el Celador cae menos de lo que dice la meta.
+
+### Antes y después
+
+«Antes» es la versión 2, con sus bots (traición 10 %).
+
+| Métrica | Versión 2 | Versión 3 |
+|---|---|---|
+| Celador cae | 45,5 % | 49,1 % |
+| Con 2 jugadores | 27,8 % | 44,2 % |
+| Victoria por héroe | 15,1–33,1 % | 19,8–29,3 % |
+| Peor dúo | 1,26× | 1,12× |
+| Rondas por partida | 55,9 | 54,8 |
+| Llegan al límite de 60 | 50,2 % | 45,9 % |
+| Rondas por sala | 7,5 / 8,6 / 10,9 / 13,0 / 17,7 | 9,0 / 10,3 / 11,4 / 12,0 / 16,2 |
+| Caídos o extintos | 39,7 % | 46,8 % |
+| Umbral | 6,6 % | 8,5 % |
+
+### Por héroe (4 jugadores, traición 10 %)
+
+| Héroe | Victoria | Celador cae con él | Cae o se extingue | Habilidad/partida | Golpes finales | Ascuas | Daño a aliados |
+|---|---|---|---|---|---|---|---|
+| Anteayer | 29,3 % | 50,7 % | 45,0 % | 2,0 | 3,8 | 8,3 | 2,5 |
+| Campanero | 28,9 % | 50,6 % | 56,1 % | 0,5 | 4,1 | 8,7 | 3,1 |
+| Errata | 27,2 % | 53,3 % | 54,7 % | 4,5 | 4,5 | 8,2 | 4,8 |
+| Usurera | 27,1 % | 52,3 % | 67,8 % | 3,0 | 2,7 | 9,0 | 1,9 |
+| Escucha | 26,8 % | 52,6 % | 46,9 % | 1,3 | 4,1 | 8,4 | 3,6 |
+| Avaro | 25,5 % | 53,7 % | 13,9 % | 0,7 | 3,6 | 8,4 | 2,1 |
+| Polizón | 20,3 % | 49,7 % | 45,3 % | 1,4 | 3,9 | 7,6 | 2,0 |
+| Mampostero | 19,9 % | 51,3 % | 34,5 % | 2,4 | 3,6 | 7,7 | 2,1 |
+| Hilván | 19,8 % | 51,3 % | 62,1 % | 0,1 | 4,0 | 7,3 | 2,1 |
+
+**Por partida:** 4,17 sabotajes, 0,16 empujones, 3,72 interludios, 2,41 acusaciones, 0,50 condenas de culpables, 0,11 de inocentes, 0,88 misiones cumplidas. Las puertas se eligen casi por igual.
+
+### Qué se cambió y por qué
+
+| Cambio | Antes → ahora | Por qué, con el dato medido |
+|---|---|---|
+| Vida del Celador | 5 → 6 por jugador | Con el paso y la acción, los bots lo matan en 17 rondas si llegan. Con 7 por jugador, la media sube a 55,5 rondas: fuera de la meta |
+| Polilla y Saltasapo | 1 → 2 | Son los monstruos que casi no alargan la sala: salen poco y vienen solos |
+| Carroñero, Gelatina y Ballestero | Se quedan en 1 | Con 2 de vida cae el Celador en 13,5–34 % y la media llega a 56–58 rondas: dos de cada tres partidas se agotan antes del final |
+| Polizón, vida | 4 → 6 | Por debajo de la meta en todas las pruebas (14–16 %). Llega a 20,3 % |
+| Campanero, vida | 5 → 4 | Con alcance 2, el paso le rendía más que a nadie: 34,6 %. Baja a 28,9 % |
+| Usurera, interés | Cada 5, tope 4 → cada 7, tope 3 | Con paso y acción cobraba aún más: 37–41 %. Baja a 27,1 % |
+| Eco y asistencia | El Eco no cobra asistencia | Anteayer llegaba a 36 %. Baja a 29,3 % |
+| Huésped y asistencia | El golpe desde un huésped sí cobra | Ayuda a Polizón |
+
+**Bots.** Se les enseñó lo mismo que hará una persona, en este orden:
+- Sumar acción a cada paso, y pegar o abrir lo que quede a mano aunque solo quisieran caminar.
+- Salir de un golpe y actuar en la misma ronda, si se puede.
+- Recordar dónde vieron al Celador. Antes, quien lo perdía de vista se iba a explorar: la mitad del grupo no peleaba.
+- Pensar en el reloj: si van tarde, dejan los cofres y los altares.
+- Sabotear con el parámetro de traición (una tirada por ronda; el triple si su misión lo pide), acusar a quien estaba en línea con quien recibió un golpe sin autor en la fase de acciones (70 %) y nunca si traicionaron ellos, y elegir puerta (Tesoro si su misión son los cofres; si no, al azar).
+
+### Lo que no se pudo, y qué mirar
+
+- **Monstruos.** Se pedía subir su vida con claridad. El reloj no lo deja: cada punto en un monstruo común cuesta 1–2 rondas por sala, y las partidas ya están en 54,8 de 55. Se subieron los dos que menos alargan.
+- **El mayor riesgo sigue siendo que sea fácil.** Un sidestep con ataque al mismo monstruo no se puede hacer (al apartarte dejas de estar adyacente), pero personas coordinadas enfocan mejor que los bots: 16 rondas contra el Celador con 4 héroes siguen siendo muchas. Si caen demasiado rápido, primero las maldiciones; luego, `EnemyCatalog.WardenHpPerPlayer`.
+- **Empujón:** 0,16 por partida. Los bots solo empujan a una grieta o, con su misión, a unos pinchos. Entre personas pesa más.
+- **Hilván y Tensar:** 0,1 usos por partida; su dato subestima al héroe.
+- **Las 12 mejoras** salen del reparto al azar y los bots casi no las aprovechan (salvo Escucha con Lámpara). El sim mide que no rompen el juego, no si son divertidas.
+- **Mejoras fuertes sin medir aparte:** Brasa viva quema siempre y Escarcha congela siempre. Si dominan entre personas, ahí hay que mirar primero.
+
+## Versión 2 (histórico)
 
 **En resumen:** con los números originales el Celador no caía nunca. Con los finales cae en el 45,5 % de las partidas y se cumplen 4 de las 6 metas. Dos quedan fuera: la duración, por 0,9 rondas, y la victoria por héroe. **Estos números están calibrados contra bots que pierden muchas acciones, así que hay que confirmarlos jugando**: una partida entre personas puede resultar bastante más fácil.
 
-## Metas contra resultado
+### Metas contra resultado
 
 Corrida principal con 10 % de traición. La última columna muestra cuánto se mueve el resultado con 0 % y 30 %.
 
@@ -49,7 +135,7 @@ La meta del Celador se cumple en el total, pero **no con 2 jugadores**. Se dejó
 | Polizón | **15,8 %** (bajo) | 48,2 % | 55,8 % | 1,2 | 3,9 | 5,3 | 0,3 |
 | Hilván | **15,1 %** (bajo) | 52,1 % | 57,8 % | 0,0 | 4,1 | 4,8 | 0,5 |
 
-## Antes y después
+### Antes y después
 
 «Antes» son los números originales de 05-heroes.md **con los bots ya mejorados** (7380 partidas, 30 por combinación, misma semilla). Por eso prueba que arreglar los bots no bastaba.
 
@@ -65,11 +151,11 @@ La meta del Celador se cumple en el total, pero **no con 2 jugadores**. Se dejó
 
 Los caídos casi no cambian, así que el juego no se apagó para cumplir la tabla: sigue igual de peligroso, pero ahora se puede terminar.
 
-## Qué se cambió y por qué
+### Qué se cambió y por qué
 
 El orden fue el que se pidió: primero los bots, luego los números globales y al final los héroes.
 
-### 1. Bots (sin tocar el juego)
+#### 1. Bots (sin tocar el juego)
 
 Solo usan lo que su jugador ve. Estos errores gastaban rondas:
 
@@ -83,7 +169,7 @@ Solo usan lo que su jugador ve. Estos errores gastaban rondas:
 | Contra el Celador golpeaban de frente, sin efecto | El más cercano esquiva, los demás lo golpean desde donde no los ve, y con ≤4 de vida ya nadie esquiva |
 | El Avaro pagaba 3 ascuas para evitar un golpe de 2 | Solo soborna al Celador si con eso salva también a un aliado |
 
-### 2. Números globales
+#### 2. Números globales
 
 | Cambio | Antes → ahora | Por qué, con el dato medido |
 |---|---|---|
@@ -96,7 +182,7 @@ Solo usan lo que su jugador ve. Estos errores gastaban rondas:
 | Dónde nacen los monstruos | Filas 1–4 → a ≤4 de la escalera, filas ≤5 | Sin rincones lejos que recorrer. El Celador pasó de 31,0 a 37,1 % con 3 jugadores y de 43,7 a 48,3 % con 4 |
 | Castigo por Renegado | −6 con mínimo 12 → −3 con mínimo 5 | **Era un error:** con 2 jugadores, el piso de 12 le subía la vida máxima de 10 a 12 |
 
-### 3. Héroes (solo los que los datos mostraban rotos)
+#### 3. Héroes (solo los que los datos mostraban rotos)
 
 Las cifras «antes» salen de mediciones parciales de 30 partidas por combinación con 4 jugadores, antes de cerrar los números globales. Sirven para ver el orden de magnitud.
 
@@ -113,7 +199,7 @@ El alza del Avaro no viene solo de la ascua inicial: el mayor salto fue el arreg
 
 El tope de vida del contrato sube de 8 a 10, porque Hilván con Corazón doble llega a 10.
 
-## Lo que no se cumplió
+### Lo que no se cumplió
 
 No se movió ninguna meta.
 
@@ -125,7 +211,7 @@ No se movió ninguna meta.
 
 **Dúos:** ninguno pasa de 1,5×. El más alto es Errata + Usurera, con 1,26× en victoria, y son justo los dos héroes más altos.
 
-## Límites del método
+### Límites del método
 
 - **Los bots no faroleán.** No mienten con las señales, no aguantan la orden para negarle información al Campanero y no planean traiciones: solo las cometen al azar según `--betrayal`. El Campanero usa Repique 0,3 veces por partida. Todo lo que hace especial a Errata, al Campanero y a La Escucha entre personas queda fuera de estos datos.
 - **El riesgo mayor es que el juego quede fácil.** Las metas se alcanzaron con bots que todavía pierden muchas acciones (unas 19 rondas para 20 de vida, cuando cuatro héroes podrían hacerlo en 5 o 6). Con un Celador de 5 por jugador y monstruos de 1 de vida, un grupo coordinado de personas podría arrasar.
