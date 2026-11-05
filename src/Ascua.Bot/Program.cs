@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
 
 // Bot de Ascua: registra N jugadores, arranca una partida con el endpoint de desarrollo
-// (POST /api/v1/dev/matches, solo local/dev) y la juega con órdenes al azar hasta el final.
+// (POST /api/v1/dev/matches, solo local/dev) y la juega hasta el final con lo que ve cada jugador: camina hacia el
+// enemigo más cercano o la escalera, pega de paso, sabotea según el parámetro de traición, acusa a quien estuviera en
+// línea cuando alguien recibió un golpe sin autor y elige puerta.
 // Uso: dotnet run --project src/Ascua.Bot -- [baseUrl] [jugadores 2-4] [espera máx. ms] [traición %]
 // La prueba de carga (NBomber, MessagePack, N partidas simultáneas) vive en loadtests/.
 var baseUrl = new Uri(args.Length > 0 ? args[0] : "http://localhost:8080");
@@ -65,7 +67,9 @@ foreach (var player in players)
         Console.WriteLine($"  {player.Username} elige misión {choice.PactId}{reply.Describe()}");
     }));
 
-    // Interludio: acusa solo a quien vio golpear sin autor cerca (aquí, al azar y pocas veces: no tiene memoria) y elige puerta.
+    // Interludio: acusa a quien vio cerca de un golpe sin autor (nunca si traicionó él) y elige puerta.
+    var suspects = new HashSet<string>();
+    var betrayed = false;
     connection.On<InterludeOffer>("InterludeOffer", offer => _ = Task.Run(async () =>
     {
         if (!offer.CanVote || offer.MyVote is not null)
@@ -74,10 +78,13 @@ foreach (var player in players)
         }
 
         await Task.Delay(Random.Shared.Next(Math.Max(1, maxThinkMs)));
-        var accused = offer.Candidates.Count > 0 && Random.Shared.Next(100) < betrayalPercent ? offer.Candidates[Random.Shared.Next(offer.Candidates.Count)] : null;
+        var known = suspects.Where(offer.Candidates.Contains).ToList();
+        var accused = !betrayed && known.Count > 0 ? known[Random.Shared.Next(known.Count)] : null;
         int? door = offer.Doors.Count > 0 ? Random.Shared.Next(offer.Doors.Count) : null;
         var reply = await connection.InvokeAsync<Reply>("CastInterludeVote", new { matchId, offerId = offer.OfferId, accusedId = accused, door });
         Console.WriteLine($"  {player.Username} vota en el interludio de la sala {offer.EndedFloor} ({(accused is null ? "a nadie" : "acusa")}{(door is { } d ? $", puerta {offer.Doors[d].Type}" : "")}){reply.Describe()}");
+        suspects.Clear();
+        betrayed = false;
     }));
 
     connection.On<InterludeResolved>("InterludeResolved", resolved =>
@@ -92,7 +99,8 @@ foreach (var player in players)
     connection.On<RoundOpened>("RoundOpened", opened => _ = Task.Run(async () =>
     {
         await Task.Delay(Random.Shared.Next(Math.Max(1, maxThinkMs)));
-        var reply = await connection.InvokeAsync<Reply>("SubmitOrder", RandomOrder(matchId, opened.Round, betrayalPercent));
+        var view = (await connection.InvokeAsync<SnapshotMessage>("GetSnapshot", new { matchId })).View;
+        var reply = await connection.InvokeAsync<Reply>("SubmitOrder", Decide(matchId, opened.Round, view, betrayalPercent));
         if (reply.Error?.Code is "INVALID_ORDER")
         {
             reply = await connection.InvokeAsync<Reply>("SubmitOrder", Guard(matchId, opened.Round));
@@ -112,6 +120,22 @@ foreach (var player in players)
         if (player == players[0])
         {
             Console.WriteLine($"Ronda {resolved.Round} resuelta (seq {resolved.PreviousSeq} → {resolved.Seq}, {resolved.Delta.Events.Count} eventos visibles)");
+        }
+
+        foreach (var seen in resolved.Delta.Events)
+        {
+            betrayed |= seen.Type == "BETRAYAL_RECORDED";
+            if (seen is { Type: "DAMAGED", ActorId: null, Phase: "ACTIONS", TargetId: { } victim })
+            {
+                // Quien le quedaba en línea a 2 casillas pudo ser: es todo lo que se puede saber.
+                var at = resolved.Delta.AlliesChanged.FirstOrDefault(a => a.PlayerId == victim)?.Position ?? (victim == player.UserId.ToString("D") ? resolved.Delta.Me?.Position : null);
+                if (at is not null)
+                {
+                    suspects.UnionWith(resolved.Delta.AlliesChanged
+                        .Where(a => a.PlayerId != victim && a.Position is { } p && (p.X == at.X || p.Y == at.Y) && Math.Abs(p.X - at.X) + Math.Abs(p.Y - at.Y) <= 3)
+                        .Select(a => a.PlayerId));
+                }
+            }
         }
     });
 
@@ -149,22 +173,74 @@ foreach (var connection in connections)
     await connection.DisposeAsync();
 }
 
-// Orden al azar: casi siempre paso y acción. Sabotea según el parámetro de traición.
-static object RandomOrder(Guid matchId, int round, int betrayalPercent)
+// Decide con lo que ve: un paso hacia el enemigo más cercano (sin enemigos, hacia la escalera) y, desde donde quede, una acción.
+static object Decide(Guid matchId, int round, BotView view, int betrayalPercent)
 {
-    string[] types = ["ATTACK", "ATTACK", "ATTACK", "ABILITY", "INTERACT", "PUSH"];
     string[] directions = ["N", "S", "E", "W"];
-    if (Random.Shared.Next(6) == 0)
+    var clientActionId = Guid.CreateVersion7();
+    var me = view.Me;
+    if (me.State != "ALIVE" && me.State != "RENEGADE")
     {
-        return Guard(matchId, round);
+        // Un Fantasma camina; lo demás no le hace falta a este bot.
+        return new { matchId, round, clientActionId, order = (object)new { type = "MOVE", direction = directions[Random.Shared.Next(4)] } };
     }
 
-    var type = Random.Shared.Next(100) < betrayalPercent ? "SABOTAGE" : types[Random.Shared.Next(types.Length)];
-    var direction = directions[Random.Shared.Next(4)];
-    var clientActionId = Guid.CreateVersion7();
-    return Random.Shared.Next(4) == 0
-        ? new { matchId, round, clientActionId, order = (object)new { type = "MOVE", direction } }
-        : new { matchId, round, clientActionId, order = (object)new { type, direction, step = directions[Random.Shared.Next(4)] } };
+    var blocked = view.Tiles.Where(t => t.Kind is "WALL" or "BRAZIER" or "ALTAR" or "CHEST" or "CHEST_OPENED" or "CRACK").Select(t => (t.X, t.Y)).ToHashSet();
+    var occupied = view.Enemies.Select(e => (e.Position.X, e.Position.Y)).Concat(view.Allies.Where(a => a.Position is not null).Select(a => (a.Position!.X, a.Position!.Y))).ToHashSet();
+    (int X, int Y) Next((int X, int Y) from, string direction) => direction switch
+    {
+        "N" => (from.X, from.Y - 1),
+        "S" => (from.X, from.Y + 1),
+        "E" => (from.X + 1, from.Y),
+        _ => (from.X - 1, from.Y),
+    };
+
+    var position = (me.Position.X, me.Position.Y);
+    var stairs = view.Tiles.FirstOrDefault(t => t.Kind == "STAIRS");
+    (int X, int Y)? goal = view.Enemies.Count > 0
+        ? view.Enemies.OrderBy(e => Math.Abs(e.Position.X - position.X) + Math.Abs(e.Position.Y - position.Y)).Select(e => ((int, int)?)(e.Position.X, e.Position.Y)).First()
+        : stairs is not null ? (stairs.X, stairs.Y) : (4, 3);
+
+    // Si no pega desde donde está, da un paso que lo acerque.
+    string? step = null;
+    string? AttackFrom((int X, int Y) from) =>
+        directions.FirstOrDefault(d => view.Enemies.Any(e => (e.Position.X, e.Position.Y) == Next(from, d)));
+    if (AttackFrom(position) is null && goal is { } target)
+    {
+        step = directions
+            .Where(d => Next(position, d) is var n && n.X is >= 0 and < 9 && n.Y is >= 0 and < 9 && !blocked.Contains(n) && !occupied.Contains(n))
+            .OrderBy(d => Next(position, d) is var n ? Math.Abs(n.X - target.X) + Math.Abs(n.Y - target.Y) : 0)
+            .ThenBy(_ => Random.Shared.Next())
+            .FirstOrDefault();
+    }
+
+    var from = step is null ? position : Next(position, step);
+    if (me.CanSabotage && Random.Shared.Next(100) < betrayalPercent)
+    {
+        var line = directions.FirstOrDefault(d => view.Allies.Any(a => a is { State: "ALIVE", Position: not null } && ((a.Position.X, a.Position.Y) == Next(from, d) || (a.Position.X, a.Position.Y) == Next(Next(from, d), d))));
+        if (line is not null)
+        {
+            return new { matchId, round, clientActionId, order = (object)new { type = "SABOTAGE", direction = line, step } };
+        }
+    }
+
+    if (AttackFrom(from) is { } attack)
+    {
+        return new { matchId, round, clientActionId, order = (object)new { type = "ATTACK", direction = attack, step } };
+    }
+
+    // Lo adyacente que se pueda abrir o levantar; si no, solo caminar.
+    if (view.Tiles.Any(t => t.Kind == "CHEST") || view.Allies.Any(a => a.State == "DOWN"))
+    {
+        var use = directions.FirstOrDefault(d => view.Tiles.Any(t => t.Kind == "CHEST" && (t.X, t.Y) == Next(from, d))
+            || view.Allies.Any(a => a is { State: "DOWN", Position: not null } && (a.Position.X, a.Position.Y) == Next(from, d)));
+        if (use is not null)
+        {
+            return new { matchId, round, clientActionId, order = (object)new { type = "INTERACT", direction = use, step } };
+        }
+    }
+
+    return step is null ? Guard(matchId, round) : new { matchId, round, clientActionId, order = (object)new { type = "MOVE", direction = step } };
 }
 
 static object Guard(Guid matchId, int round) =>
@@ -273,7 +349,25 @@ internal sealed record HeardOrder(string PlayerId, string Type, string? Directio
 
 internal sealed record LastWord(int Round, IReadOnlyList<HeardOrder> Orders, bool TypesOnly);
 
-internal sealed record VisibleEvents(IReadOnlyList<object> Events);
+internal sealed record BotPosition(int X, int Y);
+
+internal sealed record BotTile(int X, int Y, string Kind);
+
+internal sealed record BotEnemy(BotPosition Position, string Kind);
+
+internal sealed record BotAlly(string PlayerId, string State, BotPosition? Position);
+
+internal sealed record BotMe(string State, BotPosition Position, bool CanSabotage);
+
+internal sealed record BotView(BotMe Me, IReadOnlyList<BotAlly> Allies, IReadOnlyList<BotEnemy> Enemies, IReadOnlyList<BotTile> Tiles);
+
+internal sealed record SnapshotMessage(BotView View);
+
+internal sealed record SeenEvent(string Type, string? ActorId, string? TargetId, string? Phase);
+
+internal sealed record DeltaMe(BotPosition Position);
+
+internal sealed record VisibleEvents(IReadOnlyList<SeenEvent> Events, IReadOnlyList<BotAlly> AlliesChanged, DeltaMe? Me);
 
 internal sealed record RoundResolved(int Round, long PreviousSeq, long Seq, VisibleEvents Delta);
 
