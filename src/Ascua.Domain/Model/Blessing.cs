@@ -66,7 +66,7 @@ public static class BlessingCatalog
 {
     public static IReadOnlyList<BlessingInfo> All { get; } =
     [
-        new(Blessing.LivingEmber, "Brasa viva", "Tus golpes siempre queman: 1 de daño la ronda siguiente.", "Recibes 1 de daño al abrir cofres."),
+        new(Blessing.LivingEmber, "Brasa viva", "Tus golpes siempre queman: 1 de daño más al terminar la ronda.", "Recibes 1 de daño al abrir cofres."),
         new(Blessing.FireStep, "Paso ígneo", "Cada paso deja fuego en la casilla que dejas.", "El fuego te hace 1 más a ti."),
         new(Blessing.StoneFist, "Puño de piedra", "Si atacas sin dar un paso, haces +1 de daño.", "−1 de vida máxima (el Avaro, −1 de oro)."),
         new(Blessing.DoubleHeart, "Corazón doble", "+2 de vida máxima (el Avaro, +1 de oro).", "Nada te cura."),

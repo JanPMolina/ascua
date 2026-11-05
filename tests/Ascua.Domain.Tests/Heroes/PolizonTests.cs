@@ -233,7 +233,7 @@ public sealed class PolizonTests
         Assert.Equal(2, next.H(B).Embers);
         Assert.Equal(0, next.H(A).Embers);
         Assert.Equal(1, events.OfType<EntityDamaged>().Single(d => d.Target.Hero == B).Source?.EnemyId);
-        Assert.Equal(new Betrayal(A, B, 2), Assert.Single(next.Betrayals));
+        Assert.Equal(new Betrayal(A, B, 2) { Kind = BetrayalKind.FromHost }, Assert.Single(next.Betrayals));
     }
 
     [Fact]

@@ -632,28 +632,10 @@ internal static class Combat
         var shares = ctx.Heroes.Where(h => h.Progress.WardenDamage > 0 && h.Status != HeroStatus.Retired)
             .Select(h => (h.Player, h.Seat, Damage: h.Progress.WardenDamage))
             .ToList();
-        foreach (var (player, amount) in SplitByLargestRemainder(shares, WardenBounty))
+        foreach (var (player, amount) in Outcomes.SplitByLargestRemainder(shares, WardenBounty))
         {
             GainEmbers(ctx, player, amount, EmberReason.WardenBounty);
         }
-    }
-
-    /// <summary>Mayores restos: la parte entera a cada uno y lo que sobra a los restos mayores (empate: menor asiento).</summary>
-    internal static List<(PlayerId Player, int Amount)> SplitByLargestRemainder(IReadOnlyCollection<(PlayerId Player, int Seat, int Damage)> shares, int total)
-    {
-        var sum = shares.Sum(s => s.Damage);
-        if (sum == 0)
-        {
-            return [];
-        }
-
-        var rows = shares
-            .OrderBy(s => s.Seat)
-            .Select(s => (s.Player, s.Seat, Whole: total * s.Damage / sum, Remainder: total * s.Damage % sum))
-            .ToList();
-        var left = total - rows.Sum(r => r.Whole);
-        var extra = rows.OrderByDescending(r => r.Remainder).ThenBy(r => r.Seat).Take(left).Select(r => r.Player).ToHashSet();
-        return [.. rows.Select(r => (r.Player, r.Whole + (extra.Contains(r.Player) ? 1 : 0))).Where(r => r.Item2 > 0)];
     }
 
     private static void Burn(RoundContext ctx, EntityRef target, int rounds, int damage)

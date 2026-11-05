@@ -32,13 +32,13 @@ public sealed class EscuchaTests
     }
 
     [Fact]
-    public void The_lamp_gives_her_radius_two()
+    public void The_lamp_shows_her_the_whole_room()
     {
         var escucha = Escucha(0, 0) with { Blessings = [Blessing.Lamp] };
 
-        var view = PlayerViewProjector.For(State([escucha], [Enemy(1, EnemyKind.Totem, 2, 0)]), A);
+        var view = PlayerViewProjector.For(State([escucha], [Enemy(1, EnemyKind.Totem, 7, 7)]), A);
 
-        Assert.Equal(2, view.Self.VisionRadius);
+        Assert.Equal(1, view.Self.VisionRadius);
         Assert.Single(view.Enemies);
     }
 

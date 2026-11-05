@@ -222,9 +222,8 @@ public sealed class AvaroTests
     {
         var attacker = Hero(B, HeroClass.Mampostero, 4, 5, seat: 1) with { Blessings = [Blessing.StoneFist] };
 
-        // Daño 2 + 1 por Puño de piedra → 3, a la mitad hacia arriba = 2: uno robado y uno al suelo.
-        var stoned = attacker with { Blessings = [Blessing.StoneFist, Blessing.Frost] };
-        var (next, _) = Resolve(State([Avaro(4, 4), stoned]) with { }, (A, Interact(Direction.East)), (B, Attack(Direction.North)));
+        // Daño 1 + 1 por Puño de piedra → 2, a la mitad hacia arriba = 1: el robado.
+        var (next, _) = Resolve(State([Avaro(4, 4), attacker]) with { }, (A, Interact(Direction.East)), (B, Attack(Direction.North)));
 
         Assert.Equal(2, next.H(A).Embers);
         Assert.Equal(1, next.H(B).Embers);
@@ -272,17 +271,17 @@ public sealed class AvaroTests
     }
 
     [Fact]
-    public void Double_heart_gives_two_embers_and_stone_fist_takes_one_without_touching_life()
+    public void Double_heart_gives_one_ember_and_stone_fist_takes_one_without_touching_life()
     {
         var heart = BlessingRules.Grant(Avaro(4, 4), Blessing.DoubleHeart);
-        Assert.Equal(5, heart.Embers);
+        Assert.Equal(4, heart.Embers);
         Assert.Equal(1, heart.MaxHp);
-        Assert.Equal(5, heart.PeakEmbers);
+        Assert.Equal(4, heart.PeakEmbers);
 
         var fist = BlessingRules.Grant(Avaro(4, 4), Blessing.StoneFist);
         Assert.Equal(2, fist.Embers);
         Assert.Equal(1, fist.Hp);
-        Assert.Equal(2, fist.Damage);
+        Assert.Equal(1, fist.Damage);
     }
 
     [Fact]
@@ -293,8 +292,8 @@ public sealed class AvaroTests
 
         var result = MatchRules.ChooseBlessing(state, A, 0);
 
-        Assert.Equal(5, result.State.H(A).Embers);
-        Assert.Contains(result.Events, e => e is EmbersChanged { Reason: EmberReason.Blessing, Delta: 2 } c && c.Audience == Audience.Only(A));
+        Assert.Equal(4, result.State.H(A).Embers);
+        Assert.Contains(result.Events, e => e is EmbersChanged { Reason: EmberReason.Blessing, Delta: 1 } c && c.Audience == Audience.Only(A));
     }
 
     [Fact]

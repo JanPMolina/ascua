@@ -103,7 +103,7 @@ public sealed class FallAndEndTests
         Assert.Equal(3, next.H(B).Hp);
         Assert.Equal(1, next.H(B).Embers);
         Assert.Equal(1, next.H(A).Embers);
-        Assert.Equal(1, next.H(A).Progress.SneakyAllyHits);
+        Assert.Equal(0, next.H(A).Progress.Betrayals);
     }
 
     [Fact]
@@ -114,7 +114,7 @@ public sealed class FallAndEndTests
         Assert.Equal(MatchPhase.Finished, next.Phase);
         Assert.Equal(OutcomeKind.Victory, next.Outcome!.Kind);
         Assert.Equal(A, Assert.Single(next.Outcome.Winners));
-        Assert.Equal(5, next.H(A).Embers);
+        Assert.Equal(7, next.H(A).Embers);
         Assert.Contains(events, e => e is MatchEnded);
         Assert.Equal(2, events.OfType<PactRevealed>().Count());
     }
@@ -122,24 +122,24 @@ public sealed class FallAndEndTests
     [Fact]
     public void A_tie_at_the_top_is_a_draw()
     {
-        var (next, _) = Resolve(BossFight(aEmbers: 0, bEmbers: 5), (A, Attack(Direction.North)));
+        var (next, _) = Resolve(BossFight(aEmbers: 0, bEmbers: 7), (A, Attack(Direction.North)));
 
         Assert.Equal(OutcomeKind.Draw, next.Outcome!.Kind);
         Assert.Equal(2, next.Outcome.Winners.Count);
     }
 
     [Fact]
-    public void A_fulfilled_secret_pact_adds_four_embers_at_the_end()
+    public void A_fulfilled_mission_adds_three_embers_at_the_end()
     {
-        var state = BossFight(aEmbers: 0, bEmbers: 7);
-        state = state with { Heroes = [state.H(A) with { Pact = PactKind.SlayWarden }, state.H(B)] };
+        var state = BossFight(aEmbers: 0, bEmbers: 9);
+        state = state with { Heroes = [state.H(A) with { Pact = PactKind.MostWardenDamage }, state.H(B)] };
 
         var (next, _) = Resolve(state, (A, Attack(Direction.North)));
 
         Assert.Equal(A, Assert.Single(next.Outcome!.Winners));
         var score = next.Outcome.Scores.Single(s => s.Player == A);
         Assert.True(score.PactFulfilled);
-        Assert.Equal(9, score.Total);
+        Assert.Equal(10, score.Total);
     }
 
     [Fact]

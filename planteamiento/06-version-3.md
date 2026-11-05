@@ -158,7 +158,7 @@ Cada mejora cambia una regla y tiene un costo que se ve. El catálogo (`GET /api
 
 | Mejora (`blessingId`) | Efecto | Costo |
 |---|---|---|
-| Brasa viva (`BRASA_VIVA`) | Tus golpes siempre queman: 1 de daño la ronda siguiente | Recibes 1 de daño al abrir cofres |
+| Brasa viva (`BRASA_VIVA`) | Tus golpes siempre queman: 1 de daño más al terminar la ronda | Recibes 1 de daño al abrir cofres |
 | Paso ígneo (`PASO_IGNEO`) | Cada paso deja fuego en la casilla que dejas | El fuego te hace 1 más a ti |
 | Puño de piedra (`PUNO_DE_PIEDRA`) | Si atacas sin dar un paso, haces +1 de daño | −1 de vida máxima (el Avaro, −1 de oro) |
 | Corazón doble (`CORAZON_DOBLE`) | +2 de vida máxima (el Avaro, +1 de oro) | Nada te cura |

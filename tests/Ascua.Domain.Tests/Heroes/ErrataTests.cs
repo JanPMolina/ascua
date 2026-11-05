@@ -114,7 +114,7 @@ public sealed class ErrataTests
         Assert.Equal(0, next.H(A).Embers);
         Assert.Equal(1, events.OfType<EntityDamaged>().Single().Source?.EnemyId);
         Assert.Equal(new Betrayal(A, B, 1), Assert.Single(next.Betrayals));
-        Assert.Equal(1, next.H(A).Progress.SneakyAllyHits);
+        Assert.Equal(1, next.H(A).Progress.Betrayals);
 
         Assert.DoesNotContain(events.SeenBy(next, B), e => e is BetrayalRecorded);
         Assert.Contains(events.SeenBy(next, A), e => e is BetrayalRecorded);
@@ -262,7 +262,7 @@ public sealed class ErrataTests
 
         var (next, _) = Resolve(state, (A, Skill(Direction.South)), (B, Interact(Direction.East)));
 
-        Assert.Equal(2, next.H(A).Progress.SneakyAllyHits);
-        Assert.True(PactRules.IsFulfilled(PactKind.BetrayUnseen, next.H(A).Progress));
+        Assert.Equal(2, next.H(A).Progress.Betrayals);
+        Assert.True(PactRules.IsFulfilled(next.H(A) with { Pact = PactKind.BetrayTwiceUnconvicted }, next.Heroes));
     }
 }

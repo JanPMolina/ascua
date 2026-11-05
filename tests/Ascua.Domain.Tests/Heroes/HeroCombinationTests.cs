@@ -71,7 +71,7 @@ public sealed class HeroCombinationTests
 
         Assert.Equal(MatchPhase.Finished, next.Phase);
         Assert.True(next.H(A).Progress.KilledWarden);
-        Assert.Equal(5, next.H(A).Embers);
+        Assert.Equal(7, next.H(A).Embers);
     }
 
     [Fact]

@@ -67,6 +67,25 @@ public static class Outcomes
         }
     }
 
+    /// <summary>Mayores restos: la parte entera a cada uno y lo que sobra a los restos mayores (empate: menor asiento).</summary>
+    public static IReadOnlyList<(PlayerId Player, int Amount)> SplitByLargestRemainder(IReadOnlyCollection<(PlayerId Player, int Seat, int Damage)> shares, int total)
+    {
+        ArgumentNullException.ThrowIfNull(shares);
+        var sum = shares.Sum(s => s.Damage);
+        if (sum == 0)
+        {
+            return [];
+        }
+
+        var rows = shares
+            .OrderBy(s => s.Seat)
+            .Select(s => (s.Player, s.Seat, Whole: total * s.Damage / sum, Remainder: total * s.Damage % sum))
+            .ToList();
+        var left = total - rows.Sum(r => r.Whole);
+        var extra = rows.OrderByDescending(r => r.Remainder).ThenBy(r => r.Seat).Take(left).Select(r => r.Player).ToHashSet();
+        return [.. rows.Select(r => (r.Player, Amount: r.Whole + (extra.Contains(r.Player) ? 1 : 0))).Where(r => r.Amount > 0)];
+    }
+
     /// <summary>
     /// Ascuas con las que termina: la Brasa con la fórmula de renacer y el extinto que no llegó a elegir
     /// con la mitad de las guardadas (lo que conservaría como Renegado).

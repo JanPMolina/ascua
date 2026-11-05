@@ -224,7 +224,7 @@ public sealed class AnteayerTests
         {
             Hp = 0,
             Status = HeroStatus.Down,
-            Pact = PactKind.SlayWarden,
+            Pact = PactKind.MostWardenDamage,
             EchoQueue = [new PendingEcho(1, At(4, 5), Direction.North)],
         };
         var ally = Hero(B, HeroClass.Mampostero, 0, 8, seat: 1) with { Pact = PactKind.OpenThreeChests };
@@ -234,7 +234,7 @@ public sealed class AnteayerTests
 
         Assert.Equal(MatchPhase.Finished, next.Phase);
         Assert.True(next.H(A).Progress.KilledWarden);
-        Assert.Equal(5, next.H(A).Embers);
+        Assert.Equal(7, next.H(A).Embers);
         Assert.True(next.Outcome!.Scores.Single(s => s.Player == A).PactFulfilled);
     }
 

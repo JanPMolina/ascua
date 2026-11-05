@@ -51,14 +51,14 @@ public sealed class BlessingTests
     }
 
     [Fact]
-    public void Lockpick_makes_chests_drop_an_extra_ember()
+    public void Lockpick_makes_chests_give_two_more_embers()
     {
         var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [Blessing.Lockpick] };
         var room = EmptyRoom() with { Chests = [new Chest(1, new Position(4, 3), ChestLoot.Shield, HasSilverKey: true)] };
 
         var (next, _) = Resolve(State([hero], room: room), (A, Interact(Direction.North)));
 
-        Assert.Equal(2, next.H(A).Embers);
+        Assert.Equal(3, next.H(A).Embers);
         Assert.Equal(1, next.H(A).Shield);
         Assert.Equal(1, next.H(A).SilverKeys);
     }
@@ -72,18 +72,18 @@ public sealed class BlessingTests
 
         Assert.Contains(events, e => e is StatusApplied { Effect: StatusEffect.Burning });
         Assert.Equal(1, next.E(1)!.Hp);
-        Assert.Equal(1, next.E(1)!.BurnRounds);
+        Assert.Equal(0, next.E(1)!.BurnRounds);
     }
 
     [Theory]
     [InlineData(false, 1, 1)]
-    [InlineData(true, 2, 2)]
-    public void Fire_step_leaves_fire_and_inferno_makes_it_last_longer_and_hurt_more(bool inferno, int rounds, int damage)
+    [InlineData(true, 2, 1)]
+    public void Fire_step_always_leaves_fire_and_inferno_makes_it_last_longer(bool inferno, int rounds, int damage)
     {
         Blessing[] blessings = inferno ? [Blessing.FireStep, Blessing.LivingEmber] : [Blessing.FireStep];
         var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [.. blessings] };
 
-        var (next, _) = Resolve(State([hero]), FixedRandom.Always, (A, Move(Direction.North)));
+        var (next, _) = Resolve(State([hero]), FixedRandom.Never, (A, Move(Direction.North)));
 
         var fire = Assert.Single(next.CurrentRoom.Fires);
         Assert.Equal(new Position(4, 4), fire.Position);
@@ -92,17 +92,17 @@ public sealed class BlessingTests
     }
 
     [Theory]
-    [InlineData(false, 2)]
-    [InlineData(true, 1)]
-    public void Living_armor_raises_the_reflection_chance_to_half(bool livingArmor, int scavengerHp)
+    [InlineData(false, 1)]
+    [InlineData(true, 0)]
+    public void The_mirror_always_reflects_and_living_armor_reflects_two(bool livingArmor, int scavengerHp)
     {
         Blessing[] blessings = livingArmor ? [Blessing.BrokenMirror, Blessing.DoubleHeart] : [Blessing.BrokenMirror];
         var hero = Hero(A, HeroClass.Errata, 4, 4) with { Blessings = [.. blessings] };
         var scavenger = Enemy(1, EnemyKind.Scavenger, 4, 3) with { Telegraph = [new Position(4, 4)] };
 
-        var (next, _) = Resolve(State([hero], [scavenger]), new SequenceRandom(30), (A, Interact(Direction.East)));
+        var (next, _) = Resolve(State([hero], [scavenger]), FixedRandom.Never, (A, Interact(Direction.East)));
 
-        Assert.Equal(scavengerHp, next.E(1)!.Hp);
+        Assert.Equal(scavengerHp, next.E(1)?.Hp ?? 0);
     }
 
     [Fact]

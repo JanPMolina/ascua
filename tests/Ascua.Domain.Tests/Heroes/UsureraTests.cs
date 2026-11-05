@@ -196,10 +196,10 @@ public sealed class UsureraTests
 
         var (next, events) = Resolve(State([usurera, debtor], [warden]), (B, Attack(Direction.North)));
 
-        // El golpe final (+5) ya paga los 5 que debía; se queda con sus 6 y ella llega a 9.
+        // El reparto y el golpe final (+7) pagan los 5 que debía; él llega a 8 y ella a 9.
         Assert.Equal(MatchPhase.Finished, next.Phase);
         Assert.Equal(9, next.H(A).Embers);
-        Assert.Equal(6, next.H(B).Embers);
+        Assert.Equal(8, next.H(B).Embers);
         Assert.Equal(A, Assert.Single(next.Outcome!.Winners));
         Assert.Contains(events, e => e is DebtChanged { Reason: DebtReason.Paid });
     }
@@ -214,10 +214,10 @@ public sealed class UsureraTests
         var (next, events) = Resolve(State([usurera, debtor], [warden]), (A, Attack(Direction.North)));
 
         Assert.Equal(0, next.H(B).Embers);
-        Assert.Equal(5 + 3, next.H(A).Embers);
+        Assert.Equal(7 + 3, next.H(A).Embers);
         Assert.Equal(2, next.H(B).Debt);
         Assert.Contains(events, e => e is DebtChanged { Reason: DebtReason.MatchEnd, Delta: -3 });
-        Assert.Equal(8, next.Outcome!.Scores.Single(s => s.Player == A).Embers);
+        Assert.Equal(10, next.Outcome!.Scores.Single(s => s.Player == A).Embers);
     }
 
     [Fact]

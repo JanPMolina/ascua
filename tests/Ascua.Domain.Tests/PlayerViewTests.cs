@@ -59,12 +59,12 @@ public sealed class PlayerViewTests
     }
 
     [Fact]
-    public void Lamp_widens_vision_by_one()
+    public void The_lamp_shows_the_whole_room()
     {
         var view = PlayerViewProjector.For(SecretsOfB(), B);
 
-        Assert.Equal(HeroCatalog.VisionRadius + 1, view.Self.VisionRadius);
-        Assert.Contains(view.Tiles, t => t.Position.DistanceTo(new Position(7, 1)) == HeroCatalog.VisionRadius + 1);
+        Assert.Equal(HeroCatalog.VisionRadius, view.Self.VisionRadius);
+        Assert.Equal(Room.Size * Room.Size, view.Tiles.Count);
     }
 
     [Fact]
@@ -143,7 +143,7 @@ public sealed class PlayerViewTests
         var forB = PlayerViewProjector.VisibleEvents(state, events, B);
 
         Assert.Equal(new[] { typeof(HeroDowned), typeof(HeroGuarded) }, forA.Select(e => e.GetType()));
-        Assert.Equal(5, forB.Count);
+        Assert.Equal(6, forB.Count);
     }
 
     [Fact]
