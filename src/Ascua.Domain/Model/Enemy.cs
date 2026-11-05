@@ -33,7 +33,7 @@ public sealed record EnemyStats(int MaxHp, int Damage, int Speed, bool Flies);
 
 public static class EnemyCatalog
 {
-    public const int WardenHpPerPlayer = 5;
+    public const int WardenHpPerPlayer = 6;
     public const int TotemSummonEvery = 5;
     public const int TotemMaxSummons = 3;
 
@@ -55,9 +55,9 @@ public static class EnemyCatalog
     public static EnemyStats For(EnemyKind kind) => kind switch
     {
         EnemyKind.Scavenger => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: false),
-        EnemyKind.Moth => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: true),
+        EnemyKind.Moth => new(MaxHp: 2, Damage: 1, Speed: 1, Flies: true),
         EnemyKind.Slime => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: false),
-        EnemyKind.Hopper => new(MaxHp: 1, Damage: 1, Speed: 2, Flies: false),
+        EnemyKind.Hopper => new(MaxHp: 2, Damage: 1, Speed: 2, Flies: false),
         EnemyKind.Crossbowman => new(MaxHp: 1, Damage: 2, Speed: 1, Flies: false),
         EnemyKind.Totem => new(MaxHp: 2, Damage: 0, Speed: 0, Flies: false),
         EnemyKind.Warden => new(MaxHp: WardenHpPerPlayer, Damage: 2, Speed: 1, Flies: false),

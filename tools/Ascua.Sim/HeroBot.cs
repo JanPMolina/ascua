@@ -1,6 +1,7 @@
 using Ascua.Domain.Abstractions;
 using Ascua.Domain.Events;
 using Ascua.Domain.Model;
+using Ascua.Domain.Rules;
 using Ascua.Domain.Views;
 
 namespace Ascua.Sim;
@@ -31,6 +32,9 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private bool _triedStairs;
     private const int FinishingBlow = 4;
 
+    /// <summary>Quien piensa en el reloj: para llegar al Celador con tiempo no se puede pasar de esto por sala.</summary>
+    private const int RoundsPerRoom = 8;
+
     private int _heldStairs;
     private int _waits;
     private int _room = -1;
@@ -44,6 +48,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private Dictionary<Position, AllyView> _others = [];
     private readonly Dictionary<PlayerId, int> _suspects = [];
     private bool _betrayedHere;
+    private bool? _sabotageRolled;
+    private Position? _wardenSeenAt;
 
     public PlayerId Player { get; } = player;
 
@@ -223,6 +229,15 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         _self = _self with { Position = after[0], SecondBody = after.Count > 1 ? after[1] : _self.SecondBody };
         _bodies = after;
         var order = DecideOnce(heard);
+
+        // Aunque desde allí solo quisiera seguir caminando, de paso pega o abre lo que le quede a mano.
+        if (order.Type is OrderType.Move or OrderType.Guard && _self.Status != HeroStatus.EmberSpirit && _self.HostEnemyId is null)
+        {
+            order = BestAttack() is { } attack ? new Order(OrderType.Attack, attack)
+                : _self.Status != HeroStatus.Renegade && AdjacentInteraction() is { } interaction ? interaction
+                : order;
+        }
+
         (_self, _bodies) = (self, bodies);
         return order;
     }
@@ -249,7 +264,9 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
 
                 if (_others.TryGetValue(position, out var other) && other.Status == HeroStatus.Active)
                 {
-                    return Roll(chance) ? new Order(OrderType.Sabotage, direction) : null;
+                    // Una sola tirada por ronda: esta función corre otra vez al sumar paso y acción.
+                    _sabotageRolled ??= Roll(chance);
+                    return _sabotageRolled == true ? new Order(OrderType.Sabotage, direction) : null;
                 }
             }
         }
@@ -300,6 +317,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     {
         _view = view;
         _self = view.Self;
+        _sabotageRolled = null;
         if (_room != view.RoomIndex)
         {
             _room = view.RoomIndex;
@@ -753,7 +771,18 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
 
         if (_view.Enemies.FirstOrDefault(e => e.Kind == EnemyKind.Warden) is { } boss)
         {
+            _wardenSeenAt = boss.Position;
             return FightWarden(boss, heard);
+        }
+
+        // Fuera de la vista no se le olvida dónde está: se va a donde se le vio por última vez (al empezar, al centro).
+        if (_view.RoomIndex == _view.RoomCount - 1 && !InDanger)
+        {
+            var lastSeen = _wardenSeenAt ?? MatchFactory.WardenPosition;
+            if (!_view.Allies.Any(a => a.Status == HeroStatus.Down) && _self.Position.DistanceTo(lastSeen) > 1)
+            {
+                return Walk(p => p.DistanceTo(lastSeen) <= 1, lastSeen);
+            }
         }
 
         if (InDanger)
@@ -895,7 +924,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         foreach (var direction in Directions.All)
         {
             var tile = _self.Position.Step(direction);
-            if (_chests.ContainsValue(tile) || (TerrainAt(tile) == Terrain.Altar && _self.SilverKeys > 0 && _self.DraftOptions.IsEmpty))
+            if (_chests.ContainsValue(tile) || (TerrainAt(tile) == Terrain.Altar && (_self.SilverKeys > 0 || _view.Room.Type == RoomType.Sanctuary) && _self.DraftOptions.IsEmpty))
             {
                 return new Order(OrderType.Interact, direction);
             }
@@ -917,6 +946,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     /// Quien va primero rumbo a la escalera no se detiene a pelear: la sala se cruza más rápido si alguien espera ya
     /// sobre ella cuando cae el último. Con 3 o más en pie, el resto se encarga de los monstruos.
     /// </summary>
+    private bool Behind => _view.Round > (_view.RoomIndex + 1) * RoundsPerRoom;
+
     private bool IsRunner()
     {
         if (_view.RoomIndex >= _view.RoomCount - 1)
@@ -978,8 +1009,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             return Walk(p => p.DistanceTo(noise) <= 1, noise);
         }
 
-        // Los cofres dan ascuas pero el reloj aprieta: solo si quedan a mano (o si su pacto los pide).
-        var chestReach = _self.Pact == PactKind.OpenThreeChests ? 6 : 3;
+        // Los cofres dan ascuas pero el reloj aprieta: solo si quedan a mano (o si su pacto los pide). Si va tarde, ni eso.
+        var chestReach = Behind ? 1 : _self.Pact == PactKind.OpenThreeChests ? 6 : 3;
         var nearChests = _chests.Values.Where(c => _self.Position.DistanceTo(c) <= chestReach).ToHashSet();
         if (nearChests.Count > 0)
         {
@@ -987,7 +1018,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         }
 
         var altar = _known.FirstOrDefault(k => k.Value == Terrain.Altar).Key;
-        if (_self.SilverKeys > 0 && TerrainAt(altar) == Terrain.Altar)
+        if (!Behind && (_self.SilverKeys > 0 || _view.Room.Type == RoomType.Sanctuary) && TerrainAt(altar) == Terrain.Altar)
         {
             return Walk(p => p.DistanceTo(altar) == 1, altar);
         }

@@ -69,14 +69,14 @@ public static class HeroCatalog
         HeroClass.Errata => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 6, SkillCooldown: 3),
         HeroClass.Anteayer => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 5, SkillCooldown: 5),
         HeroClass.Hilvan => new(MaxHp: 8, Range: 1, Damage: 1, Initiative: 3, SkillCooldown: 3),
-        HeroClass.Polizon => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
+        HeroClass.Polizon => new(MaxHp: 6, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
         HeroClass.Escucha => new(MaxHp: 5, Range: 4, Damage: 1, Initiative: 2, SkillCooldown: 4),
         HeroClass.Usurera => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 2),
 
         // El Avaro no tiene barra de vida: 1 mientras está en pie; lo que aguanta son sus ascuas.
         HeroClass.Avaro => new(MaxHp: 1, Range: 1, Damage: 1, Initiative: 2, SkillCooldown: 2),
         HeroClass.Mampostero => new(MaxHp: 6, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 3),
-        HeroClass.Campanero => new(MaxHp: 5, Range: 2, Damage: 1, Initiative: 4, SkillCooldown: 4),
+        HeroClass.Campanero => new(MaxHp: 4, Range: 2, Damage: 1, Initiative: 4, SkillCooldown: 4),
         _ => throw new ArgumentOutOfRangeException(nameof(heroClass), heroClass, null),
     };
 }
@@ -118,8 +118,8 @@ public static class HeroRules
     public const int LoanHeal = 3;
     public const int LoanReviveHp = 3;
     public const int LoanDebt = 1;
-    public const int InterestEvery = 5;
-    public const int DebtCap = 4;
+    public const int InterestEvery = 7;
+    public const int DebtCap = 3;
 
     public const int MiserStartEmbers = 4;
     public const int MiserReviveEmbers = 2;

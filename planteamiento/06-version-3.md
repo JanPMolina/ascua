@@ -116,7 +116,7 @@ En el mismo interludio, **salvo si la sala siguiente es la del Celador**, se ofr
 
 **Reparto del Celador.** Al morir se reparten 6 de oro en proporción al daño real que le hizo cada jugador (sin contar el exceso), con **mayores restos**; en empate de restos, menor asiento. Cuenta cualquier daño con autor: ataques, Eco, habilidades, golpes anónimos (Errata, huésped) y empujones no aplican porque no se le puede empujar. Fuego, quemaduras y trampas no tienen autor. Un retirado no cobra. Un Fantasma o un muerto suma a sus ascuas guardadas, como todo lo que ganan.
 
-**Asistencia.** Cuando muere un enemigo en la fase de acciones, cada héroe que le dio un ataque esa ronda sin ser quien lo mató gana +1, y también quien después le lanza un ataque cuya línea llega a su casilla. Solo el primero cuenta como golpe final. Una vez por héroe y enemigo. Cuentan `ATTACK` y el Eco; no cuentan habilidades, huésped ni Traidor. La línea sigue: un ataque de alcance largo también golpea lo que haya detrás.
+**Asistencia.** Cuando muere un enemigo en la fase de acciones, cada héroe que le dio un ataque esa ronda sin ser quien lo mató gana +1, y también quien después le lanza un ataque cuya línea llega a su casilla. Solo el primero cuenta como golpe final. Una vez por héroe y enemigo. Cuentan `ATTACK` y el golpe desde un huésped; no cuentan habilidades, el Eco (ya pagaba de más a Anteayer) ni el Traidor. La línea sigue: un ataque de alcance largo también golpea lo que haya detrás.
 
 **Derrota colectiva.** Es derrota para todos en resultado e historial: `result = DEFEAT`, **nunca** `DRAW`. `DRAW` queda solo para el empate al caer el Celador.
 

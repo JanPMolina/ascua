@@ -205,7 +205,7 @@ internal static class HeroSkills
         foreach (var echo in due)
         {
             ctx.Emit(new EchoFired(player, echo.Origin, echo.Direction) { Audience = Audience.At(echo.Origin) });
-            HeroActions.LineAttack(ctx, player, echo.Origin, echo.Direction, hero.Stats.Range, hero.Damage);
+            HeroActions.LineAttack(ctx, player, echo.Origin, echo.Direction, hero.Stats.Range, hero.Damage, echo: true);
         }
     }
 
@@ -352,6 +352,7 @@ internal static class HeroSkills
             {
                 if (!polizon.IsRenegade)
                 {
+                    HeroActions.MarkAttacker(ctx, enemy.Id, polizon.Player);
                     Combat.HitEnemy(ctx, enemy.Id, host.Stats.Damage, Attacker.Anonymous(polizon.Player, host.Id, host.Position));
                 }
 

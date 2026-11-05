@@ -128,7 +128,7 @@ internal static class HeroActions
     }
 
     /// <summary>Ataque en línea desde <paramref name="origin"/>: golpea lo primero que encuentre; muros y braseros lo detienen.</summary>
-    public static void LineAttack(RoundContext ctx, PlayerId player, Position origin, Direction direction, int range, int damage)
+    public static void LineAttack(RoundContext ctx, PlayerId player, Position origin, Direction direction, int range, int damage, bool echo = false)
     {
         var position = origin;
         for (var i = 0; i < range; i++)
@@ -146,8 +146,12 @@ internal static class HeroActions
                 return;
             }
 
-            Assist(ctx, player, position);
-            if (StrikeAt(ctx, player, origin, position, damage))
+            if (!echo)
+            {
+                Assist(ctx, player, position);
+            }
+
+            if (StrikeAt(ctx, player, origin, position, damage, echo))
             {
                 return;
             }
@@ -265,7 +269,7 @@ internal static class HeroActions
 
     /// <summary>Golpea lo que haya en la casilla. Devuelve si había un objetivo (para cortar el proyectil).</summary>
     /// <remarks>El Renegado no daña a los monstruos ni a otros Renegados: lo detienen sin efecto.</remarks>
-    private static bool StrikeAt(RoundContext ctx, PlayerId attackerId, Position origin, Position position, int damage)
+    private static bool StrikeAt(RoundContext ctx, PlayerId attackerId, Position origin, Position position, int damage, bool echo = false)
     {
         var attacker = ctx.Hero(attackerId);
         if (ctx.EnemyAt(position) is { } enemy)
@@ -279,12 +283,11 @@ internal static class HeroActions
             var dealt = chilling ? 0 : damage + QuietBonus(attacker, !ctx.Start.NoisyEnemies.Contains(enemy.Id));
             if (chilling || Combat.HitEnemy(ctx, enemy.Id, dealt, Attacker.FromHero(attacker, origin)))
             {
-                if (!ctx.Attackers.TryGetValue(enemy.Id, out var attackers))
+                if (!echo)
                 {
-                    ctx.Attackers[enemy.Id] = attackers = [];
+                    MarkAttacker(ctx, enemy.Id, attackerId);
                 }
 
-                attackers.Add(attackerId);
                 Combat.ApplyOnHitEffects(ctx, attackerId, EntityRef.ForEnemy(enemy.Id));
             }
 
@@ -310,6 +313,17 @@ internal static class HeroActions
         }
 
         return false;
+    }
+
+    /// <summary>Le dio un ataque esta ronda: si muere y no fue él quien lo mató, cobra asistencia.</summary>
+    public static void MarkAttacker(RoundContext ctx, int enemyId, PlayerId attacker)
+    {
+        if (!ctx.Attackers.TryGetValue(enemyId, out var attackers))
+        {
+            ctx.Attackers[enemyId] = attackers = [];
+        }
+
+        attackers.Add(attacker);
     }
 
     /// <summary>A tientas: la Escucha hace +1 a lo que no hizo ruido en la última resolución (no como Renegada).</summary>
