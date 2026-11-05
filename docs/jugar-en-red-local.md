@@ -25,7 +25,7 @@ Si Windows no deja ejecutar el script, usa `powershell -ExecutionPolicy Bypass -
 
 El script muestra una dirección como `http://192.168.0.21:8080`. **Todos, también quien hace de servidor,** entran con esa dirección:
 
-1. Cada uno crea su cuenta.
+1. Cada uno escribe su nombre; no hace falta cuenta ni contraseña.
 2. Uno crea una sala y comparte el código, o se usa una sala pública.
 3. Cada uno elige un héroe distinto y marca «listo».
 4. El anfitrión inicia la partida.
@@ -45,4 +45,4 @@ Al terminar: `./jugar-en-red.ps1 -Apagar`. Las cuentas se conservan para la pró
 
 ## Seguridad
 
-Va por HTTP sin cifrar, así que las contraseñas viajan en claro dentro de la red: **usen contraseñas inventadas para esto** y solo en redes de confianza. Es para probar con amigos, no sustituye al despliegue en Azure, que exige HTTPS. Postgres y Redis no publican ningún puerto, y los endpoints de desarrollo quedan apagados.
+Va por HTTP sin cifrar y sin contraseñas: cualquiera en la red puede entrar con el nombre de otro, así que úsalo solo en redes de confianza. Esta entrada solo existe en la rama `feat/red-local`. Es para probar con amigos, no sustituye al despliegue en Azure, que exige HTTPS. Postgres y Redis no publican ningún puerto, y los endpoints de desarrollo quedan apagados.

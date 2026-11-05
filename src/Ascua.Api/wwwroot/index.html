@@ -68,17 +68,10 @@
 
       <div class="cards auth-forms">
         <form id="form-login" class="card" novalidate>
-          <h2>Iniciar sesión</h2>
-          <label>Usuario <input name="username" autocomplete="username" required minlength="1" maxlength="32"></label>
-          <label>Contraseña <input name="password" type="password" autocomplete="current-password" required maxlength="128"></label>
+          <h2>Entrar a jugar</h2>
+          <label>Tu nombre <input name="username" autocomplete="off" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+"></label>
+          <p class="hint">De 3 a 32 letras sin tilde, números o _. Si ya jugaste, usa el mismo nombre para seguir tu partida.</p>
           <button type="submit" class="primary">Entrar</button>
-        </form>
-        <form id="form-register" class="card" novalidate>
-          <h2>Crear cuenta</h2>
-          <label>Usuario <input name="username" autocomplete="username" required minlength="3" maxlength="32" pattern="[A-Za-z0-9_]+"></label>
-          <label>Correo <input name="email" type="email" autocomplete="email" required maxlength="254"></label>
-          <label>Contraseña (10+ caracteres) <input name="password" type="password" autocomplete="new-password" required minlength="10" maxlength="128"></label>
-          <button type="submit">Registrarme</button>
         </form>
       </div>
       <p class="hint center">Si recargas la página sigues dentro y vuelves a tu partida; al cerrar la pestaña hay que entrar de nuevo.

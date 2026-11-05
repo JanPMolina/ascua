@@ -17,6 +17,7 @@ const params = new URLSearchParams(location.search);
 const DEMO = params.get('demo') === '1';
 const TUTORIAL = params.get('tutorial') === '1';
 const USE_JSON = params.get('json') === '1';
+const LOCAL_PASSWORD = 'partida-en-red-local';
 
 function enterMatch(matchId) {
   startMatch({ transport: new RealTransport(matchId, { json: USE_JSON }), onExit: () => showLobby() });
@@ -44,36 +45,27 @@ function bindDemoHero() {
 }
 
 function bindAuth() {
+  // Versión para red local: basta un nombre. La cuenta se crea sola con una clave fija, sin valor fuera de esta rama.
   $('form-login').addEventListener('submit', (e) => {
     e.preventDefault();
     const form = e.currentTarget;
-    const { username, password } = formData(form);
-    busy(form, async () => {
-      try {
-        await api.login(username.trim(), password);
-        form.reset();
-      } catch (err) {
-        toast(`No se pudo iniciar sesión: ${err.message}`, 'bad');
-      }
-    });
-  });
-
-  $('form-register').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const form = e.currentTarget;
     if (!form.checkValidity()) {
-      form.reportValidity();
+      toast('El nombre debe tener de 3 a 32 letras sin tilde, números o _.', 'bad', 6000);
       return;
     }
-    const { username, email, password } = formData(form);
+    const username = formData(form).username.trim();
     busy(form, async () => {
       try {
-        await api.register(username.trim(), email.trim(), password);
-        await api.login(username.trim(), password);
+        try {
+          await api.login(username, LOCAL_PASSWORD);
+        } catch (err) {
+          if (err.status !== 401) throw err;
+          await api.register(username, `${username}@local.test`, LOCAL_PASSWORD);
+          await api.login(username, LOCAL_PASSWORD);
+        }
         form.reset();
-        toast('Cuenta creada. ¡Bienvenido!', 'ok');
       } catch (err) {
-        toast(`No se pudo registrar: ${err.message}`, 'bad', 7000);
+        toast(`No se pudo entrar: ${err.message}`, 'bad', 7000);
       }
     });
   });

@@ -55,21 +55,18 @@ Las cuentas y el historial se conservan para la próxima vez.
 
 1. Conéctate al **mismo Wi-Fi** que el host.
 2. Abre en el navegador la dirección que te pase, con `http://` y `:8080` incluidos. Usa Chrome, Edge o Firefox, mejor en computadora.
-3. Pulsa **Crear cuenta**:
-   - **Usuario:** de 3 caracteres en adelante, solo letras sin tilde, números y `_`.
-   - **Correo:** puede ser inventado; no se envía nada.
-   - **Contraseña:** 10 caracteres o más. **Inventa una que no uses en ningún otro sitio**, porque la conexión no va cifrada.
-4. Entra con tu usuario y contraseña.
-5. Pídele al host el **código de la sala**, escríbelo en **Unirse con código** y pulsa **Unirse**.
-6. Elige un héroe. No se pueden repetir, así que pónganse de acuerdo.
-7. Marca **listo** y espera a que el anfitrión inicie.
+3. Escribe **tu nombre** (de 3 a 32 letras sin tilde, números o `_`) y pulsa **Entrar**. No hace falta cuenta ni contraseña.
+4. Pídele al host el **código de la sala**, escríbelo en **Unirse con código** y pulsa **Unirse**.
+5. Elige un héroe. No se pueden repetir, así que pónganse de acuerdo.
+6. Marca **listo** y espera a que el anfitrión inicie.
 
 Si es tu primera vez, puedes practicar antes en el tutorial: la misma dirección con `/?tutorial=1` al final.
 
 **Durante la partida:**
-- **No recargues la página:** tendrías que volver a iniciar sesión.
-- **Si se te cae la conexión,** el juego intenta reconectarse solo. Tienes **60 segundos** antes de contar como abandono.
-- **No uses dos pestañas** con la misma cuenta: la nueva expulsa a la anterior.
+- **Si recargas la página,** vuelves solo a tu partida.
+- **Si cierras la pestaña,** vuelve a la dirección y entra con **el mismo nombre**.
+- **Si se te cae la conexión,** el juego intenta reconectarse solo. Tienes **60 segundos** para volver antes de contar como abandono.
+- **Cada uno con su propio nombre:** cualquiera que escriba tu nombre entra como tú, y dos pestañas con el mismo nombre se expulsan entre sí.
 
 ---
 
@@ -77,7 +74,7 @@ Si es tu primera vez, puedes practicar antes en el tutorial: la misma dirección
 
 Una sola persona crea la sala, normalmente el host:
 
-1. Entra con la misma dirección que los demás y crea tu cuenta.
+1. Entra con la misma dirección que los demás y escribe tu nombre.
 2. En **Crear sala**, ponle un nombre, déjala privada y pulsa **Crear sala**.
 3. **Dicta el código en voz alta.** El botón de copiar no funciona sin HTTPS.
 4. Cuando los cuatro aparezcan con héroe y marcados como listos, pulsa iniciar.
