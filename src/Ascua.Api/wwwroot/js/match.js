@@ -1587,7 +1587,7 @@ function showFinished(m, myPlayerId, onBack) {
       heroAvatar(s.hero, 'sm'),
       el('span', { class: 's-who' }, el('b', {}, `${s.displayName}${you(s)}`),
         el('small', {}, `${label(HEROES, s.hero)} · ${stateIcon}${label(HERO_STATES, s.finalState)}`)),
-      el('span', { class: 'em' }, String(s.embers), el('small', {}, 'de oro')));
+      el('span', { class: 'em' }, `${s.embers} `, el('small', {}, 'de oro')));
     li.style.animationDelay = `${0.9 + i * 0.08}s`;
     return li;
   }));
