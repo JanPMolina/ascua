@@ -13,7 +13,7 @@ Los enums viajan como texto en MAYÚSCULAS: héroes `ERRATA`, `ANTEAYER`, `HILVA
 
 | Método y ruta | Respuesta correcta | Notas |
 |---|---|---|
-| `POST /api/v1/rooms` | `201` sala, `Location: /api/v1/rooms/{id}` | `{ name, visibility = PUBLIC, maxPlayers = 4 }`. Quien la crea es el anfitrión. Las privadas reciben `inviteCode` |
+| `POST /api/v1/rooms` | `201` sala, `Location: /api/v1/rooms/{id}` | `{ name, visibility = PUBLIC, maxPlayers = 4, curses = [] }`. Quien la crea es el anfitrión. `curses`: `FIERCE`, `WARDEN_PLUS`, `DIM`, `HASTE`; públicas y fijas. Las privadas reciben `inviteCode` |
 | `GET /api/v1/rooms?page=1&pageSize=20` | `200 { items, page, pageSize, total }` | Solo públicas, abiertas y con lugar. `pageSize` de 1 a 50 |
 | `GET /api/v1/rooms/current` | `200` sala | La sala en la que está el usuario, o `404 room-not-found` |
 | `GET /api/v1/rooms/{id}` | `200` sala | Una privada solo la ven sus participantes (`404` para el resto). `inviteCode` y `matchId` solo para participantes |
@@ -85,3 +85,14 @@ Mismo formato que el resto de la API (`urn:ascua:problem:<código>` y extensión
 
 Los códigos siguen la convención *kebab-case* del catálogo REST existente (por ejemplo `room-full` es el
 `ROOM_FULL` del planteamiento); los errores del hub en tiempo real usan MAYÚSCULAS según el contrato AsyncAPI.
+
+## Revancha
+
+`POST /api/v1/matches/{matchId}/rematch` → `200` sala. Solo para participantes de una partida terminada (`404` si es ajena, `409 match-not-finished` si sigue viva).
+
+- Crea una sala **privada** con las mismas maldiciones y tantas plazas como participantes, y sienta a quien la pide. El héroe se vuelve a elegir.
+- El id sale de un hash de la partida, así que todos llegan a la misma sala con el mismo código. Si varios la piden a la vez, `SaveRoom` deja crear a uno solo y los demás releen y entran. Es idempotente: quien ya está sentado recibe la misma sala.
+
+## Catálogo
+
+`GET /api/v1/catalog` (con JWT): textos de mejoras (efecto y costo), sinergias, tipos de sala, maldiciones y misiones.

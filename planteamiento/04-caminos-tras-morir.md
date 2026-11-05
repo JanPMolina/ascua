@@ -1,5 +1,7 @@
 # Caminos tras la extinción: Amistad y Venganza
 
+> **Versión 3:** [06-version-3.md](06-version-3.md) manda sobre esto: el Fantasma puede Flotar y usar otra orden en la misma ronda y vota en el interludio, y el Traidor no vota y puede empujar héroes. Las mejoras cambiaron (ya no hay Lámpara +1).
+>
 > **Estado:** aprobado el 31-oct-2026; implementado en el servidor (contrato AsyncAPI 1.3.0) y en el cliente web. Ver «Aclaraciones de implementación» al final. Amplía [01-juego.md](01-juego.md) §5 («Caer, levantar y abandonar»).
 
 ## Problema
@@ -26,9 +28,9 @@ Reglas comunes:
 
 ### Cómo es
 - **Intangible:** atraviesa muros, enemigos y héroes; nada le hace daño ni lo bloquea.
-- **Visión:** radio 4 (los héroes tienen 3). La Lámpara suma +1.
+- **Visión:** radio 4 (los héroes tienen 3).
 - **Visible para el grupo** como una llama azul; los enemigos lo ignoran.
-- **Una orden por ronda,** como los demás, con el mismo reloj de 20 s.
+- **Una orden por ronda,** como los demás, con el mismo reloj de 20 s. Desde la versión 3, Deriva como `step` más Avivar, Reavivar o Estorbo.
 
 ### Órdenes de la Brasa
 

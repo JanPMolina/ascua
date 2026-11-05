@@ -22,7 +22,16 @@ Sirve para encontrar fallos, **no para medir balance ni diversión**: nadie deci
 
 **Sin probar todavía:** traiciones con datos reales y victorias reales: ninguna partida al azar derrotó al Celador. El reporte se comprobó con un ganador puesto a mano en una base de prueba.
 
-## Qué mirar en las partidas reales
+## Qué mirar en las partidas reales (versión 3)
+
+Antes que nada: **todo lo de 06-version-3.md está sin probar con personas**. Los números salen de bots, y el mayor riesgo es que sea fácil.
+
+- **Paso y acción:** ¿el Celador cae muy rápido? Si sí, primero una maldición (`WARDEN_PLUS`) y luego subir su vida.
+- **El Juicio:** ¿alguien sabotea? ¿Acusan por sospecha o por venganza? ¿Alcanzan 20 s?
+- **Puertas:** ¿alguien elige Inundada? ¿Cuál se evita?
+- **Mejoras:** ¿algún precio nadie lo paga, o alguna nadie la quiere?
+
+## Qué mirar en las partidas anteriores
 
 1. **Dificultad:** ¿el Celador cae demasiado fácil? Es el mayor riesgo del balance actual. ¿Llegan al límite de 60 rondas?
 2. **Errata y La Usurera:** ¿dominan como dice la simulación?

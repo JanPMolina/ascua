@@ -47,6 +47,7 @@ internal static class TestWorld
         {
             HeroClass.Hilvan => hero with { Hp = 5 },
             HeroClass.Polizon => hero with { Hp = 3 },
+            HeroClass.Campanero => hero with { Hp = 5 },
             HeroClass.Avaro => hero with { Embers = 3, PeakEmbers = 3 },
             _ => hero,
         };
@@ -91,6 +92,7 @@ internal static class TestWorld
         {
             EnemyKind.Scavenger or EnemyKind.Slime or EnemyKind.Crossbowman => 2,
             EnemyKind.Totem => 3,
+            EnemyKind.Moth or EnemyKind.Hopper => 1,
             _ => null,
         };
         return Model.Enemy.Create(id, kind, new Position(x, y), hp) with { Facing = facing };

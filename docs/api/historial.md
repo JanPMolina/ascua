@@ -24,8 +24,9 @@ Endpoints REST con `Authorization: Bearer <JWT>`. Los errores son Problem Detail
 
 ## Resultado por usuario (`result` en el historial)
 
-`VICTORY` (único ganador), `DRAW` (empataste en el máximo), `DEFEAT` (el Celador cayó pero ganó otro),
-`COLLECTIVE_DEFEAT` (el Umbral se apagó), `ABANDONED`; `null` si no hay resultado del juego.
+`VICTORY` (único ganador), `DRAW` (empataste en el máximo), `DEFEAT` (el Celador cayó pero ganó otro, o derrota
+colectiva: el Umbral se apagó; `outcome` los distingue), `ABANDONED`; `null` si no hay resultado del juego. Una derrota
+colectiva nunca es un empate.
 `placement` y `embers` salen de la puntuación final (ascuas + pacto cumplido).
 
 ## Cómo se reconstruye la reproducción (decisión)

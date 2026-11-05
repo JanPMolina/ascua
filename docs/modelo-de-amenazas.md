@@ -10,7 +10,7 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 ## Alcance y activos
 
 **Qué se protege**, de más a menos crítico:
-1. **Información oculta de cada jugador:** pacto secreto, bendiciones, orden de la ronda en curso y casillas fuera de su visión. Si se filtra, el juego se rompe. El enunciado lo exige: «ningún mensaje, endpoint ni log».
+1. **Información oculta de cada jugador:** misión secreta y su objetivo, bendiciones, orden de la ronda en curso, voto del interludio, autoría de los sabotajes y casillas fuera de su visión. Si se filtra, el juego se rompe. El enunciado lo exige: «ningún mensaje, endpoint ni log».
 2. **Integridad de la partida:**
    - solo el servidor resuelve, valida y decide el azar;
    - cada jugada se aplica una sola vez y en orden;
@@ -96,6 +96,23 @@ Lo que todavía falta está en **Pendiente**, al final, y también en [pendiente
 | D | Que una partida con un bug tumbe el proceso o a las demás | Aislamiento por partida: la excepción la marca `FAULTED`, sin afectar al resto | `An_exception_in_one_match_faults_only_that_match_and_releases_its_players` |
 | D | Que las partidas abandonadas acumulen recursos | Las partidas sin actividad pasan a `EXPIRED` y liberan la marca de partida activa | `An_abandoned_match_expires_and_releases_the_active_match_mark` |
 | R | Negar haber abandonado | Al vencer la gracia de reconexión se aplica el abandono, y queda como evento en `match_events` | `Leaving_an_in_progress_match_counts_as_abandonment` |
+
+#### Lo nuevo de la versión 3 (rama local)
+
+| STRIDE | Amenaza | Mitigación | Prueba | Residual |
+|---|---|---|---|---|
+| I | Ver el voto de otro en el interludio | Los votos viven en `InterludeState.Ballots`; el proyector solo devuelve el propio, `VoteCast` es privado y el recuento no trae votantes | `InterludeTests.Votes_are_secret…`, `VersionThreeTests.The_stairs_open_the_trial…` | El oro público delata quién perdió 1 si la condena fue a un inocente |
+| I | Saber quién saboteó | `EntityDamaged` sin autor, sin ruido ni giro; `BetrayalRecorded` solo al autor | `SabotageAndPushTests.Nothing_in_what_others_receive…`, `VersionThreeTests.The_author_of_a_sabotage…` | La deducción por posición es parte del juego |
+| I | Ver la misión ajena o su objetivo | `PactOffer` por usuario; `SelfView` solo para su dueño; `AllyView` no las lleva | `GoldMissionsBlessingsTests.Missions_and_targets…` | Ninguno |
+| I | Ver la sala de la puerta no elegida | Se genera solo la elegida, al cerrar | `InterludeTests.Doors_not_chosen…` | Ninguno |
+| T | Votar dos veces, por otro, o con una oferta vieja | El votante sale del ticket; `offerId` es un hash de partida y sala; vale el primero | `InterludeTests.You_cannot…`, `VersionThreeTests` | Ninguno |
+| E | Votar sin derecho (Traidor, retirado) o acusarse | Lo valida el dominio con `INVALID_VOTE` | `InterludeTests.Who_votes…` | Ninguno |
+| E | Sabotear o empujar sin poder | `OrderValidator` y de nuevo al resolver: orden inválida vale `GUARD` | `StepAndActionTests`, `SabotageAndPushTests` | Ninguno |
+| T | Mandar un paso o una puerta fuera de rango | `RealtimeValidation` antes del dominio | `VersionThreeTests.An_order_with_a_step…` | Ninguno |
+| D | Pedir revanchas sin parar | Grupo con JWT y límite por usuario; la sala es una por partida | `VersionThreeTests.A_rematch…` | Una sala más en Redis hasta su TTL |
+| E | Entrar a la revancha sin haber jugado | Solo participantes: 404 igual que una partida ajena. El código sí da entrada a quien lo reciba | `VersionThreeTests.A_rematch…` | Como cualquier sala privada: el código se comparte |
+| S | Elegir maldiciones raras al crear sala | Lista cerrada, máximo 4; desconocidas dan 400 | `VersionThreeTests.A_room_keeps…` | Ninguno |
+| R | Negar una traición al final | Las traiciones y votos quedan en el registro append-only | `InterludeTests` | Solo un administrador con vista completa los lee; queda auditado |
 
 ### 4. Historial y reproducción (REST `/api/v1/matches`)
 

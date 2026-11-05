@@ -19,6 +19,13 @@ El juego muestra nombres simples para que nadie tenga que aprender un vocabulari
 | Espera | Enfriamiento | `abilityCooldown` |
 | Defender | Guardar | `GUARD` |
 | Usar | Interactuar | `INTERACT` |
+| Paso | Paso | `step` |
+| Sabotaje | Sabotaje | `SABOTAGE` |
+| Empujón | Empujón | `PUSH` |
+| El Juicio y las puertas | Interludio | `INTERLUDE`, `InterludeOffer` |
+| Tesoro, Arena, Santuario, Oscura, Inundada | Tipos de sala | `TREASURE`, `ARENA`, `SANCTUARY`, `DARK`, `FLOODED` |
+| Fieros, Celador imponente, Penumbra, Prisa | Maldiciones | `FIERCE`, `WARDEN_PLUS`, `DIM`, `HASTE` |
+| Títulos | Títulos | `awards` |
 | Flotar, Frenar, Escudo, Revivir, Luz | Deriva, Estorbo, Avivar, Reavivar, Faro | `MOVE`, `ATTACK`, `ABILITY`, `INTERACT`, `GUARD` |
 
 No cambian el nombre del juego, el Celador, los héroes, sus habilidades ni los nombres de las mejoras. El Eco de Anteayer tampoco: no son los puntos de apoyo del Fantasma.

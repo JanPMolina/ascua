@@ -8,14 +8,14 @@ explica cómo lo implementa el servidor y cómo probarlo.
 1. `POST /api/v1/realtime/tickets` con `Authorization: Bearer <JWT>` y cuerpo `{ "matchId": "<uuid>" }`
    → `201 { ticket, expiresAt }`. Partida inexistente o ajena: `404 not-found` (no se distingue).
    Partida terminada: `409 match-not-active`.
-2. WebSocket a `/realtime/match?protocolVersion=2&access_token=<ticket>` con `skipNegotiation` y
+2. WebSocket a `/realtime/match?protocolVersion=3&access_token=<ticket>` con `skipNegotiation` y
    transporte WebSockets. El ticket vale 30 s, sirve una sola vez (`GETDEL`) y solo para esa partida.
 3. `JoinMatch { matchId }` → ACK con asiento y `Snapshot`. Si hay draft pendiente llega también `DraftOffer`,
    y si hay una elección de camino abierta, `PathOffer` (también tras `GetSnapshot`).
 
 | Rechazo del upgrade | HTTP | `code` (Problem Details) |
 |---|---|---|
-| Sin `protocolVersion=2` (se revisa antes de gastar el ticket; la 1 se rechaza, [ADR-0009](../adr/0009-nueve-heroes-contrato-2.md)) | 400 | `unsupported-protocol-version` |
+| Sin `protocolVersion=3` (se revisa antes de gastar el ticket; las anteriores se rechazan, [ADR-0010](../adr/0010-juego-v3-contrato-3.md)) | 400 | `unsupported-protocol-version` |
 | Ticket ausente, vencido, ya usado | 401 | `ticket-invalid` |
 | Más de 3 conexiones del usuario | 429 | `connection-limit` |
 
@@ -84,6 +84,26 @@ Las reglas están en [05-heroes.md](../../planteamiento/05-heroes.md); aquí, c�
   - El plazo sobrevive a un reinicio porque vuelve de Postgres.
 - **Traiciones.** El daño a un aliado desviado por Errata o dado desde un huésped se registra en `GameState.Betrayals`. `BETRAYAL_RECORDED` solo lo recibe quien la cometió. `MatchFinished.betrayals` y `BETRAYAL_REVEALED` las revelan al final, sumadas por traidor y víctima.
 
+## Versión 3: interludio, misión y revancha (contrato 3.0.0)
+
+Reglas en [06-version-3.md](../../planteamiento/06-version-3.md), que trae también la guía para el cliente.
+
+```
+Resolver: héroe activo en la escalera sin enemigos ─► Phase = Interlude, InterludeOpened
+Advance: Deadline = ahora + InterludeDuration (en matches: sigue IN_PROGRESS, el contrato dice INTERLUDE)
+InterludeOffer a cada uno ─► CastInterludeVote ─► MatchRules.CastInterludeVote (ballot en GameState, VoteCast privado)
+           ─► Snapshot a todos (view.interlude.voted) ─► si votaron todos los conectados: TryCloseInterlude
+Plazo ─► ProcessDeadline ─► TryCloseInterlude(deadlineExpired)
+MatchRules.CloseInterlude: juicio ─► puerta ─► genera la sala ─► EnterNextRoom ─► InterludeResolved + RoundOpened
+```
+
+- **Durabilidad.** Votos y plazo van en la instantánea de Postgres como cualquier mutación, así que un reinicio no pierde nada. Lo cubre `VersionThreeTests`.
+- **Los votos no salen.** `InterludeState.Ballots` solo lo lee el proyector para devolver el propio; `VoteCast` es privado. El registro de eventos guarda los votos, igual que las órdenes de Último en hablar nunca se guardan: quien lee la base con la vista de administrador los ve, y esa vista queda auditada.
+- **La puerta se genera al cerrar.** La sala de la puerta no elegida nunca existe.
+- **Órdenes con paso.** En Redis van como `Tipo|Dirección|Paso`.
+- **Misión.** `ChoosePact` no guarda ACK en Redis: la elección está en el héroe.
+- **Revancha.** `MatchHistoryEndpoints.RematchAsync` → `RoomService.RematchAsync`, ver [salas](salas.md#revancha).
+
 ## Estado y claves
 
 | Dónde | Qué |
@@ -133,6 +153,7 @@ La concurrencia entre réplicas (dos cerradores, una sola resolución) está en 
 | Clave | Por defecto |
 |---|---|
 | `RoundDuration` / `DraftDuration` | 20 s / 30 s |
+| `InterludeDuration` | 20 s (El Juicio y la puerta; al vencer, el voto ausente es «nadie») |
 | `PathChoiceDuration` | 15 s (elección de camino; al vencer, Amistad) |
 | `BellDuration` | 8 s (plazo de los demás en una ronda de Repique; se fija al crear la partida) |
 | `SignalInterval` | 3 s (una señal rápida por jugador) |
@@ -157,4 +178,5 @@ docker compose --profile bot run --rm --build bot http://api:8080 2 300
 ```
 
 El bot registra 2 jugadores, arranca una partida con `POST /api/v1/dev/matches` (solo con
-`EnableDevEndpoints`), elige bendiciones, elige camino al azar si se extingue y juega órdenes al azar hasta `MatchFinished`.
+`EnableDevEndpoints`), elige mejora y misión, elige camino al azar si se extingue, vota en el interludio y juega órdenes al azar
+con paso y acción hasta `MatchFinished`. El cuarto argumento es el porcentaje de traición (por defecto 10): sabotea y acusa con esa probabilidad.

@@ -1,5 +1,7 @@
 # El juego: **Ascua** (nombre provisional)
 
+> **Versión 3:** [06-version-3.md](06-version-3.md) manda sobre este documento. Lo que cambió aquí se resume y apunta allí.
+>
 > Mazmorra semi-cooperativa por **turnos simultáneos** para 2-4 jugadores. Está inspirada en los *patrones* de Guidus (ver [../inspiracion](../inspiracion/README.md)), pero las reglas son propias: sin tiempo real, sin chocar para atacar y con puntuación individual y objetivos secretos.
 
 ## 1. Premisa
@@ -21,12 +23,12 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 
 ## 3. La ronda (turno simultáneo)
 
-1. **Planificación.** Cada jugador envía en secreto **una orden** para la ronda `N`. Los demás solo ven "Jugador X ya decidió".
+1. **Planificación.** Cada jugador envía en secreto **una orden** (un paso opcional y una acción opcional, [06](06-version-3.md) §1) para la ronda `N`. Los demás solo ven "Jugador X ya decidió".
 2. **Cierre.** La ronda se cierra cuando todos los jugadores vivos enviaron su orden o cuando vence el temporizador. A quien no envió nada se le aplica la **acción por defecto: `GUARDAR`**.
 3. **Resolución determinista** en el servidor, en orden fijo:
    1. `GUARDAR` y escudos se activan.
-   2. **Movimientos:** si dos personajes van a la misma casilla, **ninguno se mueve** (rebote). Tampoco se puede entrar en una casilla ocupada.
-   3. **Ataques y habilidades** de los héroes, ordenados por iniciativa (atributo del héroe y, en empate, orden de asiento).
+   2. **Todos los pasos:** si dos personajes van a la misma casilla, **ninguno se mueve** (rebote). Tampoco se puede entrar en una casilla ocupada.
+   3. **Todas las acciones** de los héroes, desde donde quedó cada uno, ordenadas por iniciativa (atributo del héroe y, en empate, orden de asiento).
    4. **Los enemigos ejecutan** los ataques que **anunciaron en la ronda anterior**.
    5. **Los enemigos se mueven y anuncian** las casillas que golpearán en la ronda `N+1` (el *telegraph*). El anuncio es visible para quien tenga esas casillas en su visión.
    6. Disparadores (bendiciones, trampas, muertes, botín) y limpieza.
@@ -42,7 +44,9 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 | `ATACAR(dir)` | Ataque básico según el alcance del héroe |
 | `HABILIDAD(dir)` | Habilidad del héroe; consume recurso o tiene enfriamiento |
 | `INTERACTUAR(dir)` | Abrir un cofre, levantar a un aliado caído o activar un altar (siempre adyacente) |
-| `GUARDAR` | Reduce a la mitad el daño recibido en la ronda; acción por defecto |
+| `GUARDAR` | Reduce a la mitad el daño recibido en la ronda; acción por defecto. No admite paso |
+| `SABOTEAR(dir)` | 1 de daño anónimo al primer aliado en línea a ≤2, una vez por sala ([06](06-version-3.md) §2) |
+| `EMPUJAR(dir)` | Mueve 1 casilla a lo que esté adyacente ([06](06-version-3.md) §7) |
 
 ## 4. Atributos y combate
 
@@ -67,8 +71,9 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 | Golpe final a un enemigo | +1 |
 | Abrir un cofre | +1 |
 | Levantar a un aliado | +2 |
-| Golpe final al Celador | +5 |
-| Pacto secreto cumplido (se revela al final) | +4 |
+| Asistencia | +1 ([06](06-version-3.md) §5) |
+| Celador | 6 repartidas por el daño hecho, más +1 al golpe final |
+| Misión secreta cumplida (se revela al final) | +3 |
 | Golpear a un aliado | +1 robada al aliado |
 | Renacer como Brasa errante | ⌈guardadas × (25% + 8% × ecos)⌉, tope 85% ([04](04-caminos-tras-morir.md)) |
 | Volver como Renegado | ⌈guardadas / 2⌉; +1 robada por golpe a un héroe, +2 por dejarlo caído |
@@ -78,7 +83,7 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 
 - **El Celador cae:** gana quien tenga **más ascuas** entre los no extintos, las Brasas errantes y los Renegados en pie. Si hay empate en el máximo, la partida termina en **empate** entre ellos.
 - **Todos los héroes caídos o extintos con algún Renegado en pie:** **«El Umbral reclama»** (`THRESHOLD_CLAIMED`): ganan los Renegados en pie, el de más ascuas (ver [04-caminos-tras-morir.md](04-caminos-tras-morir.md)).
-- **Todos caídos o extintos sin Renegados en pie, o el límite de rondas se agota:** **derrota colectiva**. Se registra como empate de tipo "el Umbral se apagó".
+- **Todos caídos o extintos sin Renegados en pie, o el límite de rondas se agota:** **derrota colectiva**: es derrota para todos, nunca empate.
 - El resultado es **inmutable** y la partida se puede **reproducir ronda a ronda** desde el log de eventos.
 
 ## 8. Información oculta (requisito de seguridad)
@@ -86,7 +91,8 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 | Dato | Quién lo ve |
 |---|---|
 | Orden de la ronda en curso | Solo su autor, hasta la resolución |
-| **Pacto secreto**, uno por jugador, asignado al azar | Solo su dueño; se revela al final |
+| **Misión secreta**, 1 entre 2 elegida por cada jugador, y su objetivo | Solo su dueño; se revela al final |
+| Votos del interludio | Solo quien vota; nunca se revelan, solo el recuento |
 | Opciones del draft de bendiciones (1 entre 2) | Solo el que elige |
 | Elección de camino, ecos y ascuas guardadas ([04](04-caminos-tras-morir.md)) | Solo su dueño (el camino se revela al resolver la ronda) |
 | Bendiciones obtenidas | Su dueño; los demás ven solo cuántas tiene |
@@ -97,7 +103,7 @@ Una hoguera antigua, el **Umbral**, se está apagando. De 2 a 4 portadores bajan
 | Traiciones anónimas (Corregir, huésped) | Nadie hasta la pantalla final |
 | Semilla del generador | Nadie; nunca sale del servidor |
 
-**Ejemplos de pactos:** "dar el golpe final al Celador", "terminar sin haber caído", "abrir 3 cofres", "levantar a 2 aliados", "golpear a un aliado al menos 2 veces sin que te descubran".
+**Misiones:** [06](06-version-3.md) §6.
 
 ## 9. Héroes (9)
 
@@ -117,7 +123,7 @@ Cada héroe rompe una regla del juego. Las reglas exactas están en [05-heroes.m
 
 ## 10. Bendiciones (12) y sinergias (3)
 
-Se consiguen en el **draft inicial** (1 entre 2, privado) y en los **altares**, que se abren con la llave de plata que sueltan los cofres.
+Se consiguen en el **draft inicial** (1 entre 2, privado) y en los **altares**, que se abren con la llave de plata que sueltan los cofres. **Las 12 y sus sinergias se rehicieron en [06-version-3.md](06-version-3.md) §8; esta tabla es histórica.**
 
 | Bendición | Disparador | Efecto | Coste |
 |---|---|---|---|
@@ -176,13 +182,13 @@ Decisiones tomadas al implementar el motor (`src/Ascua.Domain`) donde el texto e
 **Tablero y visión**
 - La sala completa (9×9) es jugable; los muros son casillas interiores. Fuera de la sala cuenta como muro.
 - Distancias, alcances y visión usan **distancia Manhattan**. La visión es individual (no se comparte con aliados) y no la tapan los muros.
-- La escalera está en (4,3) y solo funciona con la sala **sin enemigos**: si un héroe activo termina la ronda sobre ella, todos los héroes no extintos pasan a la sala siguiente (los caídos siguen caídos).
+- La escalera está en (4,3) y solo funciona con la sala **sin enemigos**: si un héroe activo termina la ronda sobre ella, se abre el interludio y, al cerrarse, todos los héroes no extintos pasan a la sala siguiente (los caídos siguen caídos).
 - Cofres, altares y braseros bloquean el paso. Las grietas se pueden pisar (y extinguen). Los pinchos se activan en las rondas pares.
 - Generación: cada sala recibe muros, pinchos, braseros, grietas (salas 2-3), altares (salas 2 y 4) y 2 cofres al azar; se valida con BFS que toda casilla transitable y cada objeto sean alcanzables desde la entrada (si falla 50 veces, sala sin obstáculos). Enemigos fijos por sala (con 2 jugadores, solo los 2 primeros); nacen a ≤4 casillas de la escalera, en filas ≤5. El Celador empieza en (4,3) y las entradas están en la fila 7.
 
 **Números que el documento no fijaba**
 - Daño base de todos los héroes: 1. Iniciativa: ver [05-heroes.md](05-heroes.md) §2 (empate por asiento).
-- Enemigos (vida/daño): Carroñero 1/1, Polilla 1/1, Gelatina 1/1, Saltasapo 1/1, Ballestero 1/2, Tótem 2/–, Celador `5 × jugadores`/2.
+- Enemigos (vida/daño): Carroñero 1/1, Polilla 2/1, Gelatina 1/1, Saltasapo 2/1, Ballestero 1/2, Tótem 2/–, Celador `6 × jugadores`/2.
 - Contenido de un cofre: siempre +1 ascua, más una de {nada, poción que cura 2, +1 de escudo} y 50% de llave de plata. El escudo solo sale de los cofres.
 - Fuego (Paso ígneo, braseros) y quemadura (Brasa viva): 1 de daño durante 2 rondas. Con **Infierno**, el fuego y las quemaduras **de ese héroe** duran 3 rondas y hacen 2.
 
@@ -200,8 +206,7 @@ Decisiones tomadas al implementar el motor (`src/Ascua.Domain`) donde el texto e
 **Ascuas, caídas y fin**
 - Extinguirse (3 rondas completas caído, o grieta) ya no quita ascuas: pasan a ser ascuas guardadas y se elige camino (detalles e implementación en [04-caminos-tras-morir.md](04-caminos-tras-morir.md)).
 - El robo por fuego amigo solo ocurre si el golpe conecta y la víctima tiene ascuas.
-- Pacto "golpear a un aliado 2 veces sin que te descubran": cuenta los golpes a un aliado **por la espalda** y las traiciones anónimas.
-- Los pactos se revelan siempre al terminar; el +4 solo decide el ganador cuando cae el Celador. Si el Celador cae, gana el máximo de `ascuas + pacto` entre los héroes no extintos ni retirados.
+- Las misiones se revelan siempre al terminar; el +3 solo decide el ganador cuando cae el Celador. Si el Celador cae, gana el máximo de `ascuas + pacto` entre los héroes no extintos ni retirados.
 - Al llegar a la ronda 60 sin vencer al Celador, la partida termina al resolverse esa ronda.
 - Abandono: el héroe retirado pierde todas sus ascuas; la partida queda *abandonada* cuando no queda ningún héroe activo ni caído.
 

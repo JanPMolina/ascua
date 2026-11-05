@@ -1,6 +1,6 @@
 # Versión 3 del juego
 
-> **Estado:** en implementación en la rama `feat/juego-v3`, que solo vive para jugar en red local. **No va a `main`.** Este documento **manda sobre** 01-juego.md, 04-caminos-tras-morir.md y 05-heroes.md: donde se contradigan, vale lo de aquí. Los números finales están en §12 y en [docs/balance.md](../docs/balance.md). En el código y el contrato siguen los nombres internos ([glosario](../docs/glosario.md)).
+> **Estado:** implementado en el motor, el servidor y el contrato, en la rama `feat/juego-v3`, que solo vive para jugar en red local. **No va a `main`.** El cliente web todavía no lo muestra: ver [Para el cliente](#para-el-cliente). Este documento **manda sobre** 01-juego.md, 04-caminos-tras-morir.md y 05-heroes.md: donde se contradigan, vale lo de aquí. Los números finales están en §12 y en [docs/balance.md](../docs/balance.md). En el código y el contrato siguen los nombres internos ([glosario](../docs/glosario.md)).
 
 ## 1. Mover y actuar en la misma ronda
 
@@ -154,7 +154,7 @@ El reparto evita que un jugador vea la misma misión dos veces: las 2 opciones s
 
 ## 8. Mejoras con precio
 
-Cada mejora cambia una regla y tiene un costo que se ve. El catálogo (`GET /api/v1/catalog`, `BlessingCatalog` en el dominio) da nombre, efecto y costo. La única tirada de dados que queda en las mejoras es ninguna.
+Cada mejora cambia una regla y tiene un costo que se ve. El catálogo (`GET /api/v1/catalog`, `BlessingCatalog` en el dominio) da nombre, efecto y costo. Ninguna mejora tira dados.
 
 | Mejora (`blessingId`) | Efecto | Costo |
 |---|---|---|
@@ -217,17 +217,28 @@ La cola rápida no lleva maldiciones. Se ven en la sala, en la vista (`view.curs
 **Revancha.** `POST /api/v1/matches/{matchId}/rematch`, solo para participantes de una partida terminada.
 - Crea una **sala privada**, con las mismas maldiciones y tantas plazas como participantes. El id de la sala se deriva del de la partida, así que todos llegan a la misma sala con el mismo código, aunque la pidan a la vez.
 - Quien la pide entra a la sala; el primero es el anfitrión. Los demás pueden entrar con el mismo endpoint o con el código. El héroe se vuelve a elegir.
-- Si la sala de revancha ya no existe porque arrancó y venció, se crea otra. Si ya arrancó y sigue, responde con su partida (`matchId`).
+- Si la sala ya venció en Redis, se crea otra. Si ya arrancó, quien estaba sentado recibe la sala con su `matchId` y quien no, `room-not-open`.
+- Partida ajena o inexistente: 404. Sin terminar: 409 `match-not-finished`. Terminada significa cualquier estado que no sea `DRAFTING` ni `IN_PROGRESS`.
 
 **Fases en los eventos.** Cada evento visible lleva `phase` (§1), para mostrar la resolución paso a paso. Los eventos fuera de una ronda (`DraftOffered`, votos) no lo llevan.
 
 ## 11. Contrato
 
-Contrato **3.0.0** y `protocolVersion` **3** (la 2 se rechaza). Detalle en §13 y en [`contracts/asyncapi.yaml`](../contracts/asyncapi.yaml).
+Contrato **3.0.0** y `protocolVersion` **3** (la 2 se rechaza). Detalle en [Para el cliente](#para-el-cliente), en [`contracts/asyncapi.yaml`](../contracts/asyncapi.yaml) y en [ADR-0010](../docs/adr/0010-juego-v3-contrato-3.md).
 
 ## 12. Números
 
-Se rellenan con la simulación al terminar: ver [docs/balance.md](../docs/balance.md).
+Salen de la simulación; el detalle está en [docs/balance.md](../docs/balance.md).
+
+| Dato | Antes | Ahora |
+|---|---|---|
+| Vida del Celador | 5 × jugadores | **6 × jugadores** |
+| Polilla y Saltasapo | 1 | **2** |
+| Carroñero, Gelatina, Ballestero, Tótem | 1, 1, 1, 2 | Igual |
+| Polizón, vida | 4 | **6** |
+| Campanero, vida | 5 | **4** |
+| Usurera, interés | Cada 5 rondas, tope 4 | **Cada 7, tope 3** |
+| Misión cumplida | +4 | **+3** |
 
 ## Aclaraciones
 
@@ -239,3 +250,103 @@ Decisiones tomadas donde el encargo no alcanzaba o donde lo pedido no se podía 
 - **Asistencia con enemigos de varios golpes.** El encargo pensaba en dos ataques sobre un enemigo que muere. Con más vida también cuenta quien pegó **antes** del golpe final, porque su ataque también alcanzó.
 - **Sala generada al elegir la puerta.** Antes todas las salas se generaban al crear la partida. Las siguientes se regeneran al elegir la puerta; la del Celador sigue generándose al crear.
 - **Mejoras:** Lámpara y Ojo de búho conservan el nombre con otra regla. Se quitó todo porcentaje.
+- **Vida de los monstruos.** El encargo pedía subirla «otra vez». El tope de rondas no dejó subirla tanto como se quería: con Carroñero, Gelatina o Ballestero en 2, la media pasa de 55 rondas y el Celador cae en menos de 35 %. Se subieron Polilla y Saltasapo, y el Celador.
+- **El estado en la base sigue siendo `IN_PROGRESS` durante el interludio.** Así no hace falta migrar la restricción ni el disparador de inmutabilidad de `matches`. El contrato lo muestra como `INTERLUDE`.
+- **Partidas viejas.** Las misiones eliminadas siguen en el enum como obsoletas, para poder leer el historial sin borrar el registro de partidas. Nunca se ofrecen ni se cumplen.
+- **Eco y asistencia.** El Eco de Anteayer no cobra asistencia: la simulación lo dejaba muy por encima de la meta.
+
+## Para el cliente
+
+El cliente web sigue en el protocolo viejo salvo `PROTOCOL_VERSION = 3` (`wwwroot/js/hub.js`): conecta, pero falta todo lo de abajo. En pantalla se dice oro, derribado, muerto, Fantasma, Traidor, mejora, misión secreta, ataque marcado, espera, Defender y Usar.
+
+### Enviar una orden: paso y acción
+
+`SubmitOrder { matchId, round, clientActionId, order }`.
+
+| Lo que quiere el jugador | `order` |
+|---|---|
+| Solo caminar | `{ type: "MOVE", direction: "N" }` |
+| Solo actuar | `{ type: "ATTACK", direction: "N" }` |
+| Paso y acción | `{ type: "ATTACK", direction: "N", step: "E" }` (también `ABILITY`, `INTERACT`, `SABOTAGE`, `PUSH`) |
+| Defender | `{ type: "GUARD" }`, sin `direction` ni `step` |
+
+**Qué dibujar:** dos entradas por ronda (paso y acción), con la casilla de llegada y la línea del ataque desde ella. Si el paso se quita, la acción sigue. Defender borra el paso. `me.pendingOrder` trae también `step`.
+
+**Nuevos en `view.me`:** `canSabotage` (botón, se apaga tras usarlo en la sala), `pushCooldown` (espera del empujón), `visionRadius` (real). `view.allies[].convictions` es público: márcalo («condenado»).
+
+`LastWord.orders[]` trae `step`, salvo con `typesOnly`.
+
+### Misión y mejora, al empezar
+
+`DraftOffer` no cambia. Llega además **`PactOffer { matchId, offerId, options: [{ pactId, description, targetId? }], deadline }`**, privado. Responder con **`ChoosePact { matchId, offerId, pactId }`**, que devuelve `{ result, pactId, acceptedAt }` o error (`PACT_CLOSED`, `INVALID_PAYLOAD`). Los dos plazos son el mismo. La partida arranca cuando todos eligieron las dos cosas.
+
+Mientras elige, `view.me.pact` es `null`. Después trae `{ pactId, description, targetId? }`. **`targetId` solo le llega al dueño:** muéstralo con el nombre del jugador.
+
+### Catálogo
+
+`GET /api/v1/catalog` (con JWT) → `{ blessings: [{ id, name, effect, cost }], synergies: [{ id, name, first, second, effect }], roomTypes: [{ id, name, effect }], curses: [...], pacts: [{ id, name, effect }] }`. Mostrar **efecto y costo** en las dos tarjetas de la mejora. Sobran los textos viejos de `labels.js`.
+
+### El interludio
+
+Se activa la escalera y pasa esto, en orden:
+
+1. `RoundResolved` con `delta.status = "INTERLUDE"`. **Ya no trae `floorChanged`:** el cambio de sala llega en el paso 4.
+2. **`InterludeOffer`**, a cada uno y privado:
+   ```
+   { matchId, offerId, endedFloor, deadline,
+     doors: [{ type, name, effect }],   // 2 puertas, o [] si sigue el Celador
+     candidates: [playerId],            // a quién puedes acusar
+     voters: [playerId], voted: [playerId],  // quién vota y quién ya votó (no qué)
+     canVote, myVote: { accusedId, door } | null }
+   ```
+   Lo mismo viene en `view.interlude`, y se reenvía tras `JoinMatch` y `GetSnapshot`.
+3. Cada votante: **`CastInterludeVote { matchId, offerId, accusedId?, door? }`**. `accusedId` nulo = a nadie; `door` es 0 o 1. Se puede votar solo una vez. Errores: `VOTE_CLOSED`, `INVALID_VOTE`, `INVALID_PAYLOAD`. Cada voto produce un `Snapshot` a todos con `view.interlude.voted` al día.
+4. Al cerrar (votaron todos los conectados, o vence el plazo): **`InterludeResolved { matchId, seq, verdict, events }`** y después `RoundOpened` de la ronda siguiente, con su `Snapshot`.
+   ```
+   verdict: { endedFloor, noAccusation, chosenDoor, doors: [{ type, votes }],
+     accusations: [{ accusedId, votes, otherVoters, convicted, guilty, goldLost, accuserFine,
+                     exposed: [{ traitorId, victimId, damage }] }] }
+   ```
+   `events` trae `FLOOR_ENTERED`, `EMBER_REBORN`, `RENEGADE_SPAWNED`, etc. `view.lastVerdict` guarda el recuento para quien reconecte.
+
+**Qué dibujar:**
+- **Pantalla de voto:** retratos de los candidatos, «a nadie», las 2 puertas con nombre y efecto, y cuenta atrás. Con `doors: []`, solo El Juicio. Con `canVote: false`, mirar. Marca quién ya votó.
+- **Recuento:** votos por acusado y qué pasó. Culpable: −3 de oro y sus traiciones (`exposed`). Inocente: «los que lo acusaron pierden 1». Nunca hay quién votó qué. Luego, puerta elegida.
+- Un Traidor no vota. Un Fantasma y un derribado sí.
+- Durante el interludio las órdenes se rechazan.
+
+### Sala y maldiciones
+
+- `view.room = { type, name, effect, floodedRows }`: rótulo fijo en la partida. `type`: `NORMAL`, `TREASURE`, `ARENA`, `SANCTUARY`, `DARK`, `FLOODED`.
+- **Inundada:** las filas `y < floodedRows` van en azul; hacen 1 de daño al final de cada ronda a quien no vuela. Evento `ROOM_FLOODED` cuando sube.
+- **Santuario:** el altar no pide llave.
+- `view.curses`: lista pública. En la sala: `POST /api/v1/rooms { name, visibility, maxPlayers, curses: ["FIERCE", "WARDEN_PLUS", "DIM", "HASTE"] }` y `RoomResponse.curses`. El selector solo se le muestra al anfitrión al crear.
+
+### Resolución paso a paso
+
+Todo evento de una ronda lleva **`phase`**: `REVEAL`, `GUARD`, `SHIFT`, `MOVEMENT`, `ACTIONS`, `ENEMY_ATTACKS`, `ENEMY_MOVES`, `CLEANUP`, `END`. Llegan en orden. Se pueden agrupar para animar por fases.
+
+| Evento nuevo | Campos | Mostrar |
+|---|---|---|
+| `PUSHED` | `actorId`, `targetId`, `position` = llegada | Empujón con autor |
+| `ROOM_FLOODED` | `amount` = filas | Sube el agua |
+| `BETRAYAL_RECORDED` | `detail`: `SABOTAGE`, `FROM_HOST`, `DIVERTED` | Solo le llega al autor |
+| `EMBERS_GAINED` | `detail`: `ASSIST`, `WARDEN_BOUNTY` | «Asistencia» y «reparto del Celador» |
+| `EMBERS_LOST` | `detail`: `TRIAL_PENALTY`, `TRIAL_FINE` | Oro perdido en El Juicio |
+
+**Sabotaje:** un `DAMAGED` sin `actorId` en la fase `ACTIONS`. Muéstralo como daño sin autor, con la víctima bien visible: de ahí sale la sospecha.
+
+### Fin de partida y revancha
+
+`MatchFinished` añade **`awards: [{ awardId, playerId, title, reason, value }]`** y **`curses`**. Los títulos ya traen el texto. Un empate da una fila por jugador.
+
+**Revancha:** botón en la pantalla final. `POST /api/v1/matches/{matchId}/rematch` → `200 RoomResponse` (sala privada, con `inviteCode`). Llevar a todos a la pantalla de sala; cada uno lo pide por su cuenta y llega a la misma. Errores: 404, 409 `match-not-finished`, 409 si ya está en otra sala.
+
+**Historial:** una derrota colectiva ahora trae `result: "DEFEAT"` (antes `COLLECTIVE_DEFEAT`). `outcome` sigue siendo `EMBER_EXTINGUISHED`.
+
+### Otros cambios de pantalla
+
+- Doce mejoras con otro texto y otra regla: el tutorial y `labels.js` las describen como eran.
+- Golpe final al Celador: ya no +5 sino reparto de 6 por daño, más 1.
+- Misión: +3, y ya no hay «terminar sin caer».
+- `HP` de Polizón y Campanero cambia: el catálogo de héroes del cliente lo tiene fijo.

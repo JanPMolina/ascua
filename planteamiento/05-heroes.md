@@ -1,5 +1,7 @@
 # Los nueve héroes
 
+> **Versión 3:** [06-version-3.md](06-version-3.md) manda sobre esto: paso y acción en la misma ronda, sabotaje, empujón, El Juicio, misiones y mejoras nuevas. Polizón tiene 6 de vida, el Campanero 4 y el interés de la Usurera es cada 7 rondas con tope 3.
+>
 > **Estado:** aprobado por el equipo el 2-nov-2026; en implementación. **Reemplaza** a Yunque, Chispa, Cuervo y Raíz: esos héroes se borran del juego, del contrato y del código. Sustituye a [01-juego.md](01-juego.md) §9 y a las reglas de héroes de §14. Los números ya son los finales de la simulación (§14 y §16), a confirmar jugando.
 
 ## 1. La idea
@@ -7,9 +9,9 @@
 **Cada héroe rompe una regla del juego.** No son clases con números distintos: cambian qué significa jugar. La sorpresa no viene de dados, sino de lo que otro jugador decidió en secreto, así que siempre se puede entender qué pasó y por qué.
 
 Reglas de diseño:
-- **Una orden, una dirección.** Toda habilidad usa las órdenes de hoy (`MOVE`, `ATTACK`, `ABILITY`, `INTERACT`, `GUARD`). No hay selección de objetivos: tienen que caber en 20 s.
+- **Una orden, una dirección.** Toda habilidad usa las órdenes de hoy (`MOVE`, `ATTACK`, `ABILITY`, `INTERACT`, `GUARD`), con el paso opcional de la versión 3. No hay selección de objetivos: tienen que caber en 20 s.
 - **Pasiva que define el personaje** y **activa que hay que preparar**: las mejores jugadas requieren crear la situación antes.
-- **Sin nuevos dados.** El azar sigue siendo el de cofres y bendiciones.
+- **Sin nuevos dados.** El azar sigue siendo el de cofres y el reparto de mejoras y puertas.
 
 ## 2. Resumen
 
@@ -18,12 +20,12 @@ Reglas de diseño:
 | **Errata** (`ERRATA`) | Los golpes caen donde se anunciaron | 4 | 1 | 6 | 3 | Fe de erratas | Corregir |
 | **Anteayer** (`ANTEAYER`) | Lo hecho, hecho está | 4 | 1 | 5 | 5 | Eco | Volver |
 | **Hilván** (`HILVAN`) | Tienes un solo cuerpo | 8 | 1 | 3 | 3 | Espejo | Tensar |
-| **Polizón** (`POLIZON`) | Eres tu cuerpo | 4 | 1 | 7 | 3 | Sin casa | Abordar |
+| **Polizón** (`POLIZON`) | Eres tu cuerpo | 6 | 1 | 7 | 3 | Sin casa | Abordar |
 | **La Escucha** (`ESCUCHA`) | Ves lo que tienes cerca | 5 | 4 | 2 | 4 | Ciega | Grito |
 | **La Usurera** (`USURERA`) | Ayudar es gratis | 4 | 1 | 1 | 2 | Interés | Préstamo |
 | **El Avaro** (`AVARO`) | La vida y la puntuación son cosas distintas | ascuas | 1 | 2 | 2 | Todo lo que tengo | Soborno |
 | **El Mampostero** (`MAMPOSTERO`) | La mazmorra está quieta | 6 | 1 | 1 | 3 | Conoce las piedras | Corrimiento |
-| **El Campanero** (`CAMPANERO`) | El reloj es igual para todos | 5 | 2 | 4 | 4 | Último en hablar | Repique |
+| **El Campanero** (`CAMPANERO`) | El reloj es igual para todos | 4 | 2 | 4 | 4 | Último en hablar | Repique |
 
 Todos hacen 1 de daño básico. Iniciativa: en la fase 3 actúa primero el número mayor; en empate, el asiento menor. El enfriamiento sigue la regla general: usada en la ronda N, disponible en N+C. **Una habilidad que no hace nada no gasta el enfriamiento.**
 
@@ -111,7 +113,7 @@ Casos:
 **Activa, Grito** (`ABILITY`, la dirección no importa, enf. 4). Hasta la próxima resolución, **todo su bando ve la sala entera**, y en esta ronda **todos los monstruos la eligen como objetivo**.
 
 Casos:
-- La Lámpara le da radio 2.
+- La Lámpara le muestra toda la sala.
 - **Renegada:** Grito revela la sala a los Renegados y no atrae a nadie. Daño máximo 1 en A tientas.
 - **El huésped de Polizón** hace ruido como cualquier monstruo.
 
@@ -120,7 +122,7 @@ Casos:
 **Activa, Préstamo** (`ABILITY dir`, enf. 2). Al primer aliado en línea a ≤2 casillas, herido o caído: le cura 3, o lo levanta con 3 de vida. No pide permiso. Le crea una **deuda de 1 ascua**, que se suma a la que tenga. A sí misma no se puede prestar. Un aliado con la vida llena no cuenta.
 
 **Pasiva, Interés.**
-- Cada 5 rondas con deuda, la deuda sube 1 (tope 4).
+- Cada 7 rondas con deuda, la deuda sube 1 (tope 3).
 - **Cada ascua que gane el deudor le llega a ella** hasta saldar la deuda.
 - **Si se extingue,** cobra de las ascuas guardadas lo que alcance.
 - **Al terminar la partida, cobra lo que quede** de las ascuas del deudor, **antes** de decidir al ganador.
@@ -143,7 +145,7 @@ Casos:
 - **Curarse no existe para él:** ni pociones ni Calidez ni Préstamo. Sus fuentes son ganar ascuas y recoger las del suelo.
 - **Fuego amigo:** el atacante le roba 1; el resto cae al suelo.
 - **Levantarlo:** vuelve con 2 ascuas (quien lo levanta gana las +2 de siempre).
-- **Corazón doble:** +2 ascuas al elegirla. **Puño de piedra:** −1 ascua al elegirla. **Último aliento:** se queda con 1.
+- **Corazón doble:** +1 ascua al elegirla. **Puño de piedra:** −1 ascua al elegirla. **Último aliento:** se queda con 1.
 - **Extinción y caminos:** como cae con 0, sus ascuas guardadas son `⌈máximo que llegó a tener / 2⌉`. Con la fórmula del camino vuelve con al menos 2. Renacer no da vida aparte.
 - **Ascuas en el suelo:** cualquiera las recoge al pisarlas, Renegados incluidos, y se pierden al cambiar de sala. Quien las recoge paga antes sus deudas.
 
@@ -179,11 +181,11 @@ Casos:
 
 | Tema | Regla |
 |---|---|
-| **Traiciones anónimas** | El daño a un aliado por Corregir o desde un huésped se registra en secreto y **se revela en la pantalla final** («Errata le costó 3 de vida a Ana»). No da robo de ascuas |
-| **Pacto «golpear a un aliado 2 veces sin que te descubran»** | Sin héroes en sigilo, cuentan los golpes por la espalda **y las traiciones anónimas** |
+| **Traiciones anónimas** | El daño a un aliado por Corregir, desde un huésped o por un sabotaje se registra en secreto, se puede juzgar en el interludio de esa sala y **se revela en la pantalla final** («Errata le costó 3 de vida a Ana»). No da robo de ascuas |
+| **Misión «traicionar 2 veces sin ser condenado»** | Cuentan las traiciones anónimas; los golpes por la espalda ya no |
 | **Brasa errante** | Todos usan las 5 órdenes de la Brasa; la clase vuelve al renacer. Se conservan deudas; se borran ecos de Anteayer, huésped y enfriamientos |
 | **Renegado** | Vida, daño máximo 1 y enfriamiento ×2 según 04-caminos-tras-morir.md, con las notas de cada héroe. «Vida» del Avaro: sus ascuas |
-| **Bendiciones** | Se mantienen las 12. La que mencionaba a un héroe viejo se reescribe; la poción cura 2 para todos |
+| **Bendiciones** | Rehechas en [06-version-3.md](06-version-3.md) §8; la poción cura 2 para todos |
 | **Se eliminan** | Bloqueo frontal, Muralla, cargas, Descarga, sigilo, Paso sombrío, Brote y sus campos en el contrato. Las reglas de Brasa que los nombran se adaptan |
 
 ### Señales rápidas
@@ -242,7 +244,7 @@ Lo que este documento no fijaba y se decidió al implementar.
 
 | Dato | Antes | Ahora |
 |---|---|---|
-| Vida del Celador | 12 × jugadores | **5 × jugadores** |
+| Vida del Celador | 12 × jugadores | **5 × jugadores** (versión 3: 6 × jugadores) |
 | Golpe del Celador | Cada ronda | **Una ronda sí y una no.** Entre golpes no se mueve, no se gira ni anuncia |
 | Castigo al Celador por Renegado | −6 de vida máxima, mínimo 12 | **−3, mínimo 5** |
 | Carroñero, Gelatina y Ballestero | 2 de vida | **1** |
