@@ -432,16 +432,6 @@ public sealed class VersionThreeTests(AscuaApiFactory factory)
             Assert.Equal(HttpStatusCode.NotFound, notYours.StatusCode);
         }
 
-        using (var before = await early.GetAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative)))
-        {
-            Assert.False((await before.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("available").GetBoolean());
-        }
-
-        using (var notYours = await strangerHttp.GetAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative)))
-        {
-            Assert.Equal(HttpStatusCode.NotFound, notYours.StatusCode);
-        }
-
         // Cada uno la pide dos veces y todos a la vez: concurrencia real contra Redis.
         var clients = players.Select(p => Client(host, p)).ToList();
         var requests = clients.SelectMany(c => new[] { c, c }).Select(c => c.PostAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative), null)).ToList();

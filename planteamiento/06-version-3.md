@@ -1,6 +1,6 @@
 # Versión 3 del juego
 
-> **Estado:** implementado en el motor, el servidor y el contrato, en la rama `feat/juego-v3`, que solo vive para jugar en red local. **No va a `main`.** El cliente web todavía no lo muestra: ver [Para el cliente](#para-el-cliente). Este documento **manda sobre** 01-juego.md, 04-caminos-tras-morir.md y 05-heroes.md: donde se contradigan, vale lo de aquí. Los números finales están en §12 y en [docs/balance.md](../docs/balance.md). En el código y el contrato siguen los nombres internos ([glosario](../docs/glosario.md)).
+> **Estado:** implementado en el motor, el servidor y el contrato, en la rama `feat/juego-v3`, que solo vive para jugar en red local. **No va a `main`.** El cliente web ya lo muestra; lo que usa está en [Para el cliente](#para-el-cliente). Este documento **manda sobre** 01-juego.md, 04-caminos-tras-morir.md y 05-heroes.md: donde se contradigan, vale lo de aquí. Los números finales están en §12 y en [docs/balance.md](../docs/balance.md). En el código y el contrato siguen los nombres internos ([glosario](../docs/glosario.md)).
 
 ## 1. Mover y actuar en la misma ronda
 
@@ -257,7 +257,7 @@ Decisiones tomadas donde el encargo no alcanzaba o donde lo pedido no se podía 
 
 ## Para el cliente
 
-El cliente web sigue en el protocolo viejo salvo `PROTOCOL_VERSION = 3` (`wwwroot/js/hub.js`): conecta, pero falta todo lo de abajo. En pantalla se dice oro, derribado, muerto, Fantasma, Traidor, mejora, misión secreta, ataque marcado, espera, Defender y Usar.
+Lo que el cliente web usa de la versión 3. En pantalla se dice oro, derribado, muerto, Fantasma, Traidor, mejora, misión secreta, ataque marcado, espera, Defender y Usar.
 
 ### Enviar una orden: paso y acción
 
@@ -340,7 +340,7 @@ Todo evento de una ronda lleva **`phase`**: `REVEAL`, `GUARD`, `SHIFT`, `MOVEMEN
 
 `MatchFinished` añade **`awards: [{ awardId, playerId, title, reason, value }]`** y **`curses`**. Los títulos ya traen el texto. Un empate da una fila por jugador.
 
-**Revancha:** botón en la pantalla final. `POST /api/v1/matches/{matchId}/rematch` → `200 RoomResponse` (sala privada, con `inviteCode`). Llevar a todos a la pantalla de sala; cada uno lo pide por su cuenta y llega a la misma. Errores: 404, 409 `match-not-finished`, 409 si ya está en otra sala.
+**Revancha:** botón en la pantalla final. `POST /api/v1/matches/{matchId}/rematch` → `200 RoomResponse` (sala privada, con `inviteCode`). Llevar a todos a la pantalla de sala; cada uno lo pide por su cuenta y llega a la misma. Errores: 404, 409 `match-not-finished`, 409 si ya está en otra sala. Para avisar a los demás, la pantalla final consulta cada 3 s **`GET /api/v1/matches/{matchId}/rematch`** → `{ available, players, capacity, joined }`, y al ver `available` les ofrece unirse.
 
 **Historial:** una derrota colectiva ahora trae `result: "DEFEAT"` (antes `COLLECTIVE_DEFEAT`). `outcome` sigue siendo `EMBER_EXTINGUISHED`.
 

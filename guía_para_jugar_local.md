@@ -97,15 +97,22 @@ Todos deciden a la vez y **cada ronda dura 20 segundos**. Si no envías nada, tu
 
 | Acción | Teclas |
 |---|---|
-| Mover | Flechas |
+| Marcar un paso | Flecha (se ve en el tablero) |
+| Enviar solo el paso | La misma flecha otra vez, o Enter |
 | Atacar | Shift + flecha |
 | Habilidad | Q + flecha |
 | Usar (cofres, levantar aliados) | E + flecha |
-| Defender | Espacio |
-| Cancelar Q o E | Esc |
+| Sabotear (sin autor, una vez por sala) | R + flecha |
+| Empujar (con autor, espera 3) | F + flecha |
+| Defender (borra el paso) | Espacio |
+| Quitar lo marcado | Esc |
 | Señales a tu equipo | 1, 2, 3, 4 |
 
+**Paso y acción van en la misma orden:** marca un paso y luego elige una acción; primero caminan todos, y cada uno actúa desde donde quedó. Con el ratón o en el celular, las flechas de pantalla hacen lo mismo y aparece un botón para enviar solo el paso.
+
 Las casillas marcadas muestran dónde golpeará un enemigo **en la ronda siguiente**: apártate o defiende. **Cómo jugar**, en la barra superior, explica a cada héroe.
+
+**Al empezar** cada uno elige en secreto una mejora, con su precio, y una misión. **Al despejar una sala y pisar la escalera** viene El Juicio: hasta 20 segundos para acusar a alguien (o a nadie) y votar la puerta de la sala siguiente. Nunca se ve quién votó qué. **Al crear la sala** el anfitrión puede sumar maldiciones. **Al final**, el botón Revancha lleva a una sala nueva con el mismo grupo: cada uno pulsa su botón.
 
 ---
 

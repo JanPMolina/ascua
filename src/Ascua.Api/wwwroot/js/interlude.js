@@ -8,7 +8,7 @@ import { ERROR_CODES, ROOM_TYPES, label } from './labels.js';
 
 /** Pausa antes de tapar el tablero: se deja ver lo que acaba de pasar en la ronda. */
 const LIVE_OPEN_DELAY_MS = 1800;
-const VERDICT_MS = 12000;
+const VERDICT_MS = 9000;
 
 const roomText = (type) => ROOM_TYPES[type] ?? { name: type, effect: '', icon: '▫' };
 

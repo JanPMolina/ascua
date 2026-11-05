@@ -95,8 +95,6 @@ Los códigos siguen la convención *kebab-case* del catálogo REST existente (po
 
 `GET /api/v1/matches/{matchId}/rematch` → `200 { available, players, capacity, joined }`. Sirve para avisar en la pantalla final de que alguien ya la pidió. No sienta a nadie.
 
-`GET /api/v1/matches/{matchId}/rematch` → `200 { available, players, capacity, joined }`. Sirve para avisar en la pantalla final de que alguien ya la pidió. No sienta a nadie.
-
 ## Catálogo
 
 `GET /api/v1/catalog` (con JWT): textos de mejoras (efecto y costo), sinergias, tipos de sala, maldiciones y misiones.

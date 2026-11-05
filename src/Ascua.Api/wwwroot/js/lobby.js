@@ -251,10 +251,6 @@ export function initLobby({ onEnterMatch }) {
     el('input', { type: 'checkbox', name: 'curse', value: id }),
     el('span', {}, `${c.icon} ${c.name}`),
     el('small', {}, c.effect))));
-  $('create-curses').replaceChildren(...Object.entries(CURSES).map(([id, c]) => el('label', { class: 'curse-pick', title: c.effect },
-    el('input', { type: 'checkbox', name: 'curse', value: id }),
-    el('span', {}, `${c.icon} ${c.name}`),
-    el('small', {}, c.effect))));
 
   $('btn-copy-code').addEventListener('click', async () => {
     try {

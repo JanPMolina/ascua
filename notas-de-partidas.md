@@ -22,6 +22,34 @@ Sirve para encontrar fallos, **no para medir balance ni diversión**: nadie deci
 
 **Sin probar todavía:** traiciones con datos reales y victorias reales: ninguna partida al azar derrotó al Celador. El reporte se comprobó con un ganador puesto a mano en una base de prueba.
 
+## Prueba del cliente de la versión 3 (4 navegadores contra el servidor real)
+
+Jugadores que caminan con intención a la escalera, atacan con paso y golpe, sabotean, empujan, votan y eligen puerta. Sirve para encontrar fallos, **no para medir balance ni diversión**.
+
+| Comprobado | Resultado |
+|---|---|
+| Entrar solo con el nombre, crear sala con maldición | Bien; la maldición se ve en la sala, en la partida y al final |
+| Elegir mejora y misión; recargar mientras se elige | Las dos ofertas vuelven |
+| Paso marcado con vista previa, Esc, Enter, repetir flecha y botones | Bien; en móvil también, con la demo |
+| Paso y golpe en la misma orden | 14 a 26 por partida |
+| Sabotaje y empujón | El sabotaje sale sin autor y con la víctima marcada; solo su autor recibe el aviso |
+| 4 interludios por partida, con voto y puerta | Condena culpable, inocente con multa y sin mayoría |
+| Recargar antes y después de votar; perder la red 3 s | Vuelve la votación; el voto hecho se conserva |
+| Recargar en ronda y con orden enviada; cerrar la pestaña y volver | Misma partida y mismo oro, en menos de 1,5 s |
+| Sala inundada | El agua se ve y sube |
+| Final, títulos y maldiciones | Bien |
+| Revancha | Los otros reciben aviso en menos de 3 s y los cuatro llegan a la misma sala |
+| Tres columnas a 1366×768 y 1920×1080 | Sin scroll de página |
+| Errores de JavaScript o CSP | Ninguno; solo el 404 esperado de «sin sala actual» |
+| `scripts/reporte-partidas.sql` | Corre con estas partidas |
+
+**Corregido tras la prueba**
+- Las ofertas nuevas del servidor no llegaban al cliente: faltaba registrarlas en `hub.js`.
+- El daño de sabotaje perdía su resaltado en el registro.
+- La revancha y el aviso quedaban debajo de la clasificación: ahora van arriba.
+
+**Sin probar todavía:** una victoria real contra el Celador (estos bots llegan al límite de 60 rondas), si los sonidos se oyen bien (el navegador de prueba no tiene audio) y un celular físico.
+
 ## Qué mirar en las partidas reales (versión 3)
 
 Antes que nada: **todo lo de 06-version-3.md está sin probar con personas**. Los números salen de bots, y el mayor riesgo es que sea fácil.

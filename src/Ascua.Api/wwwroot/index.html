@@ -366,15 +366,14 @@
             <ul id="signal-feed" class="signal-feed" aria-live="polite"></ul>
           </div>
 
-          <details id="verdict-log" class="card card-verdict" hidden>
-            <summary>Último Juicio</summary>
-            <div id="verdict-log-body"></div>
-          </details>
-
           <div class="card card-events">
             <h3>Eventos de la ronda</h3>
             <ul id="events" class="events" role="log" aria-live="polite"></ul>
           </div>
+          <details id="verdict-log" class="card card-verdict" hidden>
+            <summary>Último Juicio</summary>
+            <div id="verdict-log-body"></div>
+          </details>
 
           <div class="row match-actions">
             <button id="btn-leave-match" type="button" class="danger">Abandonar partida</button>
@@ -470,6 +469,11 @@
           <h2 id="fin-title">Fin de la partida</h2>
           <p id="fin-summary"></p>
         </div>
+        <div class="row center">
+          <button id="btn-rematch" type="button" class="primary big" hidden>Revancha</button>
+          <button id="btn-back-lobby" type="button" class="big">Volver al lobby</button>
+        </div>
+        <p id="rematch-note" class="hint center" hidden></p>
         <ol id="fin-podium" class="podium" aria-label="Podio"></ol>
         <h3 class="section-title">Clasificación</h3>
         <ol id="fin-standings" class="standings"></ol>
@@ -493,11 +497,6 @@
             <a class="button secondary" href="?tutorial=1">Repetir el tutorial</a>
           </div>
         </div>
-        <div class="row center">
-          <button id="btn-rematch" type="button" class="primary big" hidden>Revancha</button>
-          <button id="btn-back-lobby" type="button" class="big">Volver al lobby</button>
-        </div>
-        <p id="rematch-note" class="hint center" hidden></p>
       </div>
     </section>
   </main>

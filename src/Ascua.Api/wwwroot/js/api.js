@@ -206,7 +206,6 @@ export function normalizeRoom(raw) {
     matchId: raw.matchId ?? null,
     capacity: raw.capacity ?? raw.maxPlayers ?? 4,
     curses: raw.curses ?? [],
-    curses: raw.curses ?? [],
     playerCount: raw.players ?? raw.playerCount ?? members.length,
     members: members.map((m, i) => ({
       userId: m.userId ?? m.id,

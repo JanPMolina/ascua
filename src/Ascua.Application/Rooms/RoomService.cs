@@ -77,10 +77,6 @@ public sealed partial class RoomService(
     public Task<Room?> FindRematchAsync(Guid matchId, CancellationToken cancellationToken) =>
         store.GetAsync(RematchRoomId(matchId), cancellationToken);
 
-    /// <summary>La sala de revancha de una partida, si alguien ya la pidió. Quien llama ya se comprobó que fue participante.</summary>
-    public Task<Room?> FindRematchAsync(Guid matchId, CancellationToken cancellationToken) =>
-        store.GetAsync(RematchRoomId(matchId), cancellationToken);
-
     public async Task<LobbyResult<RoomView>> CreateAsync(
         Guid userId, string username, string name, RoomVisibility visibility, int capacity, CancellationToken cancellationToken, IReadOnlyCollection<Curse>? curses = null)
     {

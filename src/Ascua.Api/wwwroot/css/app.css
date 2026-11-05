@@ -1489,3 +1489,9 @@ button.trial-pick.chosen:disabled, button.door.chosen:disabled { opacity: 1; }
 .award-title { display: block; color: var(--gold); font-family: var(--font-display); }
 .awards small { color: var(--muted); }
 #btn-rematch.pulse { animation: armed 1s ease-in-out infinite; }
+
+/* Pantallas bajas: el registro de la ronda tiene que caber sin bajar por la columna. */
+@media (max-height: 820px) and (min-width: 1000px) {
+  .dpad .dir { min-height: 40px; padding: .1rem; font-size: 1rem; }
+  .dpad .dir small { font-size: .62rem; }
+}

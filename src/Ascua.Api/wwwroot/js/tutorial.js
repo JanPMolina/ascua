@@ -166,7 +166,7 @@ const STEPS = [
       const after = { x: me.x + { E: 1, W: -1 }[first] || me.x, y: me.y + { S: 1, N: -1 }[first] || me.y };
       const dir = lineDir(after, target.position);
       lines.push(dist === 2 && dir
-        ? `Marca el paso con ${keyHint(first)} y, sin soltarlo de vista, ataca con Shift + ${keyHint(dir)}. La línea del ataque sale de la casilla marcada.`
+        ? `Marca el paso con ${keyHint(first)} y luego ataca con Shift + ${keyHint(dir)}. La línea del ataque sale de la casilla marcada.`
         : `Marca un paso con una flecha y luego usa Shift + flecha para atacar en esa misma orden. Aunque no le des, cuenta para practicar.`);
       lines.push('Si tu paso rebota, la acción sale de donde estabas. Defender (Espacio) borra el paso: quien defiende se planta.');
       return lines;

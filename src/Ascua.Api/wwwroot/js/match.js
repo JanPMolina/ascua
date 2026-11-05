@@ -948,6 +948,7 @@ class MatchController {
         if (status?.available) {
           setText('rematch-note', `Ya hay revancha: ${status.players}/${status.capacity} en la sala. Pulsa Revancha para entrar con el mismo código.`);
           $('rematch-note').hidden = false;
+          if (!$('btn-rematch').classList.contains('pulse')) toast('Alguien pidió la revancha.', 'info', 5000);
           setText('btn-rematch', 'Unirme a la revancha');
           $('btn-rematch').classList.add('pulse');
         }
@@ -1684,8 +1685,8 @@ class MatchController {
   eventItem(ev) {
     const [icon, tone] = EVENT_STYLE[ev.type] ?? ['•', ''];
     let cls = tone;
-    if (isSabotageHit(ev)) cls = 'sabotage';
     if (ev.type === 'DAMAGED') cls = ev.targetId === this.playerId ? 'bad' : ev.actorId === this.playerId ? 'good' : '';
+    if (isSabotageHit(ev)) cls = 'sabotage';
     if (ev.type === 'BLOCKED' && ev.detail === 'WARNING_SHIELD') cls = 'renegade';
     if (ev.type === 'PATH_CHOSEN') cls = ev.detail === 'VENGEANCE' ? 'renegade' : 'ember';
     const classes = [cls ? `ev-${cls}` : '', ev.actorId === this.playerId ? 'ev-mine' : '', KEY_EVENTS.has(ev.type) || isSabotageHit(ev) ? 'ev-key' : ''].filter(Boolean).join(' ');
