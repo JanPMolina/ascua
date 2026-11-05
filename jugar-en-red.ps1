@@ -15,7 +15,7 @@ $env:ASCUA_HOST_IP = $ip
 
 if ($Apagar) {
     # Antes de apagar, guarda el reporte y un respaldo de las partidas.
-    try { & "$PSScriptRooteporte-partidas.ps1" } catch { Write-Warning $_ }
+    try { & (Join-Path $PSScriptRoot 'reporte-partidas.ps1') } catch { Write-Warning $_ }
     docker @compose down
     exit $LASTEXITCODE
 }
