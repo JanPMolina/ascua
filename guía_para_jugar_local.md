@@ -47,7 +47,17 @@ Set-NetConnectionProfile -InterfaceAlias 'Wi-Fi' -NetworkCategory Private
 powershell -ExecutionPolicy Bypass -File jugar-en-red.ps1 -Apagar
 ```
 
-Las cuentas y el historial se conservan para la próxima vez.
+Las cuentas y las partidas se conservan para la próxima vez, y al apagar se guarda el reporte en `partidas/resumen.md`.
+
+### Después de jugar
+
+Para ver qué héroes rinden mejor, con el servidor encendido:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File reporte-partidas.ps1
+```
+
+Deja en `partidas/` el resumen con sugerencias de balance, los datos en CSV y un respaldo. Anoten también lo que sintieron en [notas-de-partidas.md](notas-de-partidas.md).
 
 ---
 
@@ -83,7 +93,7 @@ Una sola persona crea la sala, normalmente el host:
 
 ## Cómo se juega, en 30 segundos
 
-Todos deciden a la vez y **cada ronda dura 20 segundos**. Si no envías nada, tu héroe defiende. Gana quien tenga **más oro** cuando caiga el Celador, y todos pierden si caen todos.
+Todos deciden a la vez y **cada ronda dura 20 segundos**. Si no envías nada, tu héroe defiende. Gana quien tenga **más oro** cuando caiga el Celador, y todos pierden si caen todos o se acaban las 60 rondas.
 
 | Acción | Teclas |
 |---|---|

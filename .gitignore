@@ -28,3 +28,6 @@ loadtests/reports/*
 # Logs locales de NBomber (carpeta de salida por defecto)
 loadtests/**/r/
 nbomber-log-*.txt
+
+# Datos de las partidas de prueba (reporte-partidas.ps1)
+partidas/
