@@ -67,7 +67,6 @@ Datos revisados en la base. Los bots no usan habilidades, así que 1 victoria de
 **A vigilar**
 - Un Fantasma que murió antes ganó con 10 de oro, y quien hizo 14 de daño quedó último con 5.
 - Escarcha congela pero no daña: un bot con ella congeló a un monstruo durante 26 rondas sin matarlo. Una persona que la elija debe pedir ayuda.
-- Nada avisa que quedan monstruos si pisas la escalera y no pasa nada.
 
 ## Qué mirar en las partidas reales (versión 3)
 

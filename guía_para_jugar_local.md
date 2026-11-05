@@ -125,6 +125,7 @@ Las casillas marcadas muestran dónde golpeará un enemigo **en la ronda siguien
 | Entra pero la partida no conecta | La dirección cambió: vuelve a correr el script y usa la nueva |
 | Se quedó congelado para todos | El equipo del host se suspendió o perdió el Wi-Fi. Despiértalo; si no vuelve, corre el script otra vez |
 | «Ya estás en otra partida» | Termina o abandona esa partida antes de entrar a una nueva |
+| Pisan la escalera y no pasa nada | Aún quedan monstruos en la sala: el juego lo avisa junto a las órdenes. Búsquenlos; pueden estar fuera de la vista |
 | Algo sigue sin funcionar | Host: `docker compose -p ascua-red logs api` muestra qué pasó |
 
 Es una versión de prueba: si algo se ve raro o alguien gana demasiado fácil, anótenlo. Esa opinión es justo lo que falta para ajustar el juego.

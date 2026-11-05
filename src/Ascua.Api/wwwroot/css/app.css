@@ -750,6 +750,8 @@ body[data-screen="match"] > .debug { display: none; }
 .order-status.ok { border-left-color: var(--ok); }
 .order-status.ok .os-main { color: #b9f0c9; }
 .order-status.pending { border-left-color: var(--warn); }
+.order-status.warn { border-left-color: var(--warn); }
+.order-status.warn .os-main { color: #ffd88a; }
 .order-status.pending .os-main::before { content: ""; width: .8rem; height: .8rem; border-radius: 50%; border: 2px solid var(--warn); border-top-color: transparent; animation: spin .8s linear infinite; }
 .order-status.bad { border-left-color: var(--bad); }
 .order-status.bad .os-main { color: #ffc0b8; }

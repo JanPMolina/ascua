@@ -1693,6 +1693,13 @@ class MatchController {
     return el('li', { class: classes }, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, isSabotageHit(ev) ? '🗡' : icon), el('span', {}, this.describeEvent(ev)));
   }
 
+  /** Si sigue la ronda con un héroe activo sobre la escalera, es que aún quedan monstruos: se abre al terminar la ronda sin ellos. */
+  onStairs() {
+    const me = this.me;
+    if (me?.state !== 'ALIVE' || me.hostEnemyId) return false;
+    return [me.position, me.secondBody].some((p) => p && this.tiles.get(`${p.x},${p.y}`) === 'STAIRS');
+  }
+
   renderOrderStatus() {
     const box = $('order-status');
     const show = (kind, main, tech) => {
@@ -1704,6 +1711,7 @@ class MatchController {
       const pending = this.me?.pendingOrder;
       if (pending) show('ok', `✔ Orden registrada: ${describeOrder(pending)}`);
       else if (this.me && !canAct(this.me)) show('', `Ronda ${this.round || '–'}: no das órdenes por ahora.`);
+      else if (this.status === 'IN_PROGRESS' && this.deadlineLocal !== null && this.onStairs()) show('warn', 'Aún quedan monstruos en la sala: la escalera se abre al eliminarlos todos.');
       else if (this.status === 'IN_PROGRESS' && this.deadlineLocal !== null) show('', `Ronda ${this.round}: elige tu orden.`);
       else show('', `Ronda ${this.round || '–'}: sin orden enviada.`);
       return;
