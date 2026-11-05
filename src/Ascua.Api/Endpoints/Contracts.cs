@@ -89,3 +89,5 @@ public sealed record UserProfileResponse(
     public static UserProfileResponse From(UserProfile profile) =>
         new(profile.Id, profile.Username, profile.Email, profile.Role, profile.CreatedAt);
 }
+
+public sealed record ActiveMatchResponse(Guid? MatchId);

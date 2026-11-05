@@ -1,6 +1,6 @@
 // Cliente REST. Todas las rutas están en ROUTES para ajustarlas en un solo lugar.
-// Sesión: el access token y el refresh token viven SOLO en memoria (nunca en localStorage),
-// así que un XSS no los puede leer de un almacenamiento persistente y recargar = volver a entrar.
+// Sesión: el access token vive solo en memoria. El refresh token se guarda en sessionStorage (solo esta pestaña,
+// nunca localStorage) para que recargar no saque a nadie de su partida; rota en cada uso y la CSP impide scripts ajenos.
 
 export const ROUTES = {
   register: '/api/v1/auth/register',
@@ -8,6 +8,7 @@ export const ROUTES = {
   refresh: '/api/v1/auth/refresh',
   logout: '/api/v1/auth/logout',
   me: '/api/v1/users/me',
+  activeMatch: '/api/v1/users/me/active-match',
   // Salas y emparejamiento (las implementa otra rama; si cambian, se ajustan aquí).
   rooms: '/api/v1/rooms',
   room: (roomId) => `/api/v1/rooms/${encodeURIComponent(roomId)}`,
@@ -54,6 +55,18 @@ const session = {
 
 const listeners = { change: new Set() };
 
+const STORAGE_KEY = 'ascua.session';
+
+function persistSession() {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ refreshToken: session.refreshToken, username: session.username }));
+  } catch { /* sin almacenamiento: recargar pedirá entrar de nuevo */ }
+}
+
+function forgetSession() {
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* nada que borrar */ }
+}
+
 /** Se llama con `true` al iniciar sesión y con `false` al cerrarla o perderla. */
 export function onSessionChange(fn) { listeners.change.add(fn); }
 
@@ -69,6 +82,7 @@ function setTokens(tokens) {
   const lead = Math.min(60, tokens.expiresIn * 0.2);
   const delay = Math.max(5, tokens.expiresIn - lead) * 1000;
   session.refreshTimer = setTimeout(() => { refreshNow().catch(() => {}); }, delay);
+  persistSession();
 }
 
 function clearSession() {
@@ -78,6 +92,7 @@ function clearSession() {
   session.refreshToken = null;
   session.accessExpiresAt = 0;
   session.username = null;
+  forgetSession();
   if (wasLoggedIn) listeners.change.forEach((fn) => fn(false));
 }
 
@@ -114,7 +129,27 @@ export async function login(username, password) {
   } catch {
     session.username = username;
   }
+  persistSession();
   listeners.change.forEach((fn) => fn(true));
+}
+
+/** Tras recargar: recupera la sesión de esta pestaña. Si el token ya no sirve, se queda en la pantalla de entrada. */
+export async function restoreSession() {
+  let saved = null;
+  try { saved = JSON.parse(sessionStorage.getItem(STORAGE_KEY)); } catch { /* sin sesión guardada */ }
+  if (!saved?.refreshToken) return false;
+  session.refreshToken = saved.refreshToken;
+  session.username = saved.username ?? null;
+  try {
+    await refreshNow();
+  } catch {
+    clearTimeout(session.refreshTimer);
+    session.refreshToken = null;
+    session.username = null;
+    return false;
+  }
+  listeners.change.forEach((fn) => fn(true));
+  return true;
 }
 
 export async function logout() {
@@ -207,4 +242,5 @@ export const queueStatus = () => send('GET', ROUTES.queue);
 export const dequeue = () => send('DELETE', ROUTES.queue);
 
 /** Ticket de un solo uso (30 s) para abrir el WebSocket de una partida. */
+export const activeMatch = async () => (await send('GET', ROUTES.activeMatch)).matchId ?? null;
 export const createTicket = (matchId) => send('POST', ROUTES.tickets, { matchId });

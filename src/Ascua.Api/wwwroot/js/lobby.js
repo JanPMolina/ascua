@@ -42,9 +42,21 @@ function explain(err) {
 
 // ───────────── Lobby ─────────────
 
-export async function showLobby() {
+/** Con `resume` (al entrar o recargar) vuelve directo a la partida en curso del jugador, si la tiene. */
+export async function showLobby({ resume = false } = {}) {
   stopPolling();
   currentRoom = null;
+  if (resume) {
+    try {
+      const matchId = await api.activeMatch();
+      if (matchId) {
+        enter(matchId);
+        return;
+      }
+    } catch {
+      // Sin respuesta: se muestra el lobby y el jugador puede reintentar.
+    }
+  }
   showScreen('lobby');
   refreshRooms();
   // Si el usuario ya estaba en una sala (p. ej. volvió a iniciar sesión), se retoma.

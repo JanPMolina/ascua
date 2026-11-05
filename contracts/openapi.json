@@ -514,6 +514,62 @@
         ]
       }
     },
+    "/api/v1/users/me/active-match": {
+      "get": {
+        "tags": [
+          "Users"
+        ],
+        "summary": "Partida en curso del usuario, para volver a ella tras recargar o iniciar sesión (matchId null si no tiene).",
+        "operationId": "GetMyActiveMatch",
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActiveMatchResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/rooms": {
       "post": {
         "tags": [
@@ -2532,6 +2588,21 @@
   },
   "components": {
     "schemas": {
+      "ActiveMatchResponse": {
+        "required": [
+          "matchId"
+        ],
+        "type": "object",
+        "properties": {
+          "matchId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
       "AdminActionRequest": {
         "required": [
           "reason"
