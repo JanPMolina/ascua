@@ -273,13 +273,14 @@ public sealed class RedisMatchHotState(IConnectionMultiplexer redis, RealtimeOpt
 
     private static string GraceMember(Guid matchId, Guid userId) => $"{matchId:D}|{userId:D}";
 
-    private static string EncodeOrder(Order order) => $"{order.Type}|{order.Direction}";
+    private static string EncodeOrder(Order order) => $"{order.Type}|{order.Direction}|{order.Step}";
 
     private static Order DecodeOrder(string value)
     {
         var parts = value.Split('|');
         Direction? direction = parts.Length > 1 && parts[1].Length > 0 ? Enum.Parse<Direction>(parts[1]) : null;
-        return new Order(Enum.Parse<OrderType>(parts[0]), direction);
+        Direction? step = parts.Length > 2 && parts[2].Length > 0 ? Enum.Parse<Direction>(parts[2]) : null;
+        return new Order(Enum.Parse<OrderType>(parts[0]), direction) { Step = step };
     }
 
     private sealed class Lease(IDatabase db, RedisKey key, string token) : IAsyncDisposable

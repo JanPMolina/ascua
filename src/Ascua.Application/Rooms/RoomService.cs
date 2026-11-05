@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Ascua.Application.Abstractions;
 using Ascua.Application.Matches;
 using Ascua.Domain.Model;
@@ -22,14 +24,65 @@ public sealed partial class RoomService(
     /// <summary>Con 2-4 plazas y un ganador por ronda, 10 intentos sobran incluso con decenas de uniones simultáneas.</summary>
     internal const int MaxAttempts = 10;
     private const int MaxInviteCodeAttempts = 5;
+    private const string RematchRoomName = "Revancha";
+
+    /// <summary>Id de la sala de revancha de una partida: todos los participantes llegan a la misma.</summary>
+    public static Guid RematchRoomId(Guid matchId)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"rematch|{matchId:N}"));
+        return new Guid(hash.AsSpan(0, 16));
+    }
+
+    /// <summary>
+    /// Revancha (06-version-3.md §10): sala privada con las mismas maldiciones. El id sale de la partida, así que aunque
+    /// varios la pidan a la vez solo una creación gana (el almacén rechaza crear una sala que ya existe) y los demás
+    /// entran a ella. Quien llama ya se comprobó que fue participante.
+    /// </summary>
+    public async Task<LobbyResult<RoomView>> RematchAsync(
+        Guid userId, string username, Guid matchId, int capacity, IReadOnlyCollection<Curse> curses, CancellationToken cancellationToken)
+    {
+        var roomId = RematchRoomId(matchId);
+        for (var attempt = 0; attempt < MaxAttempts; attempt++)
+        {
+            var existing = await store.GetAsync(roomId, cancellationToken);
+            if (existing is not null)
+            {
+                return existing.HasMember(userId)
+                    ? new RoomView(existing, true)
+                    : await JoinCoreAsync(userId, username, roomId, byInviteCode: true, cancellationToken);
+            }
+
+            var room = Room.Create(roomId, RematchRoomName, RoomVisibility.Private, inviteCodes.Next(), capacity, userId, username, clock.UtcNow) with
+            {
+                Curses = [.. curses],
+            };
+            var result = await store.SaveAsync(null, room, cancellationToken);
+            switch (result.Outcome)
+            {
+                case RoomSaveOutcome.Saved:
+                    LogRoomCreated(room.Id, userId, room.Visibility);
+                    return new RoomView(result.Room!, true);
+                case RoomSaveOutcome.UserBusy:
+                    return result.BusyReason!.Value;
+                default:
+                    // Otro la creó en este instante (o chocó el código): se relee y se entra.
+                    continue;
+            }
+        }
+
+        return LobbyError.RoomBusy;
+    }
 
     public async Task<LobbyResult<RoomView>> CreateAsync(
-        Guid userId, string username, string name, RoomVisibility visibility, int capacity, CancellationToken cancellationToken)
+        Guid userId, string username, string name, RoomVisibility visibility, int capacity, CancellationToken cancellationToken, IReadOnlyCollection<Curse>? curses = null)
     {
         for (var attempt = 0; attempt < MaxInviteCodeAttempts; attempt++)
         {
             var code = visibility == RoomVisibility.Private ? inviteCodes.Next() : null;
-            var room = Room.Create(Guid.NewGuid(), name, visibility, code, capacity, userId, username, clock.UtcNow);
+            var room = Room.Create(Guid.NewGuid(), name, visibility, code, capacity, userId, username, clock.UtcNow) with
+            {
+                Curses = [.. (curses ?? []).Distinct().Order()],
+            };
             var result = await store.SaveAsync(null, room, cancellationToken);
             switch (result.Outcome)
             {
@@ -117,7 +170,7 @@ public sealed partial class RoomService(
         try
         {
             var seats = frozen.Members.Select(m => new MatchSeat(m.UserId, m.Hero!.Value)).ToList();
-            matchId = await launcher.LaunchAsync(new LaunchMatchRequest(roomId, seats), cancellationToken);
+            matchId = await launcher.LaunchAsync(new LaunchMatchRequest(roomId, seats) { Curses = frozen.Curses }, cancellationToken);
         }
         catch (Exception ex)
         {

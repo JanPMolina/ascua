@@ -76,7 +76,7 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
     {
         var ticket = await api.TicketAsync(user, _matchId, cancellationToken);
         var connection = new HubConnectionBuilder()
-            .WithUrl(new Uri(options.BaseUrl, $"realtime/match?protocolVersion=2&access_token={ticket}"), o =>
+            .WithUrl(new Uri(options.BaseUrl, $"realtime/match?protocolVersion=3&access_token={ticket}"), o =>
             {
                 o.SkipNegotiation = true;
                 o.Transports = HttpTransportType.WebSockets;
@@ -96,6 +96,8 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
         connection.On<SeqOnly>("Snapshot", snapshot => seat.SeeSeq(snapshot.Seq));
         connection.On<DraftOffer>("DraftOffer", offer => _ = Task.Run(() => PickAsync(seat, offer), CancellationToken.None));
         connection.On<PathOffer>("PathOffer", offer => _ = Task.Run(() => ChoosePathAsync(seat, offer), CancellationToken.None));
+        connection.On<PactOffer>("PactOffer", offer => _ = Task.Run(() => ChoosePactAsync(seat, offer), CancellationToken.None));
+        connection.On<InterludeOffer>("InterludeOffer", offer => _ = Task.Run(() => VoteAsync(seat, offer), CancellationToken.None));
         connection.On<MatchFinished>("MatchFinished", _ => _finished.TrySetResult());
         connection.On<ErrorPush>("Error", push => Console.Error.WriteLine($"[push] {push.Error?.Code}: {push.Error?.Message}"));
 
@@ -124,6 +126,47 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             // El draft no es parte de la meta; si falla, el plazo elige por el bot.
+        }
+    }
+
+    /// <summary>Elige misión al azar (si falla, el plazo del draft elige la primera).</summary>
+    private async Task ChoosePactAsync(Seat seat, PactOffer offer)
+    {
+        try
+        {
+            await seat.Connection.InvokeAsync<DraftReply>("ChoosePact", new ChoosePactRequest
+            {
+                MatchId = _matchId.ToString("D"),
+                OfferId = offer.OfferId,
+                PactId = offer.Options[Random.Shared.Next(offer.Options.Count)].PactId,
+            });
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // El draft no es parte de la meta.
+        }
+    }
+
+    /// <summary>Vota en el interludio sin acusar a nadie, para no alargar la partida (si falla, el plazo cuenta «nadie»).</summary>
+    private async Task VoteAsync(Seat seat, InterludeOffer offer)
+    {
+        if (!offer.CanVote)
+        {
+            return;
+        }
+
+        try
+        {
+            await seat.Connection.InvokeAsync<DraftReply>("CastInterludeVote", new CastInterludeVoteRequest
+            {
+                MatchId = _matchId.ToString("D"),
+                OfferId = offer.OfferId,
+                Door = offer.Doors.Count > 0 ? Random.Shared.Next(offer.Doors.Count) : null,
+            });
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // El interludio no es parte de la meta.
         }
     }
 
@@ -330,7 +373,7 @@ public sealed class MatchSession(AscuaApi api, LoadOptions options, Recorder rec
     private static OrderPayload RandomOrder() => Random.Shared.Next(4) switch
     {
         0 => new OrderPayload { Type = "GUARD" },
-        1 => new OrderPayload { Type = "ATTACK", Direction = Directions[Random.Shared.Next(4)] },
+        1 => new OrderPayload { Type = "ATTACK", Direction = Directions[Random.Shared.Next(4)], Step = Directions[Random.Shared.Next(4)] },
         _ => new OrderPayload { Type = "MOVE", Direction = Directions[Random.Shared.Next(4)] },
     };
 

@@ -142,6 +142,8 @@ public sealed class RealtimeMatchTests(AscuaApiFactory factory)
             var hero = snapshot.State.FindHero(PlayerIds.Of(player.Id))!;
             var pick = await engine1.DraftPickAsync(matchId, player.Id, MatchEngine.OfferIdFor(matchId, hero), hero.DraftOptions[0], CancellationToken.None);
             Assert.Null(pick.Error);
+            var pact = await engine1.ChoosePactAsync(matchId, player.Id, MatchEngine.PactOfferIdFor(matchId, hero.Player), hero.PactOptions[0].Kind, CancellationToken.None);
+            Assert.Null(pact.Error);
         }
 
         // Deja terminar los intentos de cierre en segundo plano del draft antes de cargar las órdenes.
@@ -229,7 +231,8 @@ public sealed class RealtimeMatchTests(AscuaApiFactory factory)
         var (cb, ackB) = await RealtimeSetup.JoinAsync(factory, b, matchId);
         await using var _ = ca;
         await using var __ = cb;
-        var pactB = ackB.Snapshot!.View.Me.Pact!.PactId;
+        var pactOfferB = await cb.WaitForAsync<PactOfferMessage>("PactOffer");
+        var pactB = pactOfferB.OfferId;
         var offerB = (await cb.WaitForAsync<DraftOfferMessage>("DraftOffer")).OfferId;
         await StartRoundsAsync(matchId, ca, cb);
 

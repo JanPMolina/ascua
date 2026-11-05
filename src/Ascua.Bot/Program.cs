@@ -5,11 +5,12 @@ using Microsoft.AspNetCore.SignalR.Client;
 
 // Bot de Ascua: registra N jugadores, arranca una partida con el endpoint de desarrollo
 // (POST /api/v1/dev/matches, solo local/dev) y la juega con órdenes al azar hasta el final.
-// Uso: dotnet run --project src/Ascua.Bot -- [baseUrl] [jugadores 2-4] [espera máx. ms]
+// Uso: dotnet run --project src/Ascua.Bot -- [baseUrl] [jugadores 2-4] [espera máx. ms] [traición %]
 // La prueba de carga (NBomber, MessagePack, N partidas simultáneas) vive en loadtests/.
 var baseUrl = new Uri(args.Length > 0 ? args[0] : "http://localhost:8080");
 var playerCount = args.Length > 1 ? Math.Clamp(int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture), 2, 4) : 2;
 var maxThinkMs = args.Length > 2 ? int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture) : 500;
+var betrayalPercent = args.Length > 3 ? int.Parse(args[3], System.Globalization.CultureInfo.InvariantCulture) : 10;
 string[] heroes = ["HILVAN", "ANTEAYER", "POLIZON", "USURERA", "ESCUCHA", "AVARO", "MAMPOSTERO", "ERRATA", "CAMPANERO"];
 var heroOffset = Random.Shared.Next(heroes.Length);
 
@@ -35,7 +36,7 @@ foreach (var player in players)
 
     // Solo WebSockets, sin negotiate; el ticket va en access_token (ADR-0006). JSON: el bot corre en local/dev.
     var connection = new HubConnectionBuilder()
-        .WithUrl(new Uri(baseUrl, $"realtime/match?protocolVersion=2&access_token={ticket}"), options =>
+        .WithUrl(new Uri(baseUrl, $"realtime/match?protocolVersion=3&access_token={ticket}"), options =>
         {
             options.SkipNegotiation = true;
             options.Transports = HttpTransportType.WebSockets;
@@ -56,10 +57,42 @@ foreach (var player in players)
         Console.WriteLine($"  {player.Username} se extinguió y elige {choice}{reply.Describe()}");
     }));
 
+    // Misión: una de las dos que le ofrecen, al azar.
+    connection.On<PactOffer>("PactOffer", offer => _ = Task.Run(async () =>
+    {
+        var choice = offer.Options[Random.Shared.Next(offer.Options.Count)];
+        var reply = await connection.InvokeAsync<Reply>("ChoosePact", new { matchId, offerId = offer.OfferId, pactId = choice.PactId });
+        Console.WriteLine($"  {player.Username} elige misión {choice.PactId}{reply.Describe()}");
+    }));
+
+    // Interludio: acusa solo a quien vio golpear sin autor cerca (aquí, al azar y pocas veces: no tiene memoria) y elige puerta.
+    connection.On<InterludeOffer>("InterludeOffer", offer => _ = Task.Run(async () =>
+    {
+        if (!offer.CanVote || offer.MyVote is not null)
+        {
+            return;
+        }
+
+        await Task.Delay(Random.Shared.Next(Math.Max(1, maxThinkMs)));
+        var accused = offer.Candidates.Count > 0 && Random.Shared.Next(100) < betrayalPercent ? offer.Candidates[Random.Shared.Next(offer.Candidates.Count)] : null;
+        int? door = offer.Doors.Count > 0 ? Random.Shared.Next(offer.Doors.Count) : null;
+        var reply = await connection.InvokeAsync<Reply>("CastInterludeVote", new { matchId, offerId = offer.OfferId, accusedId = accused, door });
+        Console.WriteLine($"  {player.Username} vota en el interludio de la sala {offer.EndedFloor} ({(accused is null ? "a nadie" : "acusa")}{(door is { } d ? $", puerta {offer.Doors[d].Type}" : "")}){reply.Describe()}");
+    }));
+
+    connection.On<InterludeResolved>("InterludeResolved", resolved =>
+    {
+        if (player == players[0])
+        {
+            var condenas = resolved.Verdict.Accusations.Count(a => a.Convicted);
+            Console.WriteLine($"Interludio de la sala {resolved.Verdict.EndedFloor}: {condenas} condena(s), puerta {resolved.Verdict.ChosenDoor ?? "Celador"}");
+        }
+    });
+
     connection.On<RoundOpened>("RoundOpened", opened => _ = Task.Run(async () =>
     {
         await Task.Delay(Random.Shared.Next(Math.Max(1, maxThinkMs)));
-        var reply = await connection.InvokeAsync<Reply>("SubmitOrder", RandomOrder(matchId, opened.Round));
+        var reply = await connection.InvokeAsync<Reply>("SubmitOrder", RandomOrder(matchId, opened.Round, betrayalPercent));
         if (reply.Error?.Code is "INVALID_ORDER")
         {
             reply = await connection.InvokeAsync<Reply>("SubmitOrder", Guard(matchId, opened.Round));
@@ -101,6 +134,11 @@ foreach (var player in players)
 
 var outcome = await finished.Task.WaitAsync(TimeSpan.FromMinutes(30));
 Console.WriteLine($"Fin: {outcome.Outcome} en {outcome.Rounds} rondas");
+foreach (var award in outcome.Awards ?? [])
+{
+    Console.WriteLine($"  Título {award.Title}: {award.Reason}");
+}
+
 foreach (var standing in outcome.Standings.OrderBy(s => s.Placement))
 {
     Console.WriteLine($"  {standing.Placement}. {standing.DisplayName} {standing.Hero} {standing.FinalState} — {standing.Embers} ascuas");
@@ -111,19 +149,22 @@ foreach (var connection in connections)
     await connection.DisposeAsync();
 }
 
-static object RandomOrder(Guid matchId, int round)
+// Orden al azar: casi siempre paso y acción. Sabotea según el parámetro de traición.
+static object RandomOrder(Guid matchId, int round, int betrayalPercent)
 {
-    string[] types = ["MOVE", "MOVE", "ATTACK", "ATTACK", "ABILITY", "INTERACT"];
+    string[] types = ["ATTACK", "ATTACK", "ATTACK", "ABILITY", "INTERACT", "PUSH"];
     string[] directions = ["N", "S", "E", "W"];
-    return Random.Shared.Next(6) == 0
-        ? Guard(matchId, round)
-        : new
-        {
-            matchId,
-            round,
-            clientActionId = Guid.CreateVersion7(),
-            order = new { type = types[Random.Shared.Next(types.Length)], direction = directions[Random.Shared.Next(4)] },
-        };
+    if (Random.Shared.Next(6) == 0)
+    {
+        return Guard(matchId, round);
+    }
+
+    var type = Random.Shared.Next(100) < betrayalPercent ? "SABOTAGE" : types[Random.Shared.Next(types.Length)];
+    var direction = directions[Random.Shared.Next(4)];
+    var clientActionId = Guid.CreateVersion7();
+    return Random.Shared.Next(4) == 0
+        ? new { matchId, round, clientActionId, order = (object)new { type = "MOVE", direction } }
+        : new { matchId, round, clientActionId, order = (object)new { type, direction, step = directions[Random.Shared.Next(4)] } };
 }
 
 static object Guard(Guid matchId, int round) =>
@@ -210,6 +251,22 @@ internal sealed record DraftOffer(Guid OfferId, IReadOnlyList<string> Options);
 
 internal sealed record PathOffer(Guid OfferId, IReadOnlyList<string> Options);
 
+internal sealed record PactOption(string PactId);
+
+internal sealed record PactOffer(Guid OfferId, IReadOnlyList<PactOption> Options);
+
+internal sealed record Door(string Type);
+
+internal sealed record InterludeOffer(Guid OfferId, int EndedFloor, IReadOnlyList<Door> Doors, IReadOnlyList<string> Candidates, bool CanVote, object? MyVote);
+
+internal sealed record Accusation(bool Convicted);
+
+internal sealed record Verdict(int EndedFloor, IReadOnlyList<Accusation> Accusations, string? ChosenDoor);
+
+internal sealed record InterludeResolved(Verdict Verdict);
+
+internal sealed record AwardLine(string Title, string Reason);
+
 internal sealed record RoundOpened(int Round);
 
 internal sealed record HeardOrder(string PlayerId, string Type, string? Direction);
@@ -222,4 +279,4 @@ internal sealed record RoundResolved(int Round, long PreviousSeq, long Seq, Visi
 
 internal sealed record Standing(string DisplayName, string Hero, string FinalState, int Embers, int Placement);
 
-internal sealed record MatchFinished(string Outcome, int Rounds, IReadOnlyList<Standing> Standings);
+internal sealed record MatchFinished(string Outcome, int Rounds, IReadOnlyList<Standing> Standings, IReadOnlyList<AwardLine>? Awards);

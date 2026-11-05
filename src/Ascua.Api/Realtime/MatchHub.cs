@@ -234,6 +234,67 @@ public sealed class MatchHub(
         };
     }
 
+    /// <summary>Elige 1 de las 2 misiones (contrato 3.0.0).</summary>
+    public async Task<object> ChoosePact(ChoosePactRequest request)
+    {
+        if (RealtimeValidation.ChoosePact(request, out var matchId, out var offerId, out var pact) is { } invalid)
+        {
+            return RealtimeReplies.Error(invalid);
+        }
+
+        if (NotJoined(matchId) is { } notJoined)
+        {
+            return notJoined;
+        }
+
+        using var scope = Scope(matchId);
+        var result = await engine.ChoosePactAsync(matchId, UserId, offerId, pact, Context.ConnectionAborted);
+        if (result.Error is { } error)
+        {
+            return RealtimeReplies.Error(error);
+        }
+
+        var ack = result.Value!;
+        return new ChoosePactAck
+        {
+            MatchId = RealtimeMapper.Id(matchId),
+            OfferId = RealtimeMapper.Id(ack.OfferId),
+            PactId = RealtimeMapper.PactId(ack.Pact),
+            Result = ack.Duplicate ? "DUPLICATE_ACTION" : "ACCEPTED",
+            AcceptedAt = RealtimeMapper.Timestamp(ack.AcceptedAt),
+        };
+    }
+
+    /// <summary>Voto secreto del interludio (contrato 3.0.0): a quién acusa y qué puerta prefiere.</summary>
+    public async Task<object> CastInterludeVote(CastInterludeVoteRequest request)
+    {
+        if (RealtimeValidation.CastInterludeVote(request, out var matchId, out var offerId, out var accused, out var door) is { } invalid)
+        {
+            return RealtimeReplies.Error(invalid);
+        }
+
+        if (NotJoined(matchId) is { } notJoined)
+        {
+            return notJoined;
+        }
+
+        using var scope = Scope(matchId);
+        var result = await engine.CastVoteAsync(matchId, UserId, offerId, accused, door, Context.ConnectionAborted);
+        if (result.Error is { } error)
+        {
+            return RealtimeReplies.Error(error);
+        }
+
+        var ack = result.Value!;
+        return new CastInterludeVoteAck
+        {
+            MatchId = RealtimeMapper.Id(matchId),
+            OfferId = RealtimeMapper.Id(ack.OfferId),
+            Result = ack.Duplicate ? "DUPLICATE_ACTION" : "ACCEPTED",
+            AcceptedAt = RealtimeMapper.Timestamp(ack.AcceptedAt),
+        };
+    }
+
     /// <summary>Señal rápida a su bando (contrato 2.0.0): frase fija y, si quiere, una casilla. No se guarda.</summary>
     public async Task<object> SendSignal(SendSignalRequest request)
     {
@@ -280,6 +341,16 @@ public sealed class MatchHub(
         if (RealtimeMapper.PathOffer(snapshot, participant, clock.UtcNow) is { } pathOffer)
         {
             await Clients.Caller.SendAsync("PathOffer", pathOffer, Context.ConnectionAborted);
+        }
+
+        if (RealtimeMapper.PactOffer(snapshot, participant) is { } pactOffer)
+        {
+            await Clients.Caller.SendAsync("PactOffer", pactOffer, Context.ConnectionAborted);
+        }
+
+        if (RealtimeMapper.InterludeOffer(snapshot, participant) is { } interludeOffer)
+        {
+            await Clients.Caller.SendAsync("InterludeOffer", interludeOffer, Context.ConnectionAborted);
         }
 
         if (await engine.LastWordForAsync(snapshot, participant.PlayerId, Context.ConnectionAborted) is { } heard)

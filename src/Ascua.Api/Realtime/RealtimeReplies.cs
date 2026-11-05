@@ -92,7 +92,23 @@ public static partial class RealtimeValidation
 
         if (request.Order is null || RealtimeMapper.ParseOrderType(request.Order.Type) is not { } type)
         {
-            return Invalid("order.type", "order.type debe ser MOVE, ATTACK, ABILITY, INTERACT o GUARD.");
+            return Invalid("order.type", "order.type debe ser MOVE, ATTACK, ABILITY, INTERACT, SABOTAGE, PUSH o GUARD.");
+        }
+
+        Direction? step = null;
+        if (request.Order.Step is not null)
+        {
+            if (type is OrderType.Guard or OrderType.Move)
+            {
+                return Invalid("order.step", "GUARD y MOVE no llevan paso.");
+            }
+
+            if (RealtimeMapper.ParseDirection(request.Order.Step) is not { } parsedStep)
+            {
+                return Invalid("order.step", "order.step debe ser N, S, E o W.");
+            }
+
+            step = parsedStep;
         }
 
         if (type == OrderType.Guard)
@@ -111,7 +127,72 @@ public static partial class RealtimeValidation
             return Invalid("order.direction", "order.direction debe ser N, S, E o W.");
         }
 
-        order = new Order(type, direction);
+        order = new Order(type, direction) { Step = step };
+        return null;
+    }
+
+    public static MatchError? ChoosePact(ChoosePactRequest? request, out Guid matchId, out Guid offerId, out PactKind pact)
+    {
+        offerId = Guid.Empty;
+        pact = default;
+        if (request is null)
+        {
+            matchId = Guid.Empty;
+            return Invalid("payload", "Falta el cuerpo del mensaje.");
+        }
+
+        var error = Uuid(request.MatchId, "matchId", out matchId) ?? Uuid(request.OfferId, "offerId", out offerId);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        if (RealtimeMapper.ParsePact(request.PactId) is not { } parsed)
+        {
+            return Invalid("pactId", "pactId no es una misión válida.");
+        }
+
+        pact = parsed;
+        return null;
+    }
+
+    public static MatchError? CastInterludeVote(CastInterludeVoteRequest? request, out Guid matchId, out Guid offerId, out PlayerId? accused, out int? door)
+    {
+        offerId = Guid.Empty;
+        accused = null;
+        door = null;
+        if (request is null)
+        {
+            matchId = Guid.Empty;
+            return Invalid("payload", "Falta el cuerpo del mensaje.");
+        }
+
+        var error = Uuid(request.MatchId, "matchId", out matchId) ?? Uuid(request.OfferId, "offerId", out offerId);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        if (request.AccusedId is not null)
+        {
+            if (Uuid(request.AccusedId, "accusedId", out var accusedId) is { } invalidAccused)
+            {
+                return invalidAccused;
+            }
+
+            accused = PlayerIds.Of(accusedId);
+        }
+
+        if (request.Door is { } chosen)
+        {
+            if (chosen is < 0 or > 1)
+            {
+                return Invalid("door", "door debe ser 0 o 1.");
+            }
+
+            door = chosen;
+        }
+
         return null;
     }
 

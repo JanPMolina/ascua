@@ -97,7 +97,18 @@ public static class RoomEndpoints
             return Problems.Unauthorized.ToResult();
         }
 
-        var result = await rooms.CreateAsync(userId, username, request.Name.Trim(), request.Visibility, request.MaxPlayers, cancellationToken);
+        var curses = new List<Ascua.Domain.Model.Curse>();
+        foreach (var code in request.Curses)
+        {
+            if (Ascua.Api.Realtime.RealtimeMapper.ParseCurse(code) is not { } curse)
+            {
+                return Problems.ValidationResult(new Dictionary<string, string[]> { ["curses"] = [$"Maldición desconocida: {code}."] });
+            }
+
+            curses.Add(curse);
+        }
+
+        var result = await rooms.CreateAsync(userId, username, request.Name.Trim(), request.Visibility, request.MaxPlayers, cancellationToken, curses);
         return result.Error is { } error
             ? Problems.Result(error)
             : TypedResults.Created($"{BasePath}/{result.Value!.Room.Id}", RoomResponse.From(result.Value));

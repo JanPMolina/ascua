@@ -61,6 +61,9 @@ public sealed record Room
 
     public ImmutableList<RoomMember> Members { get; init; } = [];
 
+    /// <summary>Maldiciones que eligió el anfitrión al crearla: públicas.</summary>
+    public ImmutableList<Curse> Curses { get; init; } = [];
+
     public bool IsFull => Members.Count >= Capacity;
 
     /// <summary>Se lista en <c>GET /rooms</c>: pública, abierta y con lugar.</summary>

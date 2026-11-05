@@ -114,6 +114,7 @@ app.MapUserEndpoints();
 app.MapRoomEndpoints();
 app.MapMatchmakingEndpoints();
 app.MapMatchHistoryEndpoints();
+app.MapCatalogEndpoints();
 app.MapAdminEndpoints();
 
 app.MapAscuaRealtime();

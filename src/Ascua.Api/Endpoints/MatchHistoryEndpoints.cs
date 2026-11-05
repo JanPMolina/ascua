@@ -3,6 +3,7 @@ using Ascua.Api.Realtime;
 using Ascua.Api.Security;
 using Ascua.Application.Abstractions;
 using Ascua.Application.Matches;
+using Ascua.Application.Rooms;
 using Ascua.Application.Users;
 using Ascua.Domain.Model;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -44,7 +45,40 @@ public static class MatchHistoryEndpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
+        matches.MapPost("/{matchId:guid}/rematch", RematchAsync)
+            .WithName("CreateRematch")
+            .WithSummary("Revancha: sala privada para los participantes de una partida terminada, con el mismo código para todos. Idempotente aunque la pidan a la vez.")
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
         return app;
+    }
+
+    private static async Task<Results<Ok<RoomResponse>, ProblemHttpResult>> RematchAsync(
+        Guid matchId,
+        ClaimsPrincipal principal,
+        [FromServices] MatchHistoryService history,
+        [FromServices] RoomService rooms,
+        CancellationToken cancellationToken)
+    {
+        if (!RoomEndpoints.TryGetUser(principal, out var userId, out var username))
+        {
+            return Problems.Unauthorized.ToResult();
+        }
+
+        // Partida ajena o inexistente: 404, no se distinguen.
+        if (await history.GetForParticipantAsync(matchId, userId, cancellationToken) is not { } found)
+        {
+            return Problems.NotFound.ToResult();
+        }
+
+        if (found.Match.Status.IsActive())
+        {
+            return Problems.MatchNotFinished.ToResult();
+        }
+
+        var result = await rooms.RematchAsync(userId, username, matchId, found.Match.Participants.Count, found.Match.State.Curses, cancellationToken);
+        return result.Error is { } error ? Problems.Result(error) : TypedResults.Ok(RoomResponse.From(result.Value!));
     }
 
     private static async Task<Results<Ok<MatchHistoryResponse>, ProblemHttpResult>> ListAsync(
@@ -117,7 +151,7 @@ public static class MatchHistoryEndpoints
             {
                 PactId = RealtimeMapper.PactId(me.Pact),
                 Description = RealtimeMapper.PactDescription(me.Pact),
-                Fulfilled = myScore?.PactFulfilled ?? PactRules.IsFulfilled(me.Pact, me.Progress),
+                Fulfilled = myScore?.PactFulfilled ?? PactRules.IsFulfilled(me, match.State.Heroes),
             },
             summary.ReplayUrl));
     }
@@ -185,7 +219,7 @@ public static class MatchHistoryEndpoints
             OutcomeKind.ThresholdClaimed when outcome.Winners.Count > 1 && outcome.Winners.Contains(player) => "DRAW",
             OutcomeKind.ThresholdClaimed when outcome.Winners.Contains(player) => "VICTORY",
             OutcomeKind.Victory or OutcomeKind.Draw or OutcomeKind.ThresholdClaimed => "DEFEAT",
-            OutcomeKind.CollectiveDefeat => "COLLECTIVE_DEFEAT",
+            OutcomeKind.CollectiveDefeat => "DEFEAT",
             _ => "ABANDONED",
         };
 

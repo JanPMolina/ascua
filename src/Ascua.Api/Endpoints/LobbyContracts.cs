@@ -31,6 +31,10 @@ public sealed class CreateRoomRequest
     [Range(Room.MinPlayers, Room.MaxPlayers)]
     [Description("Capacidad de la sala (2 a 4).")]
     public int MaxPlayers { get; init; } = Room.MaxPlayers;
+
+    [MaxLength(4)]
+    [Description("Maldiciones (dificultad opcional): FIERCE, WARDEN_PLUS, DIM, HASTE. Públicas y fijas desde que se crea la sala.")]
+    public string[] Curses { get; init; } = [];
 }
 
 public sealed class JoinByCodeRequest
@@ -73,7 +77,8 @@ public sealed record RoomResponse(
     IReadOnlyList<RoomMemberResponse> Members,
     [property: Description("Solo para participantes de salas privadas.")] string? InviteCode,
     [property: Description("Solo para participantes, cuando la partida ya arrancó.")] Guid? MatchId,
-    DateTimeOffset CreatedAt)
+    DateTimeOffset CreatedAt,
+    [property: Description("Maldiciones de la sala: públicas.")] IReadOnlyList<string> Curses)
 {
     public static RoomResponse From(RoomView view)
     {
@@ -88,7 +93,8 @@ public sealed record RoomResponse(
             [.. room.Members.Select(m => new RoomMemberResponse(m.UserId, m.Username, m.Hero, m.Ready, m.UserId == room.HostId))],
             view.IsMember ? room.InviteCode : null,
             view.IsMember ? room.MatchId : null,
-            room.CreatedAt);
+            room.CreatedAt,
+            [.. room.Curses.Select(Ascua.Api.Realtime.RealtimeMapper.CurseCode)]);
     }
 }
 

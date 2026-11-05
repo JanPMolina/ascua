@@ -167,7 +167,8 @@ public sealed class RedisRoomStore(IConnectionMultiplexer redis, LobbyPolicy pol
         RoomStatus Status,
         Guid? MatchId,
         DateTimeOffset CreatedAt,
-        IReadOnlyList<MemberData> Members)
+        IReadOnlyList<MemberData> Members,
+        IReadOnlyList<Curse>? Curses = null)
     {
         public static RoomData From(Room room) => new(
             room.Id,
@@ -179,7 +180,8 @@ public sealed class RedisRoomStore(IConnectionMultiplexer redis, LobbyPolicy pol
             room.Status,
             room.MatchId,
             room.CreatedAt,
-            [.. room.Members.Select(m => new MemberData(m.UserId, m.Username, m.Hero, m.Ready, m.JoinedAt))]);
+            [.. room.Members.Select(m => new MemberData(m.UserId, m.Username, m.Hero, m.Ready, m.JoinedAt))],
+            room.Curses);
 
         public Room ToRoom(long version) => new()
         {
@@ -194,6 +196,7 @@ public sealed class RedisRoomStore(IConnectionMultiplexer redis, LobbyPolicy pol
             CreatedAt = CreatedAt,
             Version = version,
             Members = [.. Members.Select(m => new RoomMember(m.UserId, m.Username, m.Hero, m.Ready, m.JoinedAt))],
+            Curses = [.. Curses ?? []],
         };
     }
 

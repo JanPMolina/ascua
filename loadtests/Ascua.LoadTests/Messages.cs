@@ -36,6 +36,75 @@ public sealed class OrderPayload
 
     [Key("direction")]
     public string? Direction { get; set; }
+
+    [Key("step")]
+    public string? Step { get; set; }
+}
+
+[MessagePackObject]
+public sealed class ChoosePactRequest
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("pactId")]
+    public string PactId { get; set; } = "";
+}
+
+[MessagePackObject]
+public sealed class CastInterludeVoteRequest
+{
+    [Key("matchId")]
+    public string MatchId { get; set; } = "";
+
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("accusedId")]
+    public string? AccusedId { get; set; }
+
+    [Key("door")]
+    public int? Door { get; set; }
+}
+
+[MessagePackObject]
+public sealed class PactOption
+{
+    [Key("pactId")]
+    public string PactId { get; set; } = "";
+}
+
+[MessagePackObject]
+public sealed class PactOffer
+{
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("options")]
+    public IReadOnlyList<PactOption> Options { get; set; } = [];
+}
+
+[MessagePackObject]
+public sealed class InterludeDoor
+{
+    [Key("type")]
+    public string Type { get; set; } = "";
+}
+
+[MessagePackObject]
+public sealed class InterludeOffer
+{
+    [Key("offerId")]
+    public string OfferId { get; set; } = "";
+
+    [Key("doors")]
+    public IReadOnlyList<InterludeDoor> Doors { get; set; } = [];
+
+    [Key("canVote")]
+    public bool CanVote { get; set; }
 }
 
 [MessagePackObject]

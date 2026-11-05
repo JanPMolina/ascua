@@ -3,7 +3,7 @@
 // respetar la razón de cierre (MATCH_FINISHED, SESSION_REPLACED… no reconectan). La decide match.js.
 import { createTicket } from './api.js';
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 3;
 export const HUB_PATH = '/realtime/match';
 
 /** Mensajes que el servidor empuja (operaciones `send` del contrato). */

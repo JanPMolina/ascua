@@ -6,7 +6,11 @@ namespace Ascua.Application.Matches;
 public sealed record MatchSeat(Guid UserId, HeroClass Hero);
 
 /// <summary>Pedido de arranque cuando una sala tiene ≥2 jugadores listos (o el emparejamiento agrupó una).</summary>
-public sealed record LaunchMatchRequest(Guid RoomId, IReadOnlyList<MatchSeat> Seats);
+public sealed record LaunchMatchRequest(Guid RoomId, IReadOnlyList<MatchSeat> Seats)
+{
+    /// <summary>Maldiciones que eligió el anfitrión (públicas y guardadas con la partida).</summary>
+    public IReadOnlyList<Curse> Curses { get; init; } = [];
+}
 
 /// <summary>
 /// Punto de unión entre salas/emparejamiento (lo llaman) y el tiempo real (lo implementa):

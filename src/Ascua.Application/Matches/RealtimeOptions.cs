@@ -11,6 +11,9 @@ public sealed class RealtimeOptions
     /// <summary>Plazo del draft inicial; al vencer se elige la primera opción.</summary>
     public TimeSpan DraftDuration { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <summary>Plazo del interludio (El Juicio y la puerta). Al vencer, el voto ausente es «nadie» (06-version-3.md §3).</summary>
+    public TimeSpan InterludeDuration { get; set; } = TimeSpan.FromSeconds(20);
+
     /// <summary>Plazo para elegir camino tras extinguirse; al vencer se toma Amistad (04-caminos-tras-morir.md).</summary>
     public TimeSpan PathChoiceDuration { get; set; } = TimeSpan.FromSeconds(15);
 
@@ -86,6 +89,9 @@ public static class RealtimeErrors
     public const string DraftClosed = "DRAFT_CLOSED";
     public const string InvalidPick = "INVALID_PICK";
     public const string PathClosed = "PATH_CLOSED";
+    public const string PactClosed = "PACT_CLOSED";
+    public const string VoteClosed = "VOTE_CLOSED";
+    public const string InvalidVote = "INVALID_VOTE";
     public const string RateLimited = "RATE_LIMITED";
     public const string InternalError = "INTERNAL_ERROR";
 }

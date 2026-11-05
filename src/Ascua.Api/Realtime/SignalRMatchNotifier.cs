@@ -65,13 +65,23 @@ public sealed class SignalRMatchNotifier(
             {
                 sends.Add(user.SendAsync("PathOffer", pathOffer, cancellationToken));
             }
+
+            if (!before.IsInInterlude && RealtimeMapper.InterludeOffer(after, participant) is { } interludeOffer)
+            {
+                sends.Add(user.SendAsync("InterludeOffer", interludeOffer, cancellationToken));
+            }
+
+            if (before.IsInInterlude && !after.IsInInterlude && after.State.LastVerdict is not null)
+            {
+                sends.Add(user.SendAsync("InterludeResolved", RealtimeMapper.InterludeResolved(after, change.Events, participant), cancellationToken));
+            }
         }
 
         await Task.WhenAll(sends);
 
         var group = hub.Clients.Group(MatchHub.Group(after.MatchId));
-        if (after.Status == MatchStatus.InProgress && after.Deadline is { } deadline
-            && (before.Status != MatchStatus.InProgress || before.State.Round != after.State.Round))
+        if (after.IsPlayingRound && after.Deadline is { } deadline
+            && (!before.IsPlayingRound || before.State.Round != after.State.Round))
         {
             await group.SendAsync(
                 "RoundOpened",

@@ -42,6 +42,7 @@ public static class Problems
     public static readonly ProblemKind MatchesUnavailable = new("matches-unavailable", StatusCodes.Status503ServiceUnavailable, "Las partidas aún no están disponibles.");
     public static readonly ProblemKind RateLimited = new("rate-limited", StatusCodes.Status429TooManyRequests, "Demasiadas solicitudes; reintente más tarde.");
     public static readonly ProblemKind TicketInvalid = new("ticket-invalid", StatusCodes.Status401Unauthorized, "El ticket de tiempo real falta, venció o ya se usó.");
+    public static readonly ProblemKind MatchNotFinished = new("match-not-finished", StatusCodes.Status409Conflict, "La revancha se pide cuando la partida terminó.");
     public static readonly ProblemKind UnsupportedProtocolVersion = new("unsupported-protocol-version", StatusCodes.Status400BadRequest, "La versión del protocolo de tiempo real no es compatible.");
     public static readonly ProblemKind ConnectionLimit = new("connection-limit", StatusCodes.Status429TooManyRequests, "Ya tiene el máximo de conexiones de tiempo real abiertas.");
     public static readonly ProblemKind MatchNotActive = new("match-not-active", StatusCodes.Status409Conflict, "La partida ya no está en curso.");
