@@ -1391,3 +1391,101 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
   transition-duration: .01ms !important; scroll-behavior: auto !important;
 }
 html.reduce-motion body::before { display: none; }
+
+/* ───────── Versión 3 ───────── */
+/* Paso marcado y acciones nuevas */
+.modes { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .3rem; }
+.modes .mode { padding: .35rem .4rem; font-size: .78rem; gap: .25rem; flex-wrap: wrap; justify-content: center; text-align: center; min-width: 0; }
+.modes .mode kbd { margin-left: 0; font-size: .6rem; }
+.modes .mode-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.mode.spent { text-decoration: line-through; opacity: .55; }
+.order-plan {
+  margin: 0 0 .4rem; padding: .35rem .55rem; border-radius: var(--radius-sm); font-size: .8rem; font-weight: 600;
+  color: #cfeaff; background: rgba(111, 200, 255, .1); border: 1px dashed rgba(143, 208, 255, .6);
+}
+#btn-send-step { width: 100%; margin-top: .35rem; padding: .35rem .5rem; font-size: .82rem; }
+#btn-send-step kbd { margin-left: .4rem; font-size: .62rem; }
+
+/* Sala, maldiciones y agua */
+.room-pill { cursor: help; }
+.room-pill b { font-size: .95rem; white-space: nowrap; }
+.curse-mini { display: inline-flex; gap: .15rem; flex-shrink: 0; }
+.curse-mini:empty { display: none; }
+.curse-chip { display: inline-grid; place-items: center; width: 1.6rem; height: 1.6rem; border-radius: 50%; font-size: .85rem; cursor: help; background: rgba(160, 60, 190, .25); border: 1px solid rgba(197, 138, 240, .6); }
+.room-note { margin: .25rem 0 0; text-align: center; font-size: .8rem; color: #ffe2a8; line-height: 1.25; }
+.sw.sw-water { background: #2f7fd8; }
+.board-frame { position: relative; }
+.curses-sub summary { cursor: pointer; font-size: .9rem; color: var(--muted); }
+.curse-list { display: grid; gap: .3rem; margin-top: .4rem; }
+.curse-pick { display: grid; grid-template-columns: auto 1fr; column-gap: .45rem; align-items: center; font-size: .85rem; cursor: pointer; }
+.curse-pick small { grid-column: 2; color: var(--muted); font-size: .74rem; }
+.room-curses { margin-bottom: .5rem; }
+.curse-chips { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: .4rem; }
+.curse-chips li { padding: .3rem .6rem; border-radius: 999px; font-size: .85rem; background: rgba(160, 60, 190, .18); border: 1px solid rgba(197, 138, 240, .5); }
+.curse-chips small { color: var(--muted); }
+
+/* Mejora y misión */
+.bl-cost { color: #ffb8ad; font-size: .78rem; }
+.draft { max-height: calc(100dvh - 2rem); overflow: auto; }
+.pact-section { width: 100%; display: grid; justify-items: center; gap: .3rem; margin-top: .4rem; }
+.pact-section h2 { font-size: 1.35rem; margin: .2rem 0 0; }
+.pact-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: .7rem; width: 100%; }
+button.pact-pick {
+  display: grid; justify-items: center; gap: .25rem; padding: .7rem; font-weight: 400; color: var(--text); border-radius: 12px;
+  border: 1px solid rgba(243, 195, 94, .4); background: linear-gradient(180deg, #2a1e16, #1a120d);
+}
+button.pact-pick:hover:not(:disabled) { border-color: var(--gold); }
+.pact-pick .seal { color: var(--gold); }
+.pact-pick-text { font-family: var(--font-display); color: #f6dca8; }
+.pact-pick small { color: var(--muted); font-size: .76rem; }
+
+/* Interludio */
+.interlude { max-width: 720px; display: grid; gap: .45rem; justify-items: center; text-align: center; max-height: calc(100dvh - 2rem); overflow: auto; }
+.interlude h2 { font-size: 1.7rem; margin: .1rem 0 0; }
+.interlude h3 { font-size: 1rem; margin: .2rem 0; }
+.interlude .hint { margin: 0; }
+.trial-section, .door-section { width: 100%; }
+.trial-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: .5rem; margin-top: .4rem; }
+.door-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .6rem; margin-top: .4rem; }
+button.trial-pick, button.door {
+  display: grid; justify-items: center; align-content: start; gap: .15rem; padding: .55rem .5rem; font-weight: 400; color: var(--text);
+  border-radius: 12px; border: 1px solid var(--line); background: linear-gradient(180deg, #2a1e16, #1a120d);
+}
+button.trial-pick small, button.door small { color: var(--muted); font-size: .74rem; line-height: 1.25; }
+.trial-none { font-size: 1.5rem; line-height: 1; color: var(--muted); height: 34px; display: grid; place-items: center; }
+.door-ico { font-size: 1.5rem; line-height: 1.2; }
+button.trial-pick.chosen, button.door.chosen { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(243, 195, 94, .45), 0 0 18px rgba(243, 195, 94, .3); }
+button.trial-pick:disabled, button.door:disabled { opacity: .75; }
+button.trial-pick.chosen:disabled, button.door.chosen:disabled { opacity: 1; }
+.interlude-actions { display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; justify-content: center; }
+#interlude-timebar { height: 100%; }
+
+/* Recuento */
+.verdict-card {
+  position: absolute; left: 6%; right: 6%; top: 8%; z-index: 3; padding: .6rem .8rem; border-radius: 12px;
+  background: rgba(18, 11, 7, .93); border: 1px solid var(--gold); box-shadow: 0 10px 34px rgba(0, 0, 0, .6); animation: rise-in .3s var(--ease-out);
+}
+.verdict-card.guilty { border-color: var(--bad); box-shadow: 0 0 30px rgba(239, 107, 94, .4); }
+.verdict-title { font-family: var(--font-display); color: var(--ember-hi); }
+.verdict-close { position: absolute; top: .3rem; right: .3rem; }
+.verdict-lines { list-style: none; margin: .3rem 0 0; padding: 0; display: grid; gap: .15rem; font-size: .84rem; }
+.verdict-lines .bad { color: #ffb8ad; font-weight: 700; }
+.verdict-lines .good { color: #b5e6c4; }
+.verdict-lines .muted { color: var(--muted); }
+.verdict-lines .door { color: #ffe2a8; }
+.verdict-lines .sub { padding-left: 1rem; font-weight: 400; }
+.card-verdict summary { cursor: pointer; font-weight: 700; font-size: .9rem; }
+
+/* Registro por fases y sabotaje */
+.events li.ev-phase { display: block; margin-top: .2rem; padding: .05rem .3rem; background: none; color: var(--ember-hi); font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid var(--line-soft); }
+.events li.ev-key { font-weight: 700; }
+.events li.ev-sabotage { background: rgba(160, 60, 190, .18); color: #e6ccff; box-shadow: inset 2px 0 0 #c58af0; }
+.p-tag.convicted { margin-left: .25rem; padding: 0 .3rem; border-radius: 6px; font-size: .7rem; color: #ffb8ad; background: rgba(239, 107, 94, .16); }
+
+/* Final */
+.fin-curses { text-align: center; color: #e6ccff; margin: .2rem 0; }
+.awards { list-style: none; margin: 0 0 .6rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: .4rem; }
+.awards li { display: flex; align-items: center; gap: .5rem; padding: .35rem .55rem; border-radius: var(--radius-sm); background: rgba(243, 195, 94, .08); border: 1px solid rgba(243, 195, 94, .3); animation: rise-in .4s var(--ease-out) both; }
+.award-title { display: block; color: var(--gold); font-family: var(--font-display); }
+.awards small { color: var(--muted); }
+#btn-rematch.pulse { animation: armed 1s ease-in-out infinite; }

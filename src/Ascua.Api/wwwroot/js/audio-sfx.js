@@ -20,6 +20,48 @@ function brass(freq, t, dur, peak, out) {
 }
 
 export const SFX = {
+  // ───────── versión 3 ─────────
+  voteCast(t, out) {
+    noise({ t, dur: 0.05, peak: 0.5, filter: BP(1400, null, 2), out });
+    tone({ type: 'triangle', freq: 220, freqEnd: 140, t, dur: 0.16, peak: 0.35, out });
+    return 0.2;
+  },
+  interludeOpen(t, out) {
+    bell({ freq: midi(50), t, dur: 1.8, peak: 0.22, out });
+    bell({ freq: midi(57), t: t + 0.18, dur: 1.4, peak: 0.14, out });
+    return 2;
+  },
+  verdictGuilty(t, out) {
+    noise({ t, dur: 0.1, peak: 0.7, filter: LP(900, 200), out });
+    tone({ type: 'sawtooth', freq: 130, freqEnd: 65, t, dur: 0.5, peak: 0.3, filter: LP(800, 200), out });
+    bell({ freq: midi(38), t: t + 0.08, dur: 1.6, peak: 0.25, out });
+    return 1.7;
+  },
+  verdictInnocent(t, out) {
+    tone({ type: 'triangle', freq: 392, t, dur: 0.22, peak: 0.2, out });
+    tone({ type: 'triangle', freq: 330, t: t + 0.16, dur: 0.34, peak: 0.2, out });
+    return 0.55;
+  },
+  verdictNone(t, out) {
+    tone({ type: 'sine', freq: 262, t, dur: 0.3, peak: 0.16, out });
+    return 0.35;
+  },
+  push(t, out) {
+    noise({ t, dur: 0.12, peak: 0.6, filter: LP(1400, 300), out });
+    tone({ type: 'triangle', freq: 150, freqEnd: 70, t, dur: 0.18, peak: 0.45, out });
+    return 0.22;
+  },
+  flood(t, out) {
+    noise({ t, dur: 1.2, attack: 0.3, peak: 0.35, filter: BP(500, 1100, 0.8), out });
+    noise({ t: t + 0.2, dur: 0.9, attack: 0.2, peak: 0.2, filter: BP(1400, 700, 1), out });
+    return 1.3;
+  },
+  sabotage(t, out) {
+    tone({ type: 'sawtooth', freq: 880, freqEnd: 220, t, dur: 0.16, peak: 0.16, filter: BP(1500, 500, 2), out });
+    noise({ t: t + 0.04, dur: 0.1, peak: 0.45, filter: HP(1800), out });
+    tone({ type: 'sine', freq: 185, t: t + 0.1, dur: 0.5, peak: 0.16, detune: -30, out });
+    return 0.65;
+  },
   // ───────── interfaz ─────────
   uiHover(t, out) {
     tone({ freq: 1760, freqEnd: 1980, t, dur: 0.05, attack: 0.004, peak: 0.05, out });

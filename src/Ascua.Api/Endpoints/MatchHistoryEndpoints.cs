@@ -51,7 +51,33 @@ public static class MatchHistoryEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict);
 
+        matches.MapGet("/{matchId:guid}/rematch", RematchStatusAsync)
+            .WithName("GetRematchStatus")
+            .WithSummary("¿Alguien ya pidió la revancha de esta partida? Solo para participantes; no sienta a nadie.")
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         return app;
+    }
+
+    private static async Task<Results<Ok<RematchStatusResponse>, ProblemHttpResult>> RematchStatusAsync(
+        Guid matchId,
+        ClaimsPrincipal principal,
+        [FromServices] MatchHistoryService history,
+        [FromServices] RoomService rooms,
+        CancellationToken cancellationToken)
+    {
+        if (!UserEndpoints.TryGetUserId(principal, out var userId))
+        {
+            return Problems.Unauthorized.ToResult();
+        }
+
+        if (await history.GetForParticipantAsync(matchId, userId, cancellationToken) is null)
+        {
+            return Problems.NotFound.ToResult();
+        }
+
+        var room = await rooms.FindRematchAsync(matchId, cancellationToken);
+        return TypedResults.Ok(new RematchStatusResponse(room is not null, room?.Members.Count ?? 0, room?.Capacity ?? 0, room?.HasMember(userId) ?? false));
     }
 
     private static async Task<Results<Ok<RoomResponse>, ProblemHttpResult>> RematchAsync(

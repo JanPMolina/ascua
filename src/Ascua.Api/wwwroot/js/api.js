@@ -205,6 +205,8 @@ export function normalizeRoom(raw) {
     status: raw.status ?? '',
     matchId: raw.matchId ?? null,
     capacity: raw.capacity ?? raw.maxPlayers ?? 4,
+    curses: raw.curses ?? [],
+    curses: raw.curses ?? [],
     playerCount: raw.players ?? raw.playerCount ?? members.length,
     members: members.map((m, i) => ({
       userId: m.userId ?? m.id,
@@ -220,8 +222,12 @@ export function normalizeRoom(raw) {
 const unwrapList = (data) => (Array.isArray(data) ? data : data?.items ?? []);
 
 export const listRooms = async () => unwrapList(await send('GET', `${ROUTES.rooms}?page=1&pageSize=20`)).map(normalizeRoom);
-export const createRoom = async (name, visibility, maxPlayers = 4) =>
-  normalizeRoom(await send('POST', ROUTES.rooms, { name, visibility, maxPlayers }));
+export const createRoom = async (name, visibility, curses = [], maxPlayers = 4) =>
+  normalizeRoom(await send('POST', ROUTES.rooms, { name, visibility, maxPlayers, curses }));
+export const catalog = () => send('GET', '/api/v1/catalog');
+/** Revancha: la misma sala y el mismo código para todos los que jugaron la partida. */
+export const rematch = async (matchId) => normalizeRoom(await send('POST', `/api/v1/matches/${matchId}/rematch`));
+export const rematchStatus = (matchId) => send('GET', `/api/v1/matches/${matchId}/rematch`);
 export const currentRoom = async () => normalizeRoom(await send('GET', ROUTES.roomCurrent));
 export const joinRoom = async (roomId) => normalizeRoom(await send('POST', ROUTES.roomJoin(roomId)));
 export const joinRoomByCode = async (code) => normalizeRoom(await send('POST', ROUTES.roomJoinByCode, { code }));

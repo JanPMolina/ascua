@@ -1,7 +1,7 @@
 // Lobby: salas públicas, crear/unirse por código, héroe, listo, iniciar y cola rápida.
 import * as api from './api.js';
 import { $, busy, el, formData, setText, showScreen, toast } from './ui.js';
-import { HEROES } from './labels.js';
+import { CURSES, HEROES } from './labels.js';
 import { heroAvatar, heroInfo } from './heroes.js';
 
 const POLL_MS = 2000;
@@ -121,7 +121,7 @@ function me(room) {
   return room.members.find((m) => m.username.toLowerCase() === username) ?? null;
 }
 
-function showRoom(room) {
+export function showRoom(room) {
   if (currentRoom?.id !== room.id) shownSeats = new Map();
   currentRoom = room;
   showScreen('room');
@@ -154,6 +154,9 @@ function renderRoom(room) {
   setText('room-name', room.name);
   setText('room-code', room.code ?? '');
   $('room-code-line').hidden = !room.code;
+  const curses = room.curses ?? [];
+  $('room-curses-box').hidden = !curses.length;
+  $('room-curses').replaceChildren(...curses.map((c) => el('li', { 'data-tip': CURSES[c]?.effect ?? '' }, `${CURSES[c]?.icon ?? '☠'} ${CURSES[c]?.name ?? c}: `, el('small', {}, CURSES[c]?.effect ?? ''))));
   const priv = room.visibility === 'PRIVATE';
   setText('room-visibility', priv ? '🔒 privada' : 'pública');
   $('room-visibility').className = priv ? 'badge warn' : 'badge';
@@ -244,6 +247,14 @@ export function initLobby({ onEnterMatch }) {
   bound = true;
   heroPicker($('queue-heroes'), 'hero', 'ERRATA');
   heroPicker($('room-hero'), 'room-hero', null);
+  $('create-curses').replaceChildren(...Object.entries(CURSES).map(([id, c]) => el('label', { class: 'curse-pick', title: c.effect },
+    el('input', { type: 'checkbox', name: 'curse', value: id }),
+    el('span', {}, `${c.icon} ${c.name}`),
+    el('small', {}, c.effect))));
+  $('create-curses').replaceChildren(...Object.entries(CURSES).map(([id, c]) => el('label', { class: 'curse-pick', title: c.effect },
+    el('input', { type: 'checkbox', name: 'curse', value: id }),
+    el('span', {}, `${c.icon} ${c.name}`),
+    el('small', {}, c.effect))));
 
   $('btn-copy-code').addEventListener('click', async () => {
     try {
@@ -262,7 +273,8 @@ export function initLobby({ onEnterMatch }) {
     busy(form, async () => {
       try {
         const name = form.elements.name.value.trim();
-        showRoom(await api.createRoom(name, form.elements.private.checked ? 'PRIVATE' : 'PUBLIC'));
+        const curses = [...form.querySelectorAll('input[name="curse"]:checked')].map((c) => c.value);
+        showRoom(await api.createRoom(name, form.elements.private.checked ? 'PRIVATE' : 'PUBLIC', curses));
       } catch (err) {
         toast(`No se pudo crear la sala: ${explain(err)}`, 'bad');
       }

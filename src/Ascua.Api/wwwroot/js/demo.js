@@ -9,6 +9,7 @@
 // (simulateExtinction, simulateRenegadeAlly, simulateDescend) los disparan sin esperar.
 //
 // Los nueve héroes se imitan en demo-heroes.js. ?demo=1&hero=ESCUCHA elige el héroe propio y &allies=USURERA,AVARO los de los bots.
+import { ROOM_TYPES } from './labels.js';
 import {
   BELL_MS, afterRound, beforeEnemies, correctedStrike, finalBetrayals, heroAbility, heroAttack, heroMove, heroStats, hostKilled, hostOrder, miserDamage, newHeroState,
   pickAllies, placeSecondBody,
@@ -23,6 +24,12 @@ const BETO_ID = '0193a1b0-1111-7c00-9a00-00000000a002';
 const CARO_ID = '0193a1b0-1111-7c00-9a00-00000000a003';
 const DANI_ID = '0193a1b0-1111-7c00-9a00-00000000a004';
 const OFFER_ID = '0193a1c3-0000-7d00-8000-0000000000f1';
+const PACT_OFFER_ID = '0193a1c3-0000-7d00-8000-0000000000f2';
+const INTERLUDE_OFFER_PREFIX = '0193a1c5-0000-7d00-8000-';
+const INTERLUDE_MS = 20000;
+const PUSH_WAIT = 3;
+const PHASE_ORDER = ['REVEAL', 'GUARD', 'SHIFT', 'MOVEMENT', 'ACTIONS', 'ENEMY_ATTACKS', 'ENEMY_MOVES', 'CLEANUP', 'END'];
+const NOT_PUSHABLE = new Set(['CELADOR', 'TOTEM']);
 /** Ofertas de camino: una por extinción (prefijo + número de extinción). */
 const PATH_OFFER_PREFIX = '0193a1c4-0000-7d00-8000-';
 
@@ -55,6 +62,11 @@ export const DEMO_SCENARIO = {
     'A........',
   ],
   draftOptions: ['LAMPARA', 'BRASA_VIVA'],
+  pactOptions: [
+    { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.' },
+    { pactId: 'OUTGOLD_TARGET', description: 'Terminar con más oro que tu objetivo.', targetId: BETO_ID },
+  ],
+  curses: ['FIERCE'],
   me: {
     playerId: ME_ID, displayName: 'ana', hero: 'ERRATA', state: 'ALIVE', hp: 4, maxHp: 4, shield: 0,
     position: { x: 4, y: 6 }, facing: 'N', embers: 0, abilityCooldown: 0,
@@ -63,13 +75,13 @@ export const DEMO_SCENARIO = {
   },
   allies: [
     { playerId: BETO_ID, displayName: 'beto', hero: 'HILVAN', state: 'ALIVE', hp: 8, maxHp: 8, position: { x: 4, y: 7 }, facing: 'N', embers: 1, blessingCount: 1, connected: true, decided: false },
-    { playerId: CARO_ID, displayName: 'caro', hero: 'POLIZON', state: 'ALIVE', hp: 4, maxHp: 4, position: { x: 1, y: 7 }, facing: 'E', embers: 3, blessingCount: 1, connected: true, decided: false },
-    { playerId: DANI_ID, displayName: 'dani', hero: 'CAMPANERO', state: 'ALIVE', hp: 5, maxHp: 5, position: { x: 7, y: 7 }, facing: 'W', embers: 2, blessingCount: 1, connected: true, decided: false },
+    { playerId: CARO_ID, displayName: 'caro', hero: 'POLIZON', state: 'ALIVE', hp: 6, maxHp: 6, position: { x: 1, y: 7 }, facing: 'E', embers: 3, blessingCount: 1, connected: true, decided: false },
+    { playerId: DANI_ID, displayName: 'dani', hero: 'CAMPANERO', state: 'ALIVE', hp: 4, maxHp: 4, position: { x: 7, y: 7 }, facing: 'W', embers: 2, blessingCount: 1, connected: true, decided: false },
   ],
   /** Pactos de los aliados: solo se revelan en MatchFinished (la vista nunca los lleva). */
   allyPacts: {
-    [BETO_ID]: { pactId: 'NEVER_DOWNED', description: 'Terminar sin que te derriben.', fulfilled: true },
-    [CARO_ID]: { pactId: 'BETRAY_TWICE_UNSEEN', description: 'Traicionar dos veces sin ser visto.', fulfilled: false },
+    [BETO_ID]: { pactId: 'REVIVE_2_ALLIES', description: 'Levantar a 2 aliados con Usar.', fulfilled: true },
+    [CARO_ID]: { pactId: 'BETRAY_TWICE_UNCONVICTED', description: 'Traicionar dos veces sin que te condenen.', fulfilled: false },
     [DANI_ID]: { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.', fulfilled: false },
   },
   enemies: [
@@ -176,6 +188,18 @@ class DemoServer {
     this.seen = new Set();
     this.me = clone(scenario.me);
     this.me.path = this.me.path ?? null;
+    this.me.canSabotage = true;
+    this.me.pushCooldown = 0;
+    this.me.convictions = 0;
+    if (scenario.pactOptions) this.me.pact = null;
+    this.pactOffer = null;
+    this.interludeOffer = null;
+    this.votes = new Map(); // votante → { accusedId, door }
+    this.lastVerdict = null;
+    this.room = { type: 'NORMAL', name: ROOM_TYPES.NORMAL.name, effect: ROOM_TYPES.NORMAL.effect, floodedRows: 0 };
+    this.roundsInRoom = 0;
+    this.floorBetrayals = new Map(); // traidor → [{ victimId, damage }] de esta sala: lo que se puede juzgar
+    this.pushedOnto = [];
     this.allies = clone(scenario.allies);
     this.heroes = newHeroState();
     this.signalAt = 0;
@@ -222,7 +246,7 @@ class DemoServer {
 
   isBlind() { return this.me.hero === 'ESCUCHA' && this.me.state !== 'EMBER_SPIRIT'; }
 
-  radius() { return (this.me.state === 'EMBER_SPIRIT' ? 4 : this.isBlind() ? 1 : 3) + (this.me.blessings.includes('LAMPARA') ? 1 : 0); }
+  radius() { return this.me.blessings.includes('LAMPARA') ? 18 : (this.me.state === 'EMBER_SPIRIT' ? 4 : this.isBlind() ? 1 : 3); }
 
   /** Bando de cada portador: el grupo (héroes y Brasas) o la mazmorra (Renegados). */
   side(h) { return h.state === 'RENEGADE' ? 'dungeon' : 'group'; }
@@ -268,6 +292,7 @@ class DemoServer {
 
   /** Casillas visibles ahora; se agregan a las recordadas. Devuelve las nuevas. */
   refreshSeen() {
+    this.me.visionRadius = this.radius();
     const fresh = [];
     for (let y = 0; y < 9; y++) {
       for (let x = 0; x < 9; x++) {
@@ -336,6 +361,10 @@ class DemoServer {
       allies: this.allies.map((a) => this.allyView(a)),
       enemies: this.visibleEnemies().map((e) => this.enemyView(e)),
       tiles: [...this.seen].map((k) => { const [x, y] = k.split(',').map(Number); return { x, y, kind: this.tiles.get(k) }; }),
+      room: clone(this.room),
+      curses: [...(this.scenario.curses ?? [])],
+      interlude: this.interludeOffer ? clone(this.interludeOffer) : null,
+      lastVerdict: this.lastVerdict ? clone(this.lastVerdict) : null,
       ...this.heroFields(),
     };
   }
@@ -367,6 +396,14 @@ class DemoServer {
         if (!this.offer || p.offerId !== this.offer.offerId) return err('DRAFT_CLOSED', 'La oferta ya se resolvió.');
         if (!this.offer.options.includes(p.blessingId)) return err('INVALID_PICK', 'Esa mejora no estaba en la oferta.');
         return this.pick(p.blessingId);
+      case 'ChoosePact': {
+        if (!this.pactOffer || p.offerId !== this.pactOffer.offerId) return err('PACT_CLOSED', 'La oferta de misión ya se cerró.');
+        const option = this.pactOffer.options.find((o) => o.pactId === p.pactId);
+        if (!option) return err('INVALID_PAYLOAD', 'Esa misión no estaba en la oferta.');
+        return this.pickPact(option);
+      }
+      case 'CastInterludeVote':
+        return this.castVote(p, err);
       case 'ChoosePath':
         return this.choosePath(p, err);
       case 'SubmitOrder':
@@ -402,16 +439,34 @@ class DemoServer {
     this.t.push('DraftOffer', this.offer);
     const offerId = this.offer.offerId;
     this.later(20000, () => { if (this.offer?.offerId === offerId) this.pick(this.offer.options[Math.floor(Math.random() * 2)]); });
+    if (this.scenario.pactOptions) {
+      this.pactOffer = { matchId: DEMO_MATCH_ID, offerId: PACT_OFFER_ID, options: clone(this.scenario.pactOptions), deadline: this.offer.deadline };
+      this.t.push('PactOffer', this.pactOffer);
+      this.later(20000, () => { if (this.pactOffer) this.pickPact(this.pactOffer.options[0]); });
+    }
+  }
+
+  pickPact(option) {
+    this.me.pact = clone(option);
+    this.pactOffer = null;
+    this.startWhenChosen();
+    return { matchId: DEMO_MATCH_ID, result: 'ACCEPTED', pactId: option.pactId, acceptedAt: new Date().toISOString() };
+  }
+
+  /** La partida empieza cuando están elegidas la mejora y la misión. */
+  startWhenChosen() {
+    this.seq += 1;
+    this.later(400, () => this.t.push('Snapshot', this.snapshot()));
+    if (this.offer || this.pactOffer) return;
+    this.status = 'IN_PROGRESS';
+    this.later(900, () => this.openRound());
   }
 
   pick(blessingId) {
     const ack = { matchId: DEMO_MATCH_ID, offerId: this.offer.offerId, blessingId, acceptedAt: new Date().toISOString() };
     this.me.blessings.push(blessingId);
     this.offer = null;
-    this.status = 'IN_PROGRESS';
-    this.seq += 1;
-    this.later(400, () => this.t.push('Snapshot', this.snapshot()));
-    this.later(900, () => this.openRound());
+    this.startWhenChosen();
     return ack;
   }
 
@@ -476,9 +531,18 @@ class DemoServer {
       return err('STALE_ROUND', `La ronda ${p.round} no es la abierta; la vigente es la ${this.round}.`, { details: { currentRound: this.round } });
     }
     const o = p.order ?? {};
-    const directed = ['MOVE', 'ATTACK', 'ABILITY', 'INTERACT'].includes(o.type);
+    const directed = ['MOVE', 'ATTACK', 'ABILITY', 'INTERACT', 'SABOTAGE', 'PUSH'].includes(o.type);
     if (!(directed && DIRS[o.direction]) && !(o.type === 'GUARD' && o.direction === undefined)) {
       return err('INVALID_PAYLOAD', 'La orden no cumple el esquema.', { details: { field: 'order' } });
+    }
+    if (o.step !== undefined && (!DIRS[o.step] || o.type === 'MOVE' || o.type === 'GUARD')) {
+      return err('INVALID_PAYLOAD', 'El paso no vale con esa orden.', { details: { field: 'order.step' } });
+    }
+    if (o.type === 'SABOTAGE' && (this.me.state !== 'ALIVE' || this.me.hostEnemyId != null || !this.me.canSabotage)) {
+      return err('INVALID_ORDER', 'Ahora no puedes sabotear.', { details: { field: 'order.type' } });
+    }
+    if (o.type === 'PUSH' && (!['ALIVE', 'RENEGADE'].includes(this.me.state) || this.me.hostEnemyId != null || this.me.pushCooldown > 0)) {
+      return err('INVALID_ORDER', 'Ahora no puedes empujar.', { details: { field: 'order.type' } });
     }
     if (this.me.state === 'EMBER_SPIRIT') {
       if (o.type === 'ABILITY' && this.me.abilityCooldown > 0) return err('INVALID_ORDER', 'Escudo está en espera.', { details: { field: 'order.type' } });
@@ -604,23 +668,51 @@ class DemoServer {
     this.heroes.bell = null;
     const positionsBefore = new Map([...this.allies.map((a) => [a.playerId, a.position]), ...[...this.enemies.values()].map((e) => [`enemy:${e.enemyId}`, clone(e.position)])]);
     const revealed = this.revealPaths(events);
+    const tag = (phase) => {
+      for (const ev of events) {
+        if (ev.phase) continue;
+        if (ev.type === 'ROOM_SHIFTED') ev.phase = 'SHIFT';
+        else if (phase === 'ACTIONS' && (ev.type === 'MOVED' || ev.type === 'BOUNCED')) ev.phase = 'MOVEMENT';
+        else if (phase === 'ENEMY_ATTACKS' && (ev.type === 'MOVED' || ev.type === 'TELEGRAPHED')) ev.phase = 'ENEMY_MOVES';
+        else ev.phase = phase;
+      }
+    };
+    tag('REVEAL');
 
     // Orden del jugador (GUARDAR —el Faro, para la Brasa— por defecto si no envió nada).
     const order = this.roundOrder ?? { type: 'GUARD' };
     this.lastOrder = { ...clone(order), byDefault: !this.roundOrder };
     if (!revealed.has(ME_ID)) {
+      if (order.step) this.stepFirst(order.step, events);
+      tag('MOVEMENT');
       if (me.state === 'ALIVE') this.actHero(order, events, tilesChanged);
       else if (me.state === 'EMBER_SPIRIT') this.actSpirit(order, events);
-      else if (me.state === 'RENEGADE' && !this.meAwaiting()) this.actRenegade(order, events);
+      else if (me.state === 'RENEGADE' && !this.meAwaiting()) {
+        if (order.type === 'PUSH') this.push(order, events);
+        else this.actRenegade(order, events);
+      }
     }
     this.actAllies(events, revealed);
+    this.botSabotage(events);
     beforeEnemies(this, events);
+    tag('ACTIONS');
     this.enemiesPhase(events, order);
+    tag('ENEMY_ATTACKS');
     this.passives(events, wasDown);
     afterRound(this, events, positionsBefore);
     this.applyFlags(events);
-    const floorChanged = this.flags.descend ? this.descend(events) : null;
+    this.hazards(events);
+    if (me.pushCooldown > 0) me.pushCooldown -= 1;
+    const toInterlude = this.flags.descend;
     this.flags.descend = false;
+    if (toInterlude) {
+      this.status = 'INTERLUDE';
+      events.push({ type: 'INTERLUDE_OPENED', amount: this.floor });
+    }
+    tag('CLEANUP');
+    // Llegan en orden de fase, como del servidor.
+    events.sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase));
+    const floorChanged = null;
 
     me.decided = false;
     me.pendingOrder = null;
@@ -658,7 +750,9 @@ class DemoServer {
 
     // Fin: sin enemigos (demo), sin héroes en pie (las Brasas no cuentan) o 60 rondas.
     const renegadesUp = [me, ...this.allies].some((h) => h.state === 'RENEGADE' && h.position && !(h === me && this.meAwaiting()));
-    if (this.scenario.autoFinish && this.enemies.size === 0) {
+    if (toInterlude) {
+      this.later(150, () => this.openInterlude());
+    } else if (this.scenario.autoFinish && this.enemies.size === 0) {
       this.later(800, () => this.finish('WARDEN_DEFEATED'));
     } else if (this.heroTargets().length === 0 && this.scenario.allies.length > 0) {
       this.later(800, () => this.finish(renegadesUp ? 'THRESHOLD_CLAIMED' : 'EMBER_EXTINGUISHED'));
@@ -667,6 +761,221 @@ class DemoServer {
     } else {
       this.later(1200, () => this.openRound());
     }
+  }
+
+  // ───── resolución: paso, sabotaje, empujón ─────
+  /** El paso va antes que todas las acciones; la acción sale de donde quedó. */
+  stepFirst(direction, events) {
+    const me = this.me;
+    const move = { type: 'MOVE', direction };
+    if (me.state === 'EMBER_SPIRIT') this.actSpirit(move, events);
+    else if (me.state === 'RENEGADE') { if (!this.meAwaiting()) this.actRenegade(move, events); }
+    else if (me.state !== 'ALIVE') return;
+    else if (me.hostEnemyId != null) hostOrder(this, move, events, ME_ID);
+    else {
+      me.facing = direction;
+      heroMove(this, move, events, ME_ID);
+    }
+  }
+
+  recordBetrayal(traitorId, victimId) {
+    const k = `${traitorId}>${victimId}`;
+    this.heroes.betrayals.set(k, (this.heroes.betrayals.get(k) ?? 0) + 1);
+    const list = this.floorBetrayals.get(traitorId) ?? [];
+    list.push({ victimId, damage: 1 });
+    this.floorBetrayals.set(traitorId, list);
+  }
+
+  /** 1 de daño sin autor al primer aliado en línea a 2 o menos; muros y braseros cortan la línea. */
+  sabotage(order, events) {
+    const me = this.me;
+    const [dx, dy] = DIRS[order.direction];
+    for (let i = 1; i <= 2; i++) {
+      const at = { x: me.position.x + dx * i, y: me.position.y + dy * i };
+      const tile = this.tiles.get(key(at.x, at.y));
+      if (!inBounds(at.x, at.y) || tile === 'WALL' || tile === 'BRAZIER') return;
+      const ally = this.allies.find((a) => a.state === 'ALIVE' && same(a.position, at));
+      if (!ally) continue;
+      me.canSabotage = false;
+      this.damageHero(ally, 1, null, events);
+      this.recordBetrayal(ME_ID, ally.playerId);
+      events.push({ type: 'BETRAYAL_RECORDED', actorId: ME_ID, targetId: ally.playerId, amount: 1, detail: 'SABOTAGE' });
+      return;
+    }
+  }
+
+  /** Mueve 1 casilla a lo adyacente. Sin efecto, no se gasta. El Traidor solo empuja héroes. */
+  push(order, events) {
+    const me = this.me;
+    const [dx, dy] = DIRS[order.direction];
+    const at = { x: me.position.x + dx, y: me.position.y + dy };
+    const to = { x: at.x + dx, y: at.y + dy };
+    const hero = this.allies.find((a) => a.position && same(a.position, at) && a.state !== 'EMBER_SPIRIT' && !a.hiddenInHost);
+    const enemy = me.state === 'RENEGADE' ? null : [...this.enemies.values()].find((e) => same(e.position, at) && !NOT_PUSHABLE.has(e.kind));
+    const target = hero ?? enemy;
+    if (!target || !inBounds(to.x, to.y) || this.blocked(to.x, to.y)) return;
+    target.position = clone(to);
+    me.pushCooldown = PUSH_WAIT + 1; // baja 1 al terminar esta misma ronda
+    this.pushedOnto.push({ hero, enemy: hero ? null : enemy });
+    events.push({ type: 'PUSHED', actorId: ME_ID, targetId: hero ? hero.playerId : `enemy:${enemy.enemyId}`, position: clone(to) });
+  }
+
+  /** De vez en cuando un bot sabotea, para que se vea cómo es desde el lado de la víctima. */
+  botSabotage(events) {
+    if (this.round % 6 !== 0 || this.floorBetrayals.size > 0) return;
+    const heroes = [this.me, ...this.allies].filter((h) => h.state === 'ALIVE' && h.position);
+    for (const bot of this.allies) {
+      if (bot.state !== 'ALIVE' || !bot.position || bot.hiddenInHost) continue;
+      const victim = heroes.find((h) => h !== bot && manhattan(h.position, bot.position) <= 2 && (h.position.x === bot.position.x || h.position.y === bot.position.y));
+      if (!victim) continue;
+      this.damageHero(victim, 1, null, events);
+      this.recordBetrayal(bot.playerId, victim.playerId);
+      return;
+    }
+  }
+
+  /** Limpieza: pinchos bajo quien fue empujado y agua de la sala inundada. Sin autor. */
+  hazards(events) {
+    for (const { hero, enemy } of this.pushedOnto) {
+      const at = (hero ?? enemy).position;
+      if (this.tiles.get(key(at.x, at.y)) !== 'SPIKES_ARMED') continue;
+      if (hero) this.damageHero(hero, 1, null, events);
+      else if (this.enemies.has(enemy.enemyId)) this.hit(enemy, 1, events, ME_ID);
+    }
+    this.pushedOnto = [];
+    if (this.room.type !== 'FLOODED') return;
+    this.roundsInRoom += 1;
+    const rows = Math.floor(this.roundsInRoom / 6);
+    if (rows > this.room.floodedRows) {
+      this.room.floodedRows = rows;
+      events.push({ type: 'ROOM_FLOODED', amount: rows });
+    }
+    if (!this.room.floodedRows) return;
+    for (const h of [this.me, ...this.allies]) {
+      if (h.state === 'ALIVE' && h.position && h.position.y < this.room.floodedRows) this.damageHero(h, 1, null, events);
+    }
+    for (const e of [...this.enemies.values()]) {
+      if (e.position.y < this.room.floodedRows && e.kind !== 'POLILLA' && e.kind !== 'CELADOR') this.hit(e, 1, events, null);
+    }
+  }
+
+  // ───── interludio ─────
+  openInterlude() {
+    if (this.status !== 'INTERLUDE') return;
+    const party = [this.me, ...this.allies];
+    const voters = party.filter((h) => ['ALIVE', 'DOWN', 'EMBER_SPIRIT'].includes(h.state)).map((h) => h.playerId);
+    const doors = this.floor >= 4 ? [] : Object.keys(ROOM_TYPES)
+      .filter((t) => t !== this.room.type)
+      .sort(() => Math.random() - 0.5)
+      .slice(0, 2)
+      .map((type) => ({ type, name: ROOM_TYPES[type].name, effect: ROOM_TYPES[type].effect }));
+    this.votes.clear();
+    this.interludeOffer = {
+      matchId: DEMO_MATCH_ID,
+      offerId: `${INTERLUDE_OFFER_PREFIX}${String(this.floor).padStart(12, '0')}`,
+      endedFloor: this.floor,
+      deadline: iso(Date.now() + INTERLUDE_MS),
+      doors,
+      candidates: party.filter((h) => h !== this.me).map((h) => h.playerId),
+      voters,
+      voted: [],
+      canVote: voters.includes(ME_ID),
+      myVote: null,
+    };
+    this.t.push('InterludeOffer', clone(this.interludeOffer));
+    const offerId = this.interludeOffer.offerId;
+    for (const id of voters) {
+      if (id !== ME_ID) this.later(800 + Math.random() * 3500, () => { if (this.interludeOffer?.offerId === offerId) this.botVote(id); });
+    }
+    this.later(INTERLUDE_MS, () => { if (this.interludeOffer?.offerId === offerId) this.closeInterlude(); });
+  }
+
+  /** Los bots sospechan de quien saboteó en esta sala, y a veces acusan sin motivo. */
+  botVote(id) {
+    const offer = this.interludeOffer;
+    const suspects = [...this.floorBetrayals.keys()].filter((t) => t !== id);
+    let accusedId = null;
+    if (suspects.length && Math.random() < 0.7) accusedId = suspects[0];
+    else if (Math.random() < 0.2) accusedId = offer.voters.find((v) => v !== id) ?? null;
+    const door = offer.doors.length ? Math.floor(Math.random() * offer.doors.length) : null;
+    this.addVote(id, { accusedId, door });
+  }
+
+  addVote(id, vote) {
+    const offer = this.interludeOffer;
+    this.votes.set(id, vote);
+    offer.voted.push(id);
+    if (id === ME_ID) offer.myVote = clone(vote);
+    this.t.push('Snapshot', this.snapshot());
+    if (offer.voters.every((v) => this.votes.has(v))) this.later(500, () => this.closeInterlude());
+  }
+
+  castVote(p, err) {
+    const offer = this.interludeOffer;
+    if (!offer || p.offerId !== offer.offerId) return err('VOTE_CLOSED', 'La votación ya se cerró.');
+    if (!offer.canVote || offer.myVote) return err('INVALID_VOTE', 'No puedes votar otra vez.');
+    if (p.accusedId && !offer.candidates.includes(p.accusedId)) return err('INVALID_VOTE', 'A esa persona no se la puede acusar.');
+    if (p.door !== undefined && !offer.doors[p.door]) return err('INVALID_VOTE', 'Esa puerta no está.');
+    this.addVote(ME_ID, { accusedId: p.accusedId ?? null, door: p.door ?? null });
+    return { matchId: DEMO_MATCH_ID, result: 'ACCEPTED', acceptedAt: new Date().toISOString() };
+  }
+
+  closeInterlude() {
+    const offer = this.interludeOffer;
+    if (!offer) return;
+    this.interludeOffer = null;
+    const party = [this.me, ...this.allies];
+    const heroById = (id) => party.find((h) => h.playerId === id);
+    const events = [{ type: 'INTERLUDE_CLOSED', phase: 'CLEANUP' }];
+    const accusations = [];
+    const accused = new Set([...this.votes.values()].map((v) => v.accusedId).filter(Boolean));
+    for (const accusedId of accused) {
+      const accusers = [...this.votes].filter(([, v]) => v.accusedId === accusedId).map(([id]) => id);
+      const otherVoters = offer.voters.filter((v) => v !== accusedId).length;
+      const convicted = accusers.length > otherVoters / 2;
+      const crimes = this.floorBetrayals.get(accusedId) ?? [];
+      const guilty = convicted && crimes.length > 0;
+      const hero = heroById(accusedId);
+      const goldLost = guilty ? Math.min(3, hero.embers) : 0;
+      if (guilty) {
+        hero.embers -= goldLost;
+        hero.convictions = (hero.convictions ?? 0) + 1;
+        if (hero === this.me) events.push({ type: 'EMBERS_LOST', amount: goldLost, detail: 'TRIAL_PENALTY', phase: 'CLEANUP' });
+      }
+      const fine = convicted && !guilty ? 1 : 0;
+      if (fine) {
+        for (const id of accusers) {
+          const a = heroById(id);
+          a.embers = Math.max(0, a.embers - fine);
+          if (a === this.me) events.push({ type: 'EMBERS_LOST', amount: fine, detail: 'TRIAL_FINE', phase: 'CLEANUP' });
+        }
+      }
+      accusations.push({
+        accusedId, votes: accusers.length, otherVoters, convicted, guilty, goldLost, accuserFine: fine,
+        exposed: guilty ? crimes.map((c) => ({ traitorId: accusedId, victimId: c.victimId, damage: c.damage })) : [],
+      });
+    }
+    const counts = offer.doors.map((d, i) => ({ type: d.type, votes: [...this.votes.values()].filter((v) => v.door === i).length }));
+    const top = counts.length ? Math.max(...counts.map((d) => d.votes)) : 0;
+    const best = counts.filter((d) => d.votes === top);
+    const chosenDoor = best.length ? best[Math.floor(Math.random() * best.length)].type : null;
+    const verdict = {
+      endedFloor: offer.endedFloor,
+      noAccusation: [...this.votes.values()].filter((v) => !v.accusedId).length,
+      chosenDoor, doors: counts, accusations,
+    };
+    this.descend(events);
+    const type = chosenDoor ?? 'NORMAL';
+    this.room = { type, name: this.floor >= 5 ? 'La sala del Celador' : ROOM_TYPES[type].name, effect: ROOM_TYPES[type].effect, floodedRows: 0 };
+    this.roundsInRoom = 0;
+    this.floorBetrayals.clear();
+    this.me.canSabotage = true;
+    this.lastVerdict = verdict;
+    this.status = 'IN_PROGRESS';
+    this.seq += 1;
+    this.t.push('Snapshot', this.snapshot());
+    this.t.push('InterludeResolved', { matchId: DEMO_MATCH_ID, seq: this.seq, verdict: clone(verdict), events });
+    this.later(1500, () => this.openRound());
   }
 
   // ───── resolución: héroe propio ─────
@@ -678,8 +987,13 @@ class DemoServer {
       hostOrder(this, order, events, ME_ID);
       return;
     }
-    if (order.type !== 'GUARD') me.facing = order.direction;
-    if (order.type === 'MOVE') {
+    // El sabotaje no gira al héroe: no da pistas.
+    if (order.type !== 'GUARD' && order.type !== 'SABOTAGE') me.facing = order.direction;
+    if (order.type === 'SABOTAGE') {
+      this.sabotage(order, events);
+    } else if (order.type === 'PUSH') {
+      this.push(order, events);
+    } else if (order.type === 'MOVE') {
       heroMove(this, order, events, ME_ID);
     } else if (order.type === 'ATTACK') {
       heroAttack(this, order, events, ME_ID);
@@ -1294,10 +1608,10 @@ class DemoServer {
   }
 
   myPactFulfilled() {
-    switch (this.me.pact.pactId) {
+    switch (this.me.pact?.pactId) {
       case 'OPEN_3_CHESTS': return this.chestsOpened >= 3;
       case 'OPEN_1_CHEST': return this.chestsOpened >= 1;
-      case 'NEVER_DOWNED': return this.me.state === 'ALIVE';
+      case 'OUTGOLD_TARGET': return this.me.embers > (this.allies.find((a) => a.playerId === this.me.pact.targetId)?.embers ?? 0);
       default: return false;
     }
   }
@@ -1312,8 +1626,9 @@ class DemoServer {
   }
 
   finish(outcome) {
-    if (this.status !== 'IN_PROGRESS' && this.status !== 'DRAFTING') return;
+    if (this.status !== 'IN_PROGRESS' && this.status !== 'DRAFTING' && this.status !== 'INTERLUDE') return;
     this.status = 'FINISHED';
+    this.interludeOffer = null;
     this.dispose();
     this.seq += 1;
     const me = this.me;
@@ -1334,9 +1649,20 @@ class DemoServer {
     this.t.push('MatchFinished', {
       matchId: DEMO_MATCH_ID, seq: this.seq, outcome, rounds: this.round,
       winners, standings, finishedAt: new Date().toISOString(), betrayals: finalBetrayals(this),
+      curses: [...(this.scenario.curses ?? [])],
+      awards: this.awards(standings),
       replayUrl: `${location.origin}/api/v1/matches/${DEMO_MATCH_ID}/replay`,
     });
     this.later(300, () => this.t.serverClose('MATCH_FINISHED: la partida terminó.'));
+  }
+
+  /** Dos títulos de muestra; en una partida real los calcula el servidor. */
+  awards(standings) {
+    const out = [];
+    const rich = standings[0];
+    if (rich) out.push({ awardId: 'RICHEST', playerId: rich.playerId, title: 'El más rico', reason: `Terminó con ${rich.embers} de oro`, value: rich.embers });
+    if (this.chestsOpened > 0) out.push({ awardId: 'LOOTER', playerId: ME_ID, title: 'Saqueador', reason: `Abrió ${this.chestsOpened} cofre${this.chestsOpened === 1 ? '' : 's'}`, value: this.chestsOpened });
+    return out;
   }
 
   // ───── botones de los caminos ─────

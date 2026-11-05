@@ -3,7 +3,7 @@
 import * as api from './api.js';
 import { $, busy, formData, setText, showScreen, toast } from './ui.js';
 import { initLogPanel } from './log.js';
-import { initLobby, showLobby, stopLobby } from './lobby.js';
+import { initLobby, showLobby, showRoom, stopLobby } from './lobby.js';
 import { startMatch, stopMatch } from './match.js';
 import { RealTransport } from './hub.js';
 import { DemoTransport } from './demo.js';
@@ -20,7 +20,7 @@ const USE_JSON = params.get('json') === '1';
 const LOCAL_PASSWORD = 'partida-en-red-local';
 
 function enterMatch(matchId) {
-  startMatch({ transport: new RealTransport(matchId, { json: USE_JSON }), onExit: () => showLobby() });
+  startMatch({ transport: new RealTransport(matchId, { json: USE_JSON }), onExit: () => showLobby(), onRematch: (room) => showRoom(room) });
 }
 
 function startDemo() {

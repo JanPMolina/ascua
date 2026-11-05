@@ -28,12 +28,16 @@ export const SIZE = 9;
 
 const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const DIR_NAMES = Object.keys(DIRS);
-const MODE_COLORS = { MOVE: '#8fd0ff', ATTACK: '#ff6a5a', ABILITY: '#e8c15a', INTERACT: '#6cc28a', GUARD: '#8fd0ff' };
+const MODE_COLORS = { MOVE: '#8fd0ff', ATTACK: '#ff6a5a', ABILITY: '#e8c15a', INTERACT: '#6cc28a', GUARD: '#8fd0ff', SABOTAGE: '#c58af0', PUSH: '#ffb45a' };
+/** Lo que no deja dar un paso (los cofres ya abiertos tampoco se pisan). */
+const STOPS_STEP = new Set(['WALL', 'BRAZIER', 'ALTAR', 'CHEST', 'CHEST_OPENED']);
 const STOPS_SHOTS = new Set(['WALL', 'BRAZIER']);
 const OBJECTS = new Set(['CHEST', 'CHEST_OPENED', 'BRAZIER', 'ALTAR']);
 const LIGHTS = new Set(['BRAZIER', 'FIRE']);
 const ACTIONS = new Set(['ATTACKED', 'ABILITY_USED', 'GUARDED', 'DEFAULT_GUARD_APPLIED', 'CHEST_OPENED', 'BLESSING_GAINED', 'REVIVED',
   'SHIELD_KINDLED', 'ATTACK_HINDERED', 'BEACON_LIT']);
+/** Nombre de cada tramo de la resolución, para seguirla paso a paso. */
+const CAPTION = { moves: 'Pasos', actions: 'Acciones', strikes: 'Golpes enemigos', enemies: 'Los enemigos avanzan', late: 'Final de la ronda' };
 /** Sucesos de los caminos que se ven al final de la ronda (pasivas, ecos, apariciones). */
 const LATE_PATH = new Set(['WARMTH_HEALED', 'ECHO_GAINED', 'EMBER_REBORN', 'RENEGADE_SPAWNED']);
 /** Sucesos de los héroes que también se ven al final (fase de limpieza). */
@@ -45,10 +49,10 @@ const SPIRIT_COLORS = ['#6fc8ff', '#c8ecff', '#3f9ae8'];
 const BLOOD_COLORS = ['#ff4a3a', '#a8160e', '#ff8a6a'];
 const BEACON_RADIUS = 2;
 
-/** Radio de visión (Manhattan): 3 (4 la Brasa errante, 1 La Escucha), +1 con Lámpara. */
+/** Radio de visión (Manhattan): el que manda el servidor (la sala Oscura, DIM y Ojo de búho lo bajan). Con Lámpara, toda la sala. */
 export function visionRadius(me) {
-  const base = me?.state === 'EMBER_SPIRIT' ? 4 : isBlind(me) ? 1 : 3;
-  return base + (me?.blessings?.includes('LAMPARA') ? 1 : 0);
+  if (me?.blessings?.includes('LAMPARA')) return SIZE * 2;
+  return me?.visionRadius ?? (me?.state === 'EMBER_SPIRIT' ? 4 : isBlind(me) ? 1 : 3);
 }
 
 const inBounds = (x, y) => x >= 0 && y >= 0 && x < SIZE && y < SIZE;
@@ -146,7 +150,7 @@ export class BoardRenderer {
     this.offs = [
       on('round:resolved', (d) => { this.pending = d; this.orderHidden = true; }),
       on('round:opened', () => { this.orderHidden = false; }),
-      on('floor:changed', (d) => { this.pendingFloor = d.floor; }),
+      on('floor:changed', (d) => { this.pendingFloor = d.floor; this.nextRoom = d.room ?? null; }),
       on('settings:changed', (s) => { this.settings = s; }),
       on('ui:screen', ({ name }) => { this.screenOn = name === 'match'; this.updateLoop(); }),
       on('match:stop', () => this.dispose()),
@@ -310,6 +314,42 @@ export class BoardRenderer {
     return (me?.hostEnemyId != null ? this.state.enemies?.get(me.hostEnemyId)?.position : null) ?? me?.position ?? null;
   }
 
+  /** Paso marcado o ya enviado con la orden. */
+  stepInPlay() {
+    const s = this.state;
+    return s.pendingOrder ? s.pendingOrder.step ?? null : s.plannedStep ?? null;
+  }
+
+  /**
+   * Dónde quedaría con ese paso, según lo que se ve: un cuerpo que no puede entrar se queda (y la acción sale de ahí). No
+   * es una promesa: otro jugador puede ir a la misma casilla, y entonces rebotan.
+   */
+  landing(direction) {
+    const me = this.state.me;
+    const start = this.origin();
+    if (!start) return null;
+    const v = DIRS[direction];
+    const occupied = (x, y) => {
+      const { allies, enemies } = this.state;
+      for (const e of enemies?.values?.() ?? []) if (e.position?.x === x && e.position?.y === y && e.enemyId !== me?.hostEnemyId) return true;
+      return (allies ?? []).some((a) => a.state !== 'EMBER_SPIRIT' && a.position?.x === x && a.position?.y === y);
+    };
+    if (isSpirit(me)) {
+      let { x, y } = start;
+      for (let i = 0; i < 2 && inBounds(x + v[0], y + v[1]); i++) { x += v[0]; y += v[1]; }
+      return { pos: { x, y }, second: null, bounced: false };
+    }
+    const walk = (from, d) => {
+      const w = DIRS[d];
+      const to = { x: from.x + w[0], y: from.y + w[1] };
+      const blocked = !inBounds(to.x, to.y) || STOPS_STEP.has(this.tiles.get(tileKey(to.x, to.y))) || occupied(to.x, to.y);
+      return { to, pos: blocked ? from : to, blocked };
+    };
+    const main = walk(start, direction);
+    const other = me?.secondBody && me.hostEnemyId == null ? walk(me.secondBody, mirrored(direction)) : null;
+    return { pos: main.pos, target: main.to, second: other?.pos ?? null, secondTarget: other?.to ?? null, bounced: main.blocked, secondBounced: Boolean(other?.blocked) };
+  }
+
   upsert(id, type, d, isMe) {
     let v = this.ents.get(id);
     if (!v) {
@@ -375,7 +415,10 @@ export class BoardRenderer {
     const origin = this.origin();
     const hosted = me?.hostEnemyId != null;
     if (!origin || !(me.state === 'ALIVE' || isSpirit(me) || (isRenegade(me) && !(me.path?.awaitingSpawn)))) return out;
-    const { x, y } = origin;
+    // Con un paso en juego, la acción sale de donde quedaría.
+    const step = type === 'MOVE' ? null : this.stepInPlay();
+    const landed = step ? this.landing(step) : null;
+    const { x, y } = landed?.pos ?? origin;
     if (isSpirit(me)) return this.spiritAffected(type, dir, x, y, out);
     const blocked = (px, py) => !inBounds(px, py) || STOPS_SHOTS.has(this.tiles.get(tileKey(px, py)));
     const ray = (from, d, len) => {
@@ -387,7 +430,7 @@ export class BoardRenderer {
         out.push({ x: px, y: py });
       }
     };
-    const second = isSpirit(me) ? null : me.secondBody;
+    const second = isSpirit(me) ? null : landed?.second ?? me.secondBody;
     if (type === 'GUARD') {
       if (!hosted) out.push({ x, y });
       if (second) out.push(second);
@@ -403,28 +446,40 @@ export class BoardRenderer {
     }
     const v = DIRS[dir];
     if (!v) return out;
+    const from0 = { x, y };
     const stepFrom = (from, d) => {
       const [dx, dy] = DIRS[d];
       if (inBounds(from.x + dx, from.y + dy)) out.push({ x: from.x + dx, y: from.y + dy });
     };
     if (hosted) {
       // Dentro del huésped: mover lo mueve, atacar golpea con su alcance, la habilidad sale. Guardar e interactuar no hacen nada.
-      if (type === 'MOVE' || type === 'ABILITY') stepFrom(origin, dir);
-      else if (type === 'ATTACK') ray(origin, dir, this.state.enemies?.get(me.hostEnemyId)?.kind === 'BALLESTERO' ? 8 : 1);
+      if (type === 'MOVE' || type === 'ABILITY') stepFrom(from0, dir);
+      else if (type === 'ATTACK') ray(from0, dir, this.state.enemies?.get(me.hostEnemyId)?.kind === 'BALLESTERO' ? 8 : 1);
+      return out;
+    }
+    if (type === 'SABOTAGE') {
+      // Busca al primer aliado en línea desde el cuerpo principal y, si no hay, desde el segundo.
+      ray(from0, dir, 2);
+      if (second) ray(second, mirrored(dir), 2);
+      return out;
+    }
+    if (type === 'PUSH') {
+      ray(from0, dir, 2);
+      if (second) ray(second, mirrored(dir), 2);
       return out;
     }
     if (type === 'MOVE' || type === 'INTERACT') {
-      stepFrom(origin, dir);
+      stepFrom(from0, dir);
       if (second) stepFrom(second, mirrored(dir));
     } else if (type === 'ATTACK') {
       const range = heroInfo(me.hero).range ?? 1;
-      ray(origin, dir, range);
+      ray(from0, dir, range);
       if (second) ray(second, mirrored(dir), range);
     } else if (type === 'ABILITY') {
-      if (me.hero === 'ERRATA') correctedTiles(origin, dir, this.state.enemies, this.state.hiddenTelegraphs, this.tiles, out);
-      else if (me.hero === 'POLIZON') stepFrom(origin, dir);
-      else if (me.hero === 'USURERA') ray(origin, dir, 2);
-      else if (me.hero === 'AVARO') ray(origin, dir, 3);
+      if (me.hero === 'ERRATA') correctedTiles(from0, dir, this.state.enemies, this.state.hiddenTelegraphs, this.tiles, out);
+      else if (me.hero === 'POLIZON') stepFrom(from0, dir);
+      else if (me.hero === 'USURERA') ray(from0, dir, 2);
+      else if (me.hero === 'AVARO') ray(from0, dir, 3);
       else if (me.hero === 'MAMPOSTERO') {
         const s = shiftFromOrder(origin, dir);
         for (let i = 0; i < SIZE; i++) out.push(s.axis === 'row' ? { x: i, y: s.index } : { x: s.index, y: i });
@@ -457,6 +512,7 @@ export class BoardRenderer {
     this.preview.length = 0;
     this.previewFaint.length = 0;
     this.previewMode = null;
+    this.previewStep = s.pendingOrder || !s.plannedStep ? null : this.landing(s.plannedStep);
     if (s.pendingOrder || !s.me?.position || this.timeline.running) return;
     const mode = s.armedMode ?? s.mode ?? 'MOVE';
     this.previewMode = mode;
@@ -506,7 +562,8 @@ export class BoardRenderer {
     this.known.fill(0);
     this.vision.fill(0);
     this.teleAlpha = 0;
-    let sub = floor >= 5 ? 'La sala del Celador' : 'Seguid bajando';
+    let sub = floor >= 5 ? 'La sala del Celador' : this.nextRoom?.name ?? 'Seguid bajando';
+    this.nextRoom = null;
     // Al bajar renacen las Brasas (en la escalera) y aparecen los Renegados (lejos del grupo).
     const events = (detail?.events ?? []).filter((ev) => ev.type === 'EMBER_REBORN' || ev.type === 'RENEGADE_SPAWNED');
     const mine = events.find((ev) => ev.actorId === this.state.me?.playerId);
@@ -607,6 +664,8 @@ export class BoardRenderer {
     const lateEvents = [];
     const pathEvents = [];
     const bounces = [];
+    const pushes = [];
+    const loose = []; // sin autor en la fase de acciones: sabotajes
     const addTo = (id, ev) => { if (!groups.has(id)) groups.set(id, []); groups.get(id).push(ev); };
     const heroKind = (id) => (A.get(id) ?? B.get(id))?.d.hero;
     const warmed = new Set(events.filter((ev) => ev.type === 'WARMTH_HEALED').map((ev) => ev.targetId));
@@ -616,8 +675,11 @@ export class BoardRenderer {
       switch (ev.type) {
         case 'MOVED': case 'ROOM_SHIFTED': case 'ATTACK_CORRECTED': break;
         case 'BOUNCED': bounces.push(ev); break;
+        case 'PUSHED': pushes.push(ev); break;
         case 'DAMAGED': case 'BLOCKED': case 'ENEMY_KILLED': case 'RENEGADE_DEFEATED':
-          if (isHeroId(ev.actorId)) addTo(ev.actorId, ev); else envEvents.push(ev);
+          if (isHeroId(ev.actorId)) addTo(ev.actorId, ev);
+          else if (!ev.actorId && ev.phase === 'ACTIONS') loose.push(ev);
+          else envEvents.push(ev);
           break;
         case 'EMBERS_GAINED':
           if (groups.has(ev.actorId)) addTo(ev.actorId, ev); else lateEvents.push(ev);
@@ -667,6 +729,10 @@ export class BoardRenderer {
       });
     }
 
+    // Un empujón se ve en su momento: quien lo recibe no se desliza antes de tiempo.
+    const pushedTo = new Map();
+    for (const ev of pushes) pushedTo.set(ev.targetId, ev.position);
+
     // 3) Movimientos de héroes (la Brasa deriva atravesando todo; Anteayer salta a su pasado).
     let moved = false;
     for (const id of ids) {
@@ -677,7 +743,9 @@ export class BoardRenderer {
       const ownerId = v.ownerId ?? id;
       const rewinds = heroKind(ownerId) === 'ANTEAYER' && groups.get(ownerId)?.some((e) => e.type === 'ABILITY_USED');
       const from = startOf(b?.d);
-      if (from && a?.d.position && (from.x !== a.d.position.x || from.y !== a.d.position.y)) {
+      if (pushedTo.has(id)) {
+        // Se mueve con el empujón, más abajo.
+      } else if (from && a?.d.position && (from.x !== a.d.position.x || from.y !== a.d.position.y)) {
         moved = true;
         if (rewinds) this.rewindStep(v, from, a.d.position, t0, S);
         else if (isSpirit(a.d) && isSpirit(b.d)) this.driftTween(v, b.d.position, a.d.position, t0, 420 * S);
@@ -709,7 +777,9 @@ export class BoardRenderer {
         this.shake(0.12);
       });
     }
+    if (moved) this.showCaption(CAPTION.moves, t0);
     const tActions = t0 + (moved ? 380 * S : 0);
+    if (groups.size || pushes.length || loose.length) this.showCaption(CAPTION.actions, tActions);
 
     // 4) Acciones de héroes (y sus consecuencias, al momento del impacto).
     let cursor = tActions;
@@ -720,8 +790,29 @@ export class BoardRenderer {
       cursor += 160 * S;
     }
 
+    // Empujones y sabotajes, en la misma fase.
+    pushes.forEach((ev, i) => {
+      const t = cursor + i * 260 * S;
+      const v = this.ents.get(ev.targetId);
+      const actor = this.ents.get(ev.actorId);
+      if (actor) {
+        const dir = DIRS[(A.get(ev.actorId) ?? B.get(ev.actorId))?.d.facing];
+        if (dir) this.lunge(actor, dir, t, S);
+      }
+      tl.at(t + 90 * S, () => this.applyEvent(ev));
+      const from = startOf(B.get(ev.targetId)?.d);
+      if (v && from && ev.position) this.moveTween(v, from, ev.position, t + 90 * S, 240 * S, 0);
+      endB = Math.max(endB, t + 340 * S);
+    });
+    loose.forEach((ev, i) => {
+      const t = cursor + pushes.length * 260 * S + i * 200 * S;
+      tl.at(t, () => this.applyEvent(ev));
+      endB = Math.max(endB, t + 260 * S);
+    });
+
     // 5) Enemigos: golpean lo anunciado, luego se mueven.
     const tStrike = endB + (groups.size ? 120 * S : 0);
+    if (strikes.length) this.showCaption(CAPTION.strikes, tStrike);
     tl.at(tStrike, () => { this.teleKeys = []; this.teleSet = new Set(); this.overlay.hidden = []; this.overlay.noise = []; });
     strikes.forEach((s, i) => this.enemyStrike(s, tStrike + Math.min(i, 5) * 50 * S, S));
     const tHit = tStrike + (strikes.length ? 170 * S : 0);
@@ -734,7 +825,7 @@ export class BoardRenderer {
       const a = A.get(id);
       const v = this.ents.get(id);
       if (!v || (b ?? a).type !== 'enemy') continue;
-      const from = startOf(b?.d);
+      const from = pushedTo.get(id) ?? startOf(b?.d);
       if (from && a?.d.position && (from.x !== a.d.position.x || from.y !== a.d.position.y)) {
         enemyMoved = true;
         const kind = a.d.kind;
@@ -749,7 +840,9 @@ export class BoardRenderer {
         tl.at(tMove, () => { v.facing = a.d.facing ?? v.facing; });
       }
     }
+    if (enemyMoved) this.showCaption(CAPTION.enemies, tMove);
     const tLate = tMove + (enemyMoved ? 380 * S : 60 * S);
+    if (lateEvents.length) this.showCaption(CAPTION.late, tLate);
     lateEvents.forEach((ev, i) => tl.at(tLate + i * 220 * S, () => this.applyEvent(ev)));
     const tEnd = tLate + (lateEvents.length ? lateEvents.length * 220 * S + 200 * S : 0);
 
@@ -760,8 +853,99 @@ export class BoardRenderer {
       this.syncEntities();
       for (const v of this.ents.values()) { if (!v.leaving) { v.x = v.tx; v.y = v.ty; } }
       this.syncTelegraphs(true);
+      this.caption = null;
     });
     tl.start(this.now);
+  }
+
+  /** Rótulo del tramo de la resolución que se está viendo. */
+  showCaption(text, t) {
+    this.timeline.at(t, () => { this.caption = { text, start: this.now }; });
+  }
+
+  drawCaption(g, cell) {
+    const c = this.caption;
+    if (!c) return;
+    const age = (this.now - c.start) / 1000;
+    const alpha = Math.min(1, age / 0.12);
+    const size = Math.round(cell * 0.26);
+    g.font = `700 ${size}px Georgia, serif`;
+    const w = g.measureText(c.text).width + size * 1.4;
+    const x = (this.W - w) / 2;
+    const y = cell * 0.12;
+    g.globalAlpha = alpha * 0.82;
+    g.fillStyle = '#120a06';
+    g.fillRect(x, y, w, size * 1.6);
+    g.globalAlpha = alpha;
+    g.strokeStyle = '#c98a3e';
+    g.lineWidth = 1;
+    g.strokeRect(x + 0.5, y + 0.5, w - 1, size * 1.6 - 1);
+    g.fillStyle = '#ffe2a8';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(c.text, this.W / 2, y + size * 0.82);
+    g.globalAlpha = 1;
+  }
+
+  /** Sala inundada: las filas del norte, en azul, con oleaje. Lo que hay encima se sigue viendo. */
+  drawFlood(g, cell) {
+    const rows = this.state.floodedRows ?? 0;
+    if (!rows) return;
+    const wave = this.rm ? 0 : Math.sin(this.t * 1.6) * 0.05;
+    g.fillStyle = '#2f7fd8';
+    g.globalAlpha = 0.34 + wave;
+    g.fillRect(0, 0, this.W, rows * cell);
+    g.globalAlpha = 0.85;
+    g.strokeStyle = '#9fd4ff';
+    g.lineWidth = Math.max(1.5, cell * 0.04);
+    g.beginPath();
+    const edge = rows * cell;
+    for (let x = 0; x <= this.W; x += cell / 6) {
+      const y = edge + (this.rm ? 0 : Math.sin(x / cell * 3 + this.t * 2.2) * cell * 0.05);
+      if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.stroke();
+    g.globalAlpha = 1;
+  }
+
+  /** Paso marcado: hacia dónde iría cada cuerpo y, si no se puede entrar, una cruz: la acción saldría de donde está. */
+  drawStepGhost(g, cell) {
+    const s = this.state;
+    const step = this.previewStep;
+    if (!step || !s.me) return;
+    const color = MODE_COLORS.MOVE;
+    const mark = (from, target, bounced) => {
+      if (!target) return;
+      const pulse = this.rm ? 0.5 : 0.5 + 0.5 * Math.sin(this.t * 6);
+      g.strokeStyle = bounced ? '#ff6a5a' : color;
+      g.fillStyle = bounced ? '#ff6a5a' : color;
+      g.lineWidth = Math.max(2, cell * 0.05);
+      g.setLineDash(DASH.map((d) => d * cell / 60));
+      g.lineDashOffset = this.rm ? 0 : -this.t * cell * 0.5;
+      g.globalAlpha = bounced ? 0.16 : 0.2 + pulse * 0.1;
+      if (inBounds(target.x, target.y)) g.fillRect(target.x * cell + 2, target.y * cell + 2, cell - 4, cell - 4);
+      g.globalAlpha = 1;
+      if (inBounds(target.x, target.y)) g.strokeRect(target.x * cell + cell * 0.08, target.y * cell + cell * 0.08, cell * 0.84, cell * 0.84);
+      g.setLineDash(NO_DASH);
+      const ax = (from.x + 0.5) * cell;
+      const ay = (from.y + 0.5) * cell;
+      const bx = (target.x + 0.5) * cell;
+      const by = (target.y + 0.5) * cell;
+      g.beginPath();
+      g.moveTo(ax, ay);
+      g.lineTo(bx, by);
+      g.stroke();
+      if (bounced && inBounds(target.x, target.y)) {
+        const r = cell * 0.18;
+        g.beginPath();
+        g.moveTo(bx - r, by - r); g.lineTo(bx + r, by + r);
+        g.moveTo(bx + r, by - r); g.lineTo(bx - r, by + r);
+        g.stroke();
+      }
+    };
+    const start = this.origin();
+    if (start) mark(start, step.target ?? step.pos, step.bounced);
+    if (s.me.secondBody && step.secondTarget) mark(s.me.secondBody, step.secondTarget, step.secondBounced);
   }
 
   /** Corrimiento: mueve la línea del mapa (drawTiles y drawObjects la dibujan desplazada) y a quienes están encima. */
@@ -1078,10 +1262,29 @@ export class BoardRenderer {
     if (this.applyPathEvent(ev, target, actor, fromFloor, aim)) return;
     if (applyHeroEvent(this, ev, target, actor)) return;
     switch (ev.type) {
+      case 'PUSHED': {
+        if (!target) return;
+        const [cx, cy] = this.center(target);
+        this.floaters.add('¡empujón!', cx, cy - 0.35, { color: '#ffb45a', size: 0.24 });
+        this.particles.burst(cx, cy, rm ? 4 : 12, { speed: 2, life: 0.4, size: 0.05, colors: ['#ffb45a', '#fff0c0'], drag: 3 });
+        this.shake(0.18);
+        break;
+      }
+      case 'ROOM_FLOODED':
+        this.screenFlash('#2f7fd8', 0.3);
+        this.banner = { text: 'El agua sube', sub: `${ev.amount ?? 1} fila${ev.amount === 1 ? '' : 's'} inundada${ev.amount === 1 ? '' : 's'}`, start: this.now, dur: 1400, color: '#9fd4ff' };
+        break;
       case 'DAMAGED': {
         if (!target) return;
         const amount = ev.amount ?? 0;
         const [cx, cy] = this.center(target);
+        if (amount > 0 && !ev.actorId && ev.phase === 'ACTIONS' && target.type === 'hero') {
+          // Sabotaje: la víctima se ve bien, el autor no existe.
+          this.floaters.add('¿quién?', cx, cy - 0.68, { color: '#d9b3ff', size: 0.26, life: 1.4 });
+          this.ring(target.x, target.y, '#c58af0', 1.1, 600);
+          this.screenFlash('#7a2ad0', target.isMe ? 0.4 : 0.14);
+          this.shake(0.3);
+        }
         if (amount <= 0) { this.floaters.add('0', cx, cy - 0.3, { color: '#c8c0b0', size: 0.28 }); return; }
         target.hp = Math.max(0, target.hp - amount);
         target.flash = rm ? 0.5 : 1;
@@ -1711,6 +1914,7 @@ export class BoardRenderer {
     this.drawLighting(g, cell);
     this.drawFog(g);
     this.drawBlindness(g, cell);
+    this.drawFlood(g, cell);
     this.drawBeacons(g, cell);
     drawNoise(this, g, cell);
     drawGroundEmbers(this, g, cell);
@@ -1719,6 +1923,7 @@ export class BoardRenderer {
     drawEchoes(this, g, cell);
     drawRewind(this, g, cell, (this.state.armedMode ?? this.state.mode) === 'ABILITY');
     this.drawPreview(g, cell);
+    this.drawStepGhost(g, cell);
     this.drawOrder(g, cell);
     drawThreads(this, g, cell);
     this.drawEntities(g, cell);
@@ -1729,6 +1934,7 @@ export class BoardRenderer {
     this.floaters.draw(g, cell);
     g.setTransform(1, 0, 0, 1, 0, 0);
     this.drawOverlay(g, cell);
+    this.drawCaption(g, cell);
   }
 
   drawTiles(g, cell) {
@@ -2096,13 +2302,24 @@ export class BoardRenderer {
     }
     const v = DIRS[order.direction];
     if (!v) return;
+    // Paso ya enviado: se ve el camino y la flecha de la acción sale de donde quedaría.
+    let [ax, ay] = [cx, cy];
+    if (order.step && order.type !== 'MOVE') {
+      const landed = this.landing(order.step);
+      if (landed) {
+        const stepV = DIRS[order.step];
+        this.drawOrderArrow(g, cell, cx, cy, stepV, MODE_COLORS.MOVE, pulse);
+        ax = landed.pos.x + 0.5;
+        ay = landed.pos.y + 0.5;
+      }
+    }
     const tiles = this.affected(order.type, order.direction, []);
     g.fillStyle = color;
     g.globalAlpha = 0.12 + pulse * 0.06;
     for (const p of tiles) g.fillRect(p.x * cell + 2, p.y * cell + 2, cell - 4, cell - 4);
     g.globalAlpha = 1;
     if (order.type === 'ABILITY' && s.me.hero === 'MAMPOSTERO' && !isSpirit(s.me) && s.me.position) drawShiftPreview(this, g, cell, shiftFromOrder(s.me.position, order.direction), 0.8);
-    this.drawOrderArrow(g, cell, cx, cy, v, color, pulse);
+    this.drawOrderArrow(g, cell, ax, ay, v, color, pulse);
     // Hilván: la misma orden, en espejo, en el otro cuerpo.
     const meB = this.ents.get(secondId(s.me.playerId));
     if (meB && order.type !== 'ABILITY') {

@@ -59,11 +59,11 @@ export const ECHO_REASONS = {
 };
 
 export const MATCH_STATUS = {
-  LOBBY: 'sala', DRAFTING: 'eligiendo mejora', IN_PROGRESS: 'en curso', FINISHED: 'terminada',
+  LOBBY: 'sala', DRAFTING: 'eligiendo mejora y misión', IN_PROGRESS: 'en curso', INTERLUDE: 'El Juicio', FINISHED: 'terminada',
   FAULTED: 'fallida', ABANDONED: 'abandonada', EXPIRED: 'expirada', TERMINATED: 'terminada por un admin',
 };
 
-export const ORDER_TYPES = { MOVE: 'Mover', ATTACK: 'Atacar', ABILITY: 'Habilidad', INTERACT: 'Usar', GUARD: 'Defender' };
+export const ORDER_TYPES = { MOVE: 'Paso', ATTACK: 'Atacar', ABILITY: 'Habilidad', INTERACT: 'Usar', GUARD: 'Defender', SABOTAGE: 'Sabotear', PUSH: 'Empujar' };
 export const DIRECTIONS = { N: 'norte', S: 'sur', E: 'este', W: 'oeste' };
 
 export const BLESSINGS = {
@@ -73,20 +73,60 @@ export const BLESSINGS = {
   ESCARCHA: 'Escarcha', OJO_DE_BUHO: 'Ojo de búho',
 };
 
-/** Qué hace cada bendición (planteamiento/01-juego.md §10); se muestra en el draft y en la guía. */
+/** Qué hace cada mejora (planteamiento/06-version-3.md §8). `catalog.js` lo reemplaza con lo que manda el servidor. */
 export const BLESSING_EFFECTS = {
-  BRASA_VIVA: 'Al atacar: 20% de quemar (1 de daño por ronda, 2 rondas).',
-  PASO_IGNEO: 'Al moverte: 15% de dejar fuego en la casilla anterior.',
-  PUNO_DE_PIEDRA: '+1 de daño, pero −1 de vida máxima (al Avaro, −1 de oro).',
-  CORAZON_DOBLE: '+2 de vida máxima (al Avaro, +2 de oro).',
-  HOJA_HAMBRIENTA: 'Al matar: te curas 1.',
-  ESPEJO_ROTO: 'Al recibir un golpe: 25% de devolver 1 de daño.',
-  LAMPARA: '+1 de visión.',
-  GANZUA: 'Los cofres te dan +1 de oro.',
-  ULTIMO_ALIENTO: 'Una vez por partida: al caer, quedas con 1 de vida.',
-  CODICIA: '+1 de oro por golpe final, pero recibes +1 de daño.',
-  ESCARCHA: 'Al atacar: 20% de congelar (pierde su siguiente acción).',
-  OJO_DE_BUHO: 'Ves los ataques marcados aunque estén fuera de tu visión.',
+  BRASA_VIVA: 'Tus golpes siempre queman: 1 de daño más al terminar la ronda.',
+  PASO_IGNEO: 'Cada paso deja fuego en la casilla que dejas.',
+  PUNO_DE_PIEDRA: 'Si atacas sin dar un paso, haces +1 de daño.',
+  CORAZON_DOBLE: '+2 de vida máxima (el Avaro, +1 de oro).',
+  HOJA_HAMBRIENTA: 'Cada golpe final te cura 1 (el Avaro, +1 de oro).',
+  ESPEJO_ROTO: 'Todo golpe con autor que recibes le devuelve 1 de daño.',
+  LAMPARA: 'Ves toda la sala.',
+  GANZUA: 'Tus cofres dan +2 de oro.',
+  ULTIMO_ALIENTO: 'Una vez: al caer quedas con 1 de vida.',
+  CODICIA: '+1 de oro por cada golpe final.',
+  ESCARCHA: 'Tus golpes congelan: pierde su próxima acción.',
+  OJO_DE_BUHO: 'Ves todos los ataques marcados de la sala.',
+};
+
+/** Lo que cuesta cada mejora: siempre a la vista. */
+export const BLESSING_COSTS = {
+  BRASA_VIVA: 'Recibes 1 de daño al abrir cofres.',
+  PASO_IGNEO: 'El fuego te hace 1 más a ti.',
+  PUNO_DE_PIEDRA: '−1 de vida máxima (el Avaro, −1 de oro).',
+  CORAZON_DOBLE: 'Nada te cura.',
+  HOJA_HAMBRIENTA: 'No puedes defender.',
+  ESPEJO_ROTO: 'No puedes tener escudo.',
+  LAMPARA: 'Los monstruos te eligen siempre.',
+  GANZUA: 'No puedes levantar a aliados con Usar.',
+  ULTIMO_ALIENTO: 'Si vuelves a caer, nadie puede levantarte.',
+  CODICIA: 'Cada golpe que recibes hace +1.',
+  ESCARCHA: 'Tus golpes no hacen daño (al Celador y a un Traidor, que no se congelan, sí).',
+  OJO_DE_BUHO: 'Visión −1, mínimo 1.',
+};
+
+/** Tipos de sala (también vienen con la oferta y en la vista). */
+export const ROOM_TYPES = {
+  NORMAL: { name: 'Normal', effect: 'Sin regla propia.', icon: '▫' },
+  TREASURE: { name: 'Tesoro', effect: '4 cofres y 1 monstruo más.', icon: '📦' },
+  ARENA: { name: 'Arena', effect: 'Sin cofres, 1 o 2 monstruos más y cada golpe final da 2 de oro.', icon: '⚔' },
+  SANCTUARY: { name: 'Santuario', effect: 'Pocos monstruos, un altar que no pide llave y más trampas.', icon: '⛩' },
+  DARK: { name: 'Oscura', effect: 'Todos ven 1 casilla menos y hay 1 cofre más.', icon: '🌑' },
+  FLOODED: { name: 'Inundada', effect: 'Desde el norte, cada 6 rondas se inunda una fila más: 1 de daño por ronda a quien no vuela.', icon: '🌊' },
+};
+
+/** Maldiciones: las elige el anfitrión y son públicas. */
+export const CURSES = {
+  FIERCE: { name: 'Fieros', effect: 'Los monstruos tienen 1 de vida más.', icon: '🐾' },
+  WARDEN_PLUS: { name: 'Celador imponente', effect: 'El Celador tiene 50 % más de vida.', icon: '👑' },
+  DIM: { name: 'Penumbra', effect: 'Todos ven 1 casilla menos.', icon: '🌘' },
+  HASTE: { name: 'Prisa', effect: 'Las rondas duran 12 segundos.', icon: '⏱' },
+};
+
+/** Fases de la resolución (`phase` de los eventos), en orden. */
+export const PHASES = {
+  REVEAL: 'Caminos', GUARD: 'Defensas', SHIFT: 'La sala se corre', MOVEMENT: 'Pasos', ACTIONS: 'Acciones',
+  ENEMY_ATTACKS: 'Golpes enemigos', ENEMY_MOVES: 'Los enemigos avanzan', CLEANUP: 'Final de la ronda', END: 'Fin',
 };
 
 export const ENEMIES = {
@@ -121,6 +161,7 @@ export const EVENTS = {
   WARDEN_TURNED: 'el Celador giró', SHOUTED: 'gritó', DEBT_CHANGED: 'la deuda cambió', EMBERS_DROPPED: 'cayeron oro al suelo',
   EMBERS_PICKED_UP: 'recogió oro', EMBERS_LOST: 'perdió oro', ENEMY_BRIBED: 'sobornó a un enemigo', ROOM_SHIFTED: 'la sala se corrió',
   BELL_RUNG: 'tocó el Repique', BELL_EXPIRED: 'venció el plazo del Repique',
+  PUSHED: 'empujó', ROOM_FLOODED: 'el agua subió', INTERLUDE_OPENED: 'se abrió El Juicio', INTERLUDE_CLOSED: 'se cerró El Juicio',
 };
 
 export const ERROR_CODES = {
@@ -138,6 +179,9 @@ export const ERROR_CODES = {
   DRAFT_CLOSED: 'La elección de mejora ya cerró',
   INVALID_PICK: 'Esa mejora no estaba en la oferta',
   PATH_CLOSED: 'La elección de camino ya cerró',
+  PACT_CLOSED: 'La elección de misión ya cerró',
+  VOTE_CLOSED: 'La votación ya cerró o ya votaste',
+  INVALID_VOTE: 'Ese voto no vale',
   RATE_LIMITED: 'Demasiados mensajes; espera un momento',
   MESSAGE_TOO_LARGE: 'Mensaje demasiado grande',
   INTERNAL_ERROR: 'Error del servidor',

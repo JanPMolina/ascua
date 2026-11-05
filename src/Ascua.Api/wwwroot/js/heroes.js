@@ -22,7 +22,7 @@ export const HERO_INFO = {
     ability: 'Tensar', abilityText: 'Con los cuerpos alineados, a 2 o más y sin muro entre ellos, todo lo que haya entre ellos recibe 2 de daño, aliados incluidos.',
   },
   POLIZON: {
-    name: 'Polizón', role: 'Parásito', hp: 4, range: 1, initiative: 7, cooldown: 3, color: '#a8d85a',
+    name: 'Polizón', role: 'Parásito', hp: 6, range: 1, initiative: 7, cooldown: 3, color: '#a8d85a',
     breaks: 'Eres tu cuerpo',
     passiveName: 'Sin casa', passive: 'Dentro de un monstruo desapareces de la vista de todos, aliados incluidos. Cada 2 rondas lo drenas: pierde 1 y tú curas 1.',
     ability: 'Abordar', abilityText: 'Entras en el enemigo vecino. Dentro, mover lo mueve, atacar hace que golpee ya, y la habilidad te saca. Al Celador solo lo giras 180°.',
@@ -36,7 +36,7 @@ export const HERO_INFO = {
   USURERA: {
     name: 'La Usurera', role: 'Prestamista', hp: 4, range: 1, initiative: 1, cooldown: 2, color: '#e8c44a',
     breaks: 'Ayudar es gratis',
-    passiveName: 'Interés', passive: 'Cada 5 rondas la deuda sube 1 (tope 4). El oro que gane el deudor le llegan a ella; al terminar cobra lo que quede.',
+    passiveName: 'Interés', passive: 'Cada 7 rondas la deuda sube 1 (tope 3). El oro que gane el deudor le llegan a ella; al terminar cobra lo que quede.',
     ability: 'Préstamo', abilityText: 'Al primer aliado herido o derribado en línea a 2 o menos: cura 3 o lo levanta con 3. No pide permiso. Le crea 1 de oro de deuda.',
   },
   AVARO: {
@@ -52,7 +52,7 @@ export const HERO_INFO = {
     ability: 'Corrimiento', abilityText: 'Desliza 1 casilla su fila o su columna con todo lo que tenga encima, escalera incluida. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2 de daño.',
   },
   CAMPANERO: {
-    name: 'El Campanero', role: 'Último en hablar', hp: 5, range: 2, initiative: 4, cooldown: 4, color: '#7fb0e8',
+    name: 'El Campanero', role: 'Último en hablar', hp: 4, range: 2, initiative: 4, cooldown: 4, color: '#7fb0e8',
     breaks: 'El reloj es igual para todos',
     passiveName: 'Último en hablar', passive: 'Si todos los demás ya decidieron y él no, recibe en privado sus órdenes y puede responder con lo que quede de reloj.',
     ability: 'Repique', abilityText: 'En la ronda siguiente todos los demás tienen solo 8 s; él conserva los 20. Se oye: todos ven la cuenta regresiva.',

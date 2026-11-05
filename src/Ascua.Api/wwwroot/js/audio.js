@@ -253,7 +253,11 @@ function soundFor(ev, ctx) {
     case 'ENEMY_BRIBED': return ['bribe', { wet: 0.25 }, target?.position];
     case 'ROOM_SHIFTED': return ['roomShift', { wet: 0.35 }, null];
     case 'BELL_RUNG': return ['bellRing', { wet: 0.7 }, null];
-    case 'DAMAGED': return ['damage', { opts: { onMe, onEnemy: Boolean(target?.enemy) }, gain: onMe ? 1.1 : 0.9 }, target?.position];
+    case 'PUSHED': return ['push', { wet: 0.2 }, ev.position];
+    case 'ROOM_FLOODED': return ['flood', { wet: 0.4 }, null];
+    case 'DAMAGED':
+      if (!ev.actorId && ev.phase === 'ACTIONS' && !target?.enemy) return ['sabotage', { wet: 0.35 }, target?.position];
+      return ['damage', { opts: { onMe, onEnemy: Boolean(target?.enemy) }, gain: onMe ? 1.1 : 0.9 }, target?.position];
     case 'BLOCKED': return ev.detail === 'WARNING_SHIELD' ? ['warningShield', { wet: 0.3 }, target?.position] : ['block', {}, actor?.position];
     case 'HEALED': return ['heal', { wet: 0.4 }, (target ?? actor)?.position];
     case 'DOWNED': return ['downed', { opts: { onMe } }, target?.position];
@@ -356,6 +360,10 @@ function bindBus() {
   on('floor:changed', () => { bossSeen = false; floorPending = true; });
   on('draft:offer', () => playSfx('draftOffer', { wet: 0.5 }));
   on('draft:picked', () => playSfx('draftPicked', { wet: 0.4 }));
+  on('order:step', () => playSfx('step', { gain: 0.45, wet: 0.05 }));
+  on('interlude:offer', () => playSfx('interludeOpen', { wet: 0.6 }));
+  on('interlude:voted', () => playSfx('voteCast', { wet: 0.2 }));
+  on('interlude:verdict', ({ guilty, convicted }) => playSfx(guilty ? 'verdictGuilty' : convicted ? 'verdictInnocent' : 'verdictNone', { wet: 0.5 }));
   on('path:offer', () => playSfx('pathOffer', { wet: 0.55, delay: 0.4 }));
   on('path:chosen', ({ path }) => playSfx(path === 'VENGEANCE' ? 'pathVengeance' : 'pathFriendship', { wet: 0.45, gain: 0.8 }));
   on('match:finished', onFinished);

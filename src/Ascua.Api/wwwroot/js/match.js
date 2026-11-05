@@ -8,14 +8,19 @@ import { uuidv7 } from './uuid.js';
 import { emit, on } from './bus.js';
 import { BLESSING_ICONS, heroAvatar, heroInfo } from './heroes.js';
 import { settingsOpen } from './settings-panel.js';
+import { InterludeUi } from './interlude.js';
+import { loadCatalog } from './catalog.js';
+import * as api from './api.js';
 import { shiftFromEvent, shiftText, shiftedPos } from './board-heroes.js';
 import {
-  BLESSINGS, BLESSING_EFFECTS, DIRECTIONS, ECHO_REASONS, EMBER_ORDERS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
-  MATCH_STATUS, ORDER_TYPES, OUTCOMES, PATHS, SIGNALS, label,
+  BLESSINGS, BLESSING_COSTS, BLESSING_EFFECTS, CURSES, DIRECTIONS, ECHO_REASONS, EMBER_ORDERS, ENEMIES, ERROR_CODES, EVENTS, HEROES, HERO_STATES,
+  MATCH_STATUS, ORDER_TYPES, OUTCOMES, PATHS, PHASES, ROOM_TYPES, SIGNALS, label,
 } from './labels.js';
 
 const KEY_DIRS = { ArrowUp: 'N', ArrowDown: 'S', ArrowLeft: 'W', ArrowRight: 'E' };
 const KEY_SIGNALS = { 1: 'HERE', 2: 'DANGER', 3: 'HELP', 4: 'MINE' };
+const KEY_ACTIONS = { q: 'ABILITY', e: 'INTERACT', r: 'SABOTAGE', f: 'PUSH' };
+const REMATCH_POLL_MS = 3000;
 const SIGNAL_INTERVAL_MS = 3000;
 const SIGNAL_FEED_MAX = 3;
 const RETRYABLE = new Set(['RATE_LIMITED', 'INTERNAL_ERROR']);
@@ -38,7 +43,14 @@ const EVENT_STYLE = {
   HOST_BOARDED: ['◉', 'good'], HOST_EXITED: ['◉', ''], HOST_DRAINED: ['◉', 'good'], WARDEN_TURNED: ['↻', 'info'], SHOUTED: ['📢', 'info'],
   DEBT_CHANGED: ['⚖', 'gold'], EMBERS_DROPPED: ['✦', 'bad'], EMBERS_PICKED_UP: ['✦', 'gold'], EMBERS_LOST: ['✦', 'bad'], ENEMY_BRIBED: ['✦', 'gold'],
   ROOM_SHIFTED: ['⇄', 'info'], BELL_RUNG: ['🔔', 'info'], BELL_EXPIRED: ['🔔', ''],
+  PUSHED: ['🖐', 'info'], ROOM_FLOODED: ['🌊', 'bad'], INTERLUDE_OPENED: ['⚖', 'info'], INTERLUDE_CLOSED: ['⚖', 'info'],
 };
+
+/** Sucesos que se resaltan en el registro: cambian la partida. */
+const KEY_EVENTS = new Set(['DOWNED', 'EXTINGUISHED', 'ENEMY_KILLED', 'RENEGADE_DEFEATED', 'PUSHED', 'BOSS_PHASE_CHANGED', 'BETRAYAL_RECORDED']);
+
+/** Un golpe sin autor en la fase de acciones no puede ser una trampa: alguien saboteó. */
+export const isSabotageHit = (ev) => ev.type === 'DAMAGED' && !ev.actorId && ev.phase === 'ACTIONS' && Boolean(ev.targetId) && !String(ev.targetId).startsWith('enemy:');
 
 /** Por qué cambió una deuda (DEBT_CHANGED.detail). */
 const DEBT_REASONS = {
@@ -51,6 +63,8 @@ const NO_AIM = new Set(['ANTEAYER', 'HILVAN', 'ESCUCHA', 'CAMPANERO']);
 const ARMED_TEXT = {
   ABILITY: 'Habilidad armada: elige una dirección (flecha o d-pad). Esc cancela.',
   INTERACT: 'Usar armado: elige la casilla vecina (flecha o d-pad). Esc cancela.',
+  SABOTAGE: 'Sabotaje armado: 1 de daño sin autor al primer aliado en línea a 2 casillas o menos. Elige dirección. Esc cancela.',
+  PUSH: 'Empujón armado: mueve 1 casilla a quien tengas al lado. Elige dirección. Esc cancela.',
 };
 const EMBER_ARMED_TEXT = {
   ABILITY: 'Escudo armado: elige hacia qué aliado (flecha o d-pad). Esc cancela.',
@@ -59,8 +73,9 @@ const EMBER_ARMED_TEXT = {
 
 /** Nombres e íconos originales de los botones de orden (se restauran al dejar de ser Brasa). */
 const HERO_ORDERS = {
-  MOVE: { name: 'Mover', icon: '➜' }, ATTACK: { name: 'Atacar', icon: '⚔' }, ABILITY: { name: 'Habilidad', icon: '✺' },
+  MOVE: { name: 'Paso', icon: '➜' }, ATTACK: { name: 'Atacar', icon: '⚔' }, ABILITY: { name: 'Habilidad', icon: '✺' },
   INTERACT: { name: 'Usar', icon: '✋' }, GUARD: { name: 'Defender', icon: '⛨' },
+  SABOTAGE: { name: 'Sabotear', icon: '🗡' }, PUSH: { name: 'Empujar', icon: '🖐' },
 };
 
 const PATH_DEADLINE_MS = 15000;
@@ -88,9 +103,9 @@ let active = null; // partida en curso (una a la vez)
  * @param {object} options.transport   RealTransport o DemoTransport.
  * @param {() => void} options.onExit  Volver al lobby.
  */
-export function startMatch({ transport, onExit }) {
+export function startMatch({ transport, onExit, onRematch }) {
   active?.dispose();
-  active = new MatchController(transport, onExit);
+  active = new MatchController(transport, onExit, onRematch);
   active.start();
   return active;
 }
@@ -102,10 +117,14 @@ export function stopMatch() {
 }
 
 class MatchController {
-  constructor(transport, onExit) {
+  constructor(transport, onExit, onRematch) {
     this.transport = transport;
     this.matchId = transport.matchId;
     this.onExit = onExit;
+    this.onRematch = onRematch;
+    this.interlude = new InterludeUi(this);
+    this.toast = toast;
+    this.rematchTimer = 0;
     this.board = new BoardRenderer($('board'));
     this.disposed = false;
     this.finished = null;
@@ -114,8 +133,10 @@ class MatchController {
     this.drainDelayMs = null;
     this.selectedMode = 'MOVE';
     this.armedMode = null;
+    this.plannedStep = null; // paso marcado, a la espera de una acción o de enviarlo solo
     this.order = null; // { payload, status: sending|waiting|acked|error, ack, error }
     this.draft = null;
+    this.pactOffer = null; // oferta de misión { offerId, options, deadline, sending }
     this.pathOffer = null; // oferta de camino abierta { offerId, deadlineLocal, savedEmbers, …, sending }
     this.signalMark = null; // casilla marcada para la próxima señal
     this.signalReadyAt = 0;
@@ -133,6 +154,8 @@ class MatchController {
     this.status = null;
     this.round = 0;
     this.floor = null;
+    this.room = { type: 'NORMAL', floodedRows: 0 };
+    this.curses = [];
     this.me = null;
     this.allies = [];
     this.enemies = new Map();
@@ -163,8 +186,12 @@ class MatchController {
     $('btn-demo-finish').hidden = !demo;
     $('demo-paths').hidden = !demo;
     this.bindUi();
-    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PathOffer', 'LastWord', 'SignalReceived',
-      'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error']) {
+    if (this.transport.protocolName !== 'demo' && this.transport.protocolName !== 'tutorial') {
+      // Con el catálogo real se rehacen los textos de una oferta que ya estuviera abierta.
+      loadCatalog().then((changed) => { if (changed && !this.disposed && this.draft) this.renderDraftOptions(); });
+    }
+    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PactOffer', 'PathOffer', 'InterludeOffer', 'InterludeResolved',
+      'LastWord', 'SignalReceived', 'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error']) {
       this.transport.on(type, (payload) => {
         if (this.disposed) return;
         logMessage('in', type, payload);
@@ -182,6 +209,8 @@ class MatchController {
     this.disposed = true;
     clearInterval(this.tick);
     clearTimeout(this.reconnectTimer);
+    clearTimeout(this.rematchTimer);
+    this.interlude.dispose();
     document.removeEventListener('keydown', this.onKey);
     this.cleanups.forEach((fn) => fn());
     this.transport.stop();
@@ -203,14 +232,16 @@ class MatchController {
       node.addEventListener(type, fn);
       this.cleanups.push(() => node.removeEventListener(type, fn));
     };
+    // Paso: siempre disponible. Las demás arman la acción y el d-pad le da dirección.
     document.querySelectorAll('.mode').forEach((btn) => listen(btn, 'click', () => {
-      this.selectedMode = btn.dataset.mode;
-      this.armedMode = null;
+      const mode = btn.dataset.mode;
+      this.armedMode = mode === 'MOVE' || this.armedMode === mode ? null : mode;
       this.render();
     }));
     document.querySelectorAll('.dir[data-dir]').forEach((btn) => listen(btn, 'click', () => {
-      this.sendDirected(this.armedMode ?? this.selectedMode, btn.dataset.dir);
+      this.pressDirection(btn.dataset.dir);
     }));
+    listen($('btn-send-step'), 'click', () => this.sendPlannedStep());
     listen($('btn-guard'), 'click', () => this.guard());
     listen($('btn-leave-match'), 'click', () => this.leave());
     listen($('btn-demo-drop'), 'click', () => toast(this.transport.simulateDrop()));
@@ -350,7 +381,11 @@ class MatchController {
     this.seq = snap.seq;
     this.status = v.status;
     this.round = v.round;
+    const previousFloor = this.floor;
+    const before = previousFloor !== null && previousFloor !== v.floor ? this.entities() : null;
     this.floor = v.floor;
+    this.room = v.room ?? this.room;
+    this.curses = v.curses ?? this.curses;
     this.me = v.me;
     this.allies = v.allies ?? [];
     this.enemies = new Map((v.enemies ?? []).map((e) => [e.enemyId, e]));
@@ -362,7 +397,8 @@ class MatchController {
     // El plazo se traduce al reloj local con el desfase que informa el servidor.
     const offset = Date.parse(snap.serverTime) - Date.now();
     this.clockOffset = Number.isFinite(offset) ? offset : 0;
-    this.deadlineLocal = v.roundDeadline ? Date.parse(v.roundDeadline) - this.clockOffset : null;
+    // En el interludio el plazo es de la votación: tiene su propio reloj.
+    this.deadlineLocal = v.roundDeadline && v.status !== 'INTERLUDE' ? Date.parse(v.roundDeadline) - this.clockOffset : null;
     this.setBell(v.bell);
     this.decidedCount = [this.me, ...this.allies].filter((h) => h?.decided).length;
     // Dan orden los héroes vivos, las Brasas y los Renegados presentes (un aliado Renegado se cuenta si se le ve).
@@ -371,6 +407,14 @@ class MatchController {
     if (this.order && this.order.payload.round !== this.round) this.order = null;
     setLastSeq(this.seq);
     this.syncPathOffer();
+    this.interlude.sync(v.interlude ?? null);
+    this.interlude.renderLog(v.lastVerdict ?? null);
+    this.renderPactOptions();
+    if (before) {
+      // Se cambió de sala al cerrarse el interludio: el tablero hace la transición.
+      emit('floor:changed', { floor: v.floor, room: this.room });
+      emit('round:resolved', { round: this.round, events: [], before, after: this.entities(), myId: this.playerId });
+    }
   }
 
   /**
@@ -407,6 +451,8 @@ class MatchController {
     if (m.round < this.round) return;
     this.status = 'IN_PROGRESS';
     this.round = m.round;
+    this.plannedStep = null;
+    this.armedMode = null;
     // Se usa la duración (no la hora absoluta) para no depender del reloj del cliente. Con el Repique, el plazo de cada
     // jugador (roundDeadline; si no llegó, bellDeadline salvo para quien lo tocó) es menor que el de la ronda.
     const ringing = Boolean(m.bellDeadline);
@@ -470,10 +516,16 @@ class MatchController {
     this.noiseTiles = d.noiseTiles ?? this.noiseTiles;
     this.lastWord = null;
     this.bell = null;
-    this.nextDeadline = d.roundDeadline ?? null;
+    this.plannedStep = null;
+    this.armedMode = null;
+    // En el interludio roundDeadline es el plazo de la votación, no el de la ronda que viene.
+    this.nextDeadline = d.status === 'INTERLUDE' ? null : d.roundDeadline ?? null;
     this.events = d.events ?? [];
+    const flood = this.events.find((ev) => ev.type === 'ROOM_FLOODED');
+    if (flood) this.room = { ...this.room, floodedRows: flood.amount ?? this.room.floodedRows };
     for (const ev of this.events) {
-      if (ev.type === 'BETRAYAL_RECORDED') toast(`Nadie lo sabe todavía: le costaste ${ev.amount ?? '?'} de vida a ${this.nameOf(ev.targetId)}. Se revelará al final.`, 'info', 5000);
+      if (ev.type === 'BETRAYAL_RECORDED') toast(`Nadie lo sabe todavía: le costaste ${ev.amount ?? '?'} de vida a ${this.nameOf(ev.targetId)}. Pueden juzgarte al terminar la sala.`, 'info', 5000);
+      if (isSabotageHit(ev)) emit('sabotage:seen', { targetId: ev.targetId, onMe: ev.targetId === this.playerId });
     }
     this.seq = m.seq;
     this.deadlineLocal = null;
@@ -515,6 +567,28 @@ class MatchController {
   nameOf(id) {
     if (id === this.playerId) return this.me?.displayName ?? 'Tú';
     return this.allies.find((a) => a.playerId === id)?.displayName ?? 'Alguien';
+  }
+
+  heroOf(id) {
+    if (id === this.playerId) return this.me?.hero ?? null;
+    return this.allies.find((a) => a.playerId === id)?.hero ?? null;
+  }
+
+  // ───────────── interludio ─────────────
+
+  onInterludeOffer(m) {
+    this.interlude.sync(m, { live: this.status !== null && this.seq !== null && !this.interlude.isOpen && this.floor !== null });
+  }
+
+  onInterludeResolved(m) {
+    this.interlude.close();
+    this.seq = Math.max(this.seq ?? 0, m.seq);
+    setLastSeq(this.seq);
+    // Lo que pasó al cerrar va al registro: renacer, aparecer, entrar en la sala nueva.
+    this.events = m.events ?? [];
+    this.interlude.showVerdict(m.verdict);
+    this.interlude.renderLog(m.verdict);
+    for (const ev of this.events) if (ev.type === 'EMBERS_LOST') toast(`El Juicio te costó ${Math.abs(ev.amount ?? 1)} de oro.`, 'bad', 5000);
   }
 
   // ───────────── señales y Último en hablar ─────────────
@@ -622,8 +696,17 @@ class MatchController {
 
   onDraftOffer(m) {
     this.draft = { ...m, deadlineLocal: Date.now() + Math.max(0, Date.parse(m.deadline) - Date.now()) };
-    const box = $('draft-options');
-    box.replaceChildren(...m.options.map((id) => el('button', {
+    this.renderDraftOptions();
+    setText('draft-source', m.source === 'ALTAR' ? '⛩ Altar' : '✦ Mejora y misión');
+    this.syncDraftDialog();
+    $('draft-options').querySelector('button')?.focus();
+    emit('draft:offer', { options: m.options, source: m.source });
+  }
+
+  renderDraftOptions() {
+    const m = this.draft;
+    if (!m) return;
+    $('draft-options').replaceChildren(...m.options.map((id) => el('button', {
       type: 'button',
       class: 'blessing',
       dataset: { blessing: id },
@@ -632,11 +715,68 @@ class MatchController {
     el('span', { class: 'bl-ico', 'aria-hidden': 'true' }, BLESSING_ICONS[id] ?? '✧'),
     el('b', {}, label(BLESSINGS, id)),
     BLESSING_EFFECTS[id] ? el('small', {}, BLESSING_EFFECTS[id]) : null,
+    BLESSING_COSTS[id] ? el('small', { class: 'bl-cost' }, `Precio: ${BLESSING_COSTS[id]}`) : null,
     el('span', { class: 'bl-cta', 'aria-hidden': 'true' }, 'Elegir'))));
-    setText('draft-source', m.source === 'ALTAR' ? '⛩ Altar' : '✦ Mejora inicial');
-    $('draft').hidden = false;
-    box.querySelector('button')?.focus();
-    emit('draft:offer', { options: m.options, source: m.source });
+  }
+
+  /** El diálogo sigue abierto mientras falte la mejora o la misión; cada parte desaparece al elegirla. */
+  syncDraftDialog() {
+    const blessing = Boolean(this.draft);
+    const pact = Boolean(this.pactOffer);
+    $('draft').hidden = !blessing && !pact;
+    $('draft-title').hidden = !blessing;
+    $('draft-options').hidden = !blessing;
+    $('draft-options').previousElementSibling.hidden = !blessing;
+    $('pact-section').hidden = !pact;
+    if (pact) setText('draft-source', '✦ Mejora y misión');
+  }
+
+  onPactOffer(m) {
+    this.pactOffer = { ...m, sending: false };
+    this.renderPactOptions();
+    this.syncDraftDialog();
+  }
+
+  /** Se repinta al llegar la vista: el objetivo de la misión se muestra con el nombre del jugador. */
+  renderPactOptions() {
+    const offer = this.pactOffer;
+    if (!offer) return;
+    // Ya elegida en otra conexión: la vista lo dice.
+    if (this.me?.pact && this.status !== 'DRAFTING') {
+      this.pactOffer = null;
+      this.syncDraftDialog();
+      return;
+    }
+    $('pact-options').replaceChildren(...offer.options.map((o) => el('button', {
+      type: 'button', class: 'pact-pick', disabled: offer.sending, dataset: { pact: o.pactId }, onclick: () => this.pickPact(o.pactId),
+    },
+    el('span', { class: 'seal', 'aria-hidden': 'true' }, '✶'),
+    el('span', { class: 'pact-pick-text' }, o.description),
+    o.targetId ? el('small', {}, `Tu objetivo: ${this.nameOf(o.targetId)}. Solo tú lo sabes.`) : null)));
+  }
+
+  async pickPact(pactId) {
+    const offer = this.pactOffer;
+    if (!offer || offer.sending) return;
+    offer.sending = true;
+    this.renderPactOptions();
+    try {
+      const res = await this.invoke('ChoosePact', { matchId: this.matchId, offerId: offer.offerId, pactId });
+      if (res.error && res.error.code !== 'PACT_CLOSED') {
+        toast(`Misión: ${label(ERROR_CODES, res.error.code)}`, 'bad');
+        offer.sending = false;
+        this.renderPactOptions();
+        return;
+      }
+      if (this.pactOffer === offer) this.pactOffer = null;
+      this.syncDraftDialog();
+      if (!res.error) emit('draft:picked', { pactId });
+      this.requestSnapshot();
+    } catch {
+      offer.sending = false;
+      this.renderPactOptions();
+      toast('Sin conexión; vuelve a elegir cuando reconecte.', 'bad');
+    }
   }
 
   async pickBlessing(blessingId) {
@@ -658,7 +798,7 @@ class MatchController {
         emit('draft:picked', { blessingId: res.blessingId });
       }
       this.draft = null;
-      $('draft').hidden = true;
+      this.syncDraftDialog();
     } catch {
       $('draft-options').querySelectorAll('button').forEach((b) => { b.disabled = false; });
       toast('Sin conexión; vuelve a elegir cuando reconecte.', 'bad');
@@ -760,10 +900,63 @@ class MatchController {
     this.finished = m;
     this.status = 'FINISHED';
     this.deadlineLocal = null;
+    this.draft = null;
+    this.pactOffer = null;
     $('draft').hidden = true;
+    this.interlude.close();
     this.closePathDialog();
     showFinished(m, this.playerId, () => this.exit());
+    this.bindRematch();
     emit('match:finished', { outcome: m.outcome, iWon: m.winners.includes(this.playerId), standings: m.standings, myId: this.playerId });
+  }
+
+  /** Revancha: solo con servidor real. Se avisa si otro ya la pidió; cada uno entra con un clic a la misma sala. */
+  bindRematch() {
+    const button = $('btn-rematch');
+    const note = $('rematch-note');
+    const real = this.onRematch && this.transport.protocolName !== 'demo' && this.transport.protocolName !== 'tutorial';
+    const playable = real && !['FAULTED', 'TERMINATED'].includes(this.finished?.outcome);
+    button.hidden = !playable;
+    note.hidden = true;
+    if (!playable) return;
+    button.disabled = false;
+    setText('btn-rematch', 'Revancha');
+    button.onclick = async () => {
+      button.disabled = true;
+      clearTimeout(this.rematchTimer);
+      try {
+        const room = await api.rematch(this.matchId);
+        const go = this.onRematch;
+        this.dispose();
+        if (active === this) active = null;
+        go(room);
+      } catch (err) {
+        button.disabled = false;
+        toast(`No se pudo pedir la revancha: ${err?.message ?? err}`, 'bad', 6000);
+        this.pollRematch();
+      }
+    };
+    this.pollRematch();
+  }
+
+  pollRematch() {
+    clearTimeout(this.rematchTimer);
+    const poll = async () => {
+      if (this.disposed || $('screen-finished').hidden) return;
+      try {
+        const status = await api.rematchStatus(this.matchId);
+        if (status?.available) {
+          setText('rematch-note', `Ya hay revancha: ${status.players}/${status.capacity} en la sala. Pulsa Revancha para entrar con el mismo código.`);
+          $('rematch-note').hidden = false;
+          setText('btn-rematch', 'Unirme a la revancha');
+          $('btn-rematch').classList.add('pulse');
+        }
+      } catch {
+        // Solo es un aviso: si falla, se reintenta.
+      }
+      this.rematchTimer = setTimeout(poll, REMATCH_POLL_MS);
+    };
+    this.rematchTimer = setTimeout(poll, 800);
   }
 
   onServerDraining(m) {
@@ -779,42 +972,107 @@ class MatchController {
   // ───────────── órdenes ─────────────
 
   handleKey(e) {
-    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('path').hidden || !$('howto').hidden || settingsOpen()) return;
+    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('path').hidden || !$('interlude').hidden || !$('howto').hidden || settingsOpen()) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
     // Si un botón tiene el foco, Espacio también lo "pulsaría": se le quita el foco.
-    if (tag === 'BUTTON' && (e.key === ' ' || KEY_DIRS[e.key])) document.activeElement.blur();
+    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter' || KEY_DIRS[e.key])) {
+      // Enter sobre un botón lo pulsa: solo se le quita si hay un paso que enviar.
+      if (e.key !== 'Enter' || this.plannedStep) document.activeElement.blur();
+      else return;
+    }
     const dir = KEY_DIRS[e.key];
     if (dir) {
       e.preventDefault();
-      const type = e.shiftKey ? 'ATTACK' : this.armedMode ?? 'MOVE';
-      this.sendDirected(type, dir);
+      if (e.shiftKey) this.sendAction('ATTACK', dir);
+      else this.pressDirection(dir);
+      return;
+    }
+    if (e.key === 'Enter') {
+      if (this.plannedStep) {
+        e.preventDefault();
+        this.sendPlannedStep();
+      }
       return;
     }
     if (KEY_SIGNALS[e.key]) {
       this.sendSignal(KEY_SIGNALS[e.key]);
       return;
     }
-    switch (e.key.toLowerCase()) {
-      case 'q': this.armedMode = this.armedMode === 'ABILITY' ? null : 'ABILITY'; break;
-      case 'e': this.armedMode = this.armedMode === 'INTERACT' ? null : 'INTERACT'; break;
-      case 'escape': this.armedMode = null; this.signalMark = null; break;
-      case ' ': e.preventDefault(); this.guard(); return;
-      default: return;
+    const key = e.key.toLowerCase();
+    if (KEY_ACTIONS[key]) {
+      const mode = KEY_ACTIONS[key];
+      this.armedMode = this.armedMode === mode ? null : mode;
+    } else if (key === 'escape') {
+      // De a uno: primero la acción armada, luego el paso y al final la casilla marcada.
+      if (this.armedMode) this.armedMode = null;
+      else if (this.plannedStep) this.plannedStep = null;
+      else this.signalMark = null;
+    } else if (key === ' ') {
+      e.preventDefault();
+      this.guard();
+      return;
+    } else {
+      return;
     }
     this.render();
   }
 
-  sendDirected(type, direction) {
-    this.armedMode = null;
+  /** Flecha o d-pad: da dirección a la acción armada o, si no hay, marca el paso (repetirlo lo envía solo). */
+  pressDirection(direction) {
     const btn = document.querySelector(`.dir[data-dir="${direction}"]`);
     if (btn) replay(btn, 'pressed');
-    this.submitOrder({ type, direction });
+    if (this.armedMode) {
+      this.sendAction(this.armedMode, direction);
+      return;
+    }
+    if (this.plannedStep === direction) {
+      this.sendPlannedStep();
+      return;
+    }
+    if (!this.canPlan()) return;
+    this.plannedStep = direction;
+    emit('order:step', { direction });
+    this.render();
+  }
+
+  /** ¿Se puede marcar algo ahora? Si no, lo dice una sola vez. */
+  canPlan() {
+    if (this.status !== 'IN_PROGRESS' || this.deadlineLocal === null) {
+      toast('No hay una ronda abierta.');
+      return false;
+    }
+    if (this.me?.decided || (this.order && this.order.payload.round === this.round && this.order.status !== 'error')) {
+      toast('Ya enviaste tu orden de esta ronda (la primera es la que vale).');
+      return false;
+    }
+    const blocked = this.orderBlocked({ type: 'MOVE' });
+    if (blocked) toast(blocked);
+    return !blocked;
+  }
+
+  sendPlannedStep() {
+    const direction = this.plannedStep;
+    if (!direction) return;
+    this.plannedStep = null;
+    this.submitOrder({ type: 'MOVE', direction });
+  }
+
+  sendAction(type, direction) {
+    const step = this.plannedStep;
+    this.armedMode = null;
+    const order = { type, direction };
+    if (step) order.step = step;
+    this.submitOrder(order);
+    // Si la orden no salió, el paso sigue marcado.
+    if (this.order?.payload.order === order) this.plannedStep = null;
   }
 
   guard() {
     replay($('btn-guard'), 'pressed');
+    this.plannedStep = null;
+    this.armedMode = null;
     this.submitOrder({ type: 'GUARD' });
   }
 
@@ -825,6 +1083,18 @@ class MatchController {
     if (me.state === 'EXTINCT') return me.path?.choice ? 'Ya elegiste camino: se revela al resolver la ronda.' : 'Moriste: elige tu camino.';
     if (awaitingSpawn(me)) return 'Todavía no apareciste como Traidor.';
     if (this.bell && this.bell.ringerId !== this.playerId && (this.bell.closed || this.deadlineLocal <= Date.now())) return 'Se acabó tu plazo del Repique: defiendes esta ronda.';
+    if (order.type === 'SABOTAGE') {
+      if (me.state !== 'ALIVE') return 'Solo un héroe vivo puede sabotear: ni el Fantasma ni el Traidor.';
+      if (me.hostEnemyId != null) return 'Dentro de un huésped no puedes sabotear: ya tienes tu golpe anónimo.';
+      if (!me.canSabotage) return 'Ya saboteaste en esta sala.';
+      return null;
+    }
+    if (order.type === 'PUSH') {
+      if (me.state === 'EMBER_SPIRIT') return 'Un Fantasma no puede empujar.';
+      if (me.hostEnemyId != null) return 'Dentro de un huésped no puedes empujar.';
+      if ((me.pushCooldown ?? 0) > 0) return `Podrás empujar en ${me.pushCooldown} ronda${me.pushCooldown === 1 ? '' : 's'}.`;
+      return null;
+    }
     if (me.state !== 'EMBER_SPIRIT') {
       const cd = me.abilityCooldown ?? 0;
       const name = me.hostEnemyId != null ? 'Salir' : heroInfo(me.hero).ability || 'La habilidad';
@@ -937,6 +1207,7 @@ class MatchController {
     setText('m-floor', this.floor ?? '–');
     setText('m-round', this.round || '–');
     setText('m-status', this.status ? label(MATCH_STATUS, this.status) : '');
+    this.renderRoom();
 
     // Héroe propio.
     if (me) this.renderMe(me);
@@ -951,7 +1222,7 @@ class MatchController {
     $('m-decided').className = this.expectedPlayers && this.decidedCount >= this.expectedPlayers ? 'badge ok' : 'badge';
 
     // Modo de orden (resaltado distinto cuando Q o E esperan una dirección).
-    const mode = this.armedMode ?? this.selectedMode;
+    const mode = this.armedMode ?? 'MOVE';
     const ember = me?.state === 'EMBER_SPIRIT';
     this.renderOrderModes(me);
     document.querySelectorAll('.mode').forEach((b) => {
@@ -965,6 +1236,7 @@ class MatchController {
     armed.textContent = this.armedMode ? (ember ? EMBER_ARMED_TEXT : ARMED_TEXT)[this.armedMode] ?? '' : '';
     if (this.armedMode === 'ABILITY' && !ember && me?.hostEnemyId == null && NO_AIM.has(me?.hero)) armed.textContent = `${heroInfo(me.hero).ability} armado: pulsa cualquier flecha, la dirección no importa. Esc cancela.`;
     document.querySelector('.dpad').classList.toggle('armed', Boolean(this.armedMode));
+    this.renderPlan();
     this.renderOrderNote(me, mode);
     this.renderOrderStatus();
     this.renderLastWord();
@@ -980,7 +1252,7 @@ class MatchController {
     if (this.shown.events !== this.events) {
       this.shown.events = this.events;
       $('events').replaceChildren(...(this.events.length
-        ? this.events.map((ev) => this.eventItem(ev))
+        ? this.eventItems(this.events)
         : [el('li', { class: 'empty' }, 'Todavía no pasó nada en esta ronda.')]));
     }
 
@@ -993,6 +1265,8 @@ class MatchController {
         ? this.order.payload.order : me?.pendingOrder ?? null,
       armedMode: this.armedMode,
       mode,
+      plannedStep: this.plannedStep,
+      floodedRows: this.room?.floodedRows ?? 0,
       round: this.round,
       hiddenTelegraphs: this.hiddenTelegraphs,
       echoes: this.echoes,
@@ -1003,6 +1277,37 @@ class MatchController {
       signalMark: this.signalMark,
     });
     this.renderTimer();
+  }
+
+  /** Sala y maldiciones: públicas, siempre a la vista. */
+  renderRoom() {
+    const type = this.room?.type ?? 'NORMAL';
+    const known = ROOM_TYPES[type] ?? {};
+    const name = this.room?.name ?? known.name ?? type;
+    const effect = this.room?.effect ?? known.effect ?? '';
+    const flood = this.room?.floodedRows ?? 0;
+    const key = `${type}|${flood}|${this.curses.join()}`;
+    if (this.shown.room === key) return;
+    this.shown.room = key;
+    setText('m-room-name', `${known.icon ?? ''} ${name}`.trim());
+    $('m-room').title = effect;
+    const note = $('room-note');
+    note.hidden = type === 'NORMAL';
+    note.textContent = type === 'FLOODED' && flood > 0 ? `${effect} Agua: ${flood} fila${flood === 1 ? '' : 's'}.` : effect;
+    $('legend-water').hidden = !flood;
+    $('m-curses').replaceChildren(...this.curses.map((c) => el('span', { class: 'curse-chip', title: `${CURSES[c]?.name ?? c}: ${CURSES[c]?.effect ?? ''}`, 'aria-label': CURSES[c]?.name ?? c }, CURSES[c]?.icon ?? '☠')));
+  }
+
+  /** Lo marcado: el paso, y qué falta para enviarlo. */
+  renderPlan() {
+    const plan = $('order-plan');
+    const step = this.plannedStep;
+    plan.hidden = !step;
+    $('btn-send-step').hidden = !step;
+    if (!step) return;
+    plan.textContent = this.armedMode
+      ? `Paso ${label(DIRECTIONS, step)} marcado. Elige la dirección de la acción.`
+      : `Paso ${label(DIRECTIONS, step)} marcado. Elige una acción, o envíalo solo. Esc lo quita.`;
   }
 
   /** Fila de la lista de jugadores: estado del camino, si decidió y su vida (la Brasa no tiene vida). */
@@ -1047,7 +1352,9 @@ class MatchController {
     return el('li', { class: classes, dataset: { hero: p.hero } },
       el('span', { class: 'p-avatar' }, heroAvatar(p.hero, 'sm'), mark,
         el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' })),
-      el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`)),
+      el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`),
+        // Una condena en El Juicio es pública.
+        (p.convictions ?? 0) > 0 ? el('span', { class: 'p-tag convicted', title: 'Condenado en El Juicio' }, `⚖ ×${p.convictions}`) : null),
       state,
       el('span', { class: 'p-stats' }, ...stats, el('span', { class: 'em' }, `✦ ${p.embers}`),
         // Lo que te debe solo llega si eres su Usurera; un aliado sin posición puede ir de polizón o no oírse.
@@ -1061,7 +1368,10 @@ class MatchController {
     const ember = me?.state === 'EMBER_SPIRIT';
     const hosted = me?.hostEnemyId != null;
     const cooldowns = ember ? { ABILITY: me.abilityCooldown ?? 0, ATTACK: me.path?.hinderCooldown ?? 0 } : { ABILITY: hosted ? 0 : me?.abilityCooldown ?? 0 };
-    const key = `${ember}|${hosted}|${me?.hero}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}`;
+    cooldowns.PUSH = ember ? 0 : me?.pushCooldown ?? 0;
+    const canPush = !ember && !hosted && (me?.state === 'ALIVE' || me?.state === 'RENEGADE');
+    const canSabotage = Boolean(me?.canSabotage) && !hosted && me?.state === 'ALIVE';
+    const key = `${ember}|${hosted}|${me?.hero}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}|${cooldowns.PUSH}|${canPush}|${canSabotage}`;
     const card = document.querySelector('.card-orders');
     card.dataset.path = pathClass(me?.state) || 'hero';
     card.classList.toggle('inactive', Boolean(me) && !canAct(me));
@@ -1070,9 +1380,19 @@ class MatchController {
     const names = ember ? EMBER_ORDERS : heroOrders(me);
     document.querySelectorAll('.mode').forEach((b) => {
       const type = b.dataset.mode;
-      b.querySelector('.mode-name').textContent = names[type].name;
-      b.querySelector('.mode-ico').textContent = names[type].icon;
-      b.title = names[type].text ? `${names[type].name}: ${names[type].text}` : '';
+      const named = names[type] ?? HERO_ORDERS[type];
+      b.querySelector('.mode-name').textContent = named.name;
+      b.querySelector('.mode-ico').textContent = named.icon;
+      b.title = named.text ? `${named.name}: ${named.text}` : '';
+      // Sabotear y Empujar no existen para quien no puede; el sabotaje gastado se ve hasta la sala siguiente.
+      if (type === 'PUSH') { b.disabled = !canPush; b.hidden = ember; b.title = canPush ? 'Empujar: mueve 1 casilla a quien tengas al lado. Con autor. Espera 3.' : 'Ahora no puedes empujar.'; }
+      if (type === 'SABOTAGE') {
+        const possible = me?.state === 'ALIVE' && !hosted;
+        b.hidden = ember || me?.state === 'RENEGADE';
+        b.disabled = !canSabotage;
+        b.classList.toggle('spent', possible && !canSabotage);
+        b.title = canSabotage ? 'Sabotear: 1 de daño sin autor al primer aliado en línea a 2 o menos. Una vez por sala. Es una traición: pueden juzgarte.' : 'Ya saboteaste en esta sala.';
+      }
       const cd = cooldowns[type] ?? 0;
       const badge = b.querySelector('.mode-cd');
       badge.hidden = cd <= 0;
@@ -1110,6 +1430,10 @@ class MatchController {
       kind = 'host';
       const o = heroOrders(me)[mode] ?? heroOrders(me).MOVE;
       parts = [el('b', {}, `Dentro de ${this.hostName(me)}: `), o.text ?? 'Nadie te ve.'];
+    } else if (me && mode === 'SABOTAGE') {
+      parts = [el('b', {}, 'Sabotaje: '), me.canSabotage ? 'nadie verá al autor, salvo que El Juicio te condene.' : 'ya lo usaste en esta sala.'];
+    } else if (me && mode === 'PUSH') {
+      parts = [el('b', {}, 'Empujón: '), 'pinchos y fuego hacen su daño; un monstruo que no vuela muere en una grieta y un héroe queda derribado.'];
     } else if (me && mode === 'ABILITY') {
       const info = heroInfo(me.hero);
       parts = [el('b', {}, `${info.ability}: `), info.abilityText];
@@ -1239,7 +1563,7 @@ class MatchController {
     if (me.debt) {
       setText('me-debt', me.debt);
       setText('me-debt-label', `Debes a ${this.nameOf(me.debtTo)}`);
-      debtTile.title = 'Todo el oro que ganes le llega hasta saldar la deuda. Cada 5 rondas sube 1.';
+      debtTile.title = 'Todo el oro que ganes le llega hasta saldar la deuda. Cada 7 rondas sube 1, hasta 3.';
     } else if (owed) {
       setText('me-debt', owed);
       setText('me-debt-label', 'Te deben');
@@ -1267,7 +1591,7 @@ class MatchController {
           el('span', { 'aria-hidden': 'true' }, BLESSING_ICONS[b] ?? '✧'), label(BLESSINGS, b)))
         : [el('li', { class: 'none' }, 'ninguna todavía')]));
     }
-    const pact = me.pact ? me.pact.description : 'sin misión';
+    const pact = me.pact ? `${me.pact.description}${me.pact.targetId ? ` Tu objetivo: ${this.nameOf(me.pact.targetId)}.` : ''}` : 'Sin elegir todavía';
     if (this.shown.pact !== pact) {
       this.shown.pact = pact;
       $('me-pact').replaceChildren(el('p', {}, pact));
@@ -1343,14 +1667,29 @@ class MatchController {
     }
   }
 
+  /** El registro de la ronda, agrupado por fase para seguir la resolución paso a paso. */
+  eventItems(events) {
+    const items = [];
+    let phase;
+    for (const ev of events) {
+      if (ev.phase && ev.phase !== phase && PHASES[ev.phase]) {
+        phase = ev.phase;
+        items.push(el('li', { class: 'ev-phase' }, PHASES[ev.phase]));
+      }
+      items.push(this.eventItem(ev));
+    }
+    return items;
+  }
+
   eventItem(ev) {
     const [icon, tone] = EVENT_STYLE[ev.type] ?? ['•', ''];
     let cls = tone;
+    if (isSabotageHit(ev)) cls = 'sabotage';
     if (ev.type === 'DAMAGED') cls = ev.targetId === this.playerId ? 'bad' : ev.actorId === this.playerId ? 'good' : '';
     if (ev.type === 'BLOCKED' && ev.detail === 'WARNING_SHIELD') cls = 'renegade';
     if (ev.type === 'PATH_CHOSEN') cls = ev.detail === 'VENGEANCE' ? 'renegade' : 'ember';
-    const classes = [cls ? `ev-${cls}` : '', ev.actorId === this.playerId ? 'ev-mine' : ''].filter(Boolean).join(' ');
-    return el('li', { class: classes }, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, icon), el('span', {}, this.describeEvent(ev)));
+    const classes = [cls ? `ev-${cls}` : '', ev.actorId === this.playerId ? 'ev-mine' : '', KEY_EVENTS.has(ev.type) || isSabotageHit(ev) ? 'ev-key' : ''].filter(Boolean).join(' ');
+    return el('li', { class: classes }, el('span', { class: 'ev-ico', 'aria-hidden': 'true' }, isSabotageHit(ev) ? '🗡' : icon), el('span', {}, this.describeEvent(ev)));
   }
 
   renderOrderStatus() {
@@ -1406,6 +1745,12 @@ class MatchController {
     }
     this.renderBell();
     this.renderSignals();
+    this.interlude.tick();
+    if (this.pactOffer && !this.draft) {
+      const left = Math.max(0, Date.parse(this.pactOffer.deadline) - Date.now());
+      setText('draft-timer', `${Math.ceil(left / 1000)} s`);
+      $('draft-timer').classList.toggle('low', left < 5000);
+    }
     if (this.draft) {
       const left = Math.max(0, Date.parse(this.draft.deadline) - Date.now());
       setText('draft-timer', `${Math.ceil(left / 1000)} s`);
@@ -1431,6 +1776,7 @@ class MatchController {
       }
       return this.allies.find((a) => a.playerId === id)?.displayName ?? 'Alguien';
     };
+    if (isSabotageHit(ev)) return `¡${who(ev.targetId)} recibió ${ev.amount ?? '?'} de daño y nadie vio de quién!`;
     if (ev.type === 'DAMAGED' && ev.targetId) {
       return `${who(ev.targetId)} recibió ${ev.amount ?? '?'} de daño${ev.actorId ? ` de ${who(ev.actorId)}` : ''}`;
     }
@@ -1472,7 +1818,21 @@ class MatchController {
       case 'ATTACK_CORRECTED':
         return ev.targetId ? `El ataque marcado de ${who(ev.targetId)} se desvió: nadie sabe quién fue` : 'Un golpe marcado se desvió: nadie sabe quién fue';
       case 'BETRAYAL_RECORDED':
-        return `En secreto, le costaste ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
+        return `${ev.detail === 'SABOTAGE' ? 'Saboteaste' : 'En secreto,'} le costaste ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
+      case 'PUSHED':
+        return `${who(ev.actorId)} empujó a ${who(ev.targetId)}${ev.position ? ` hasta (${ev.position.x},${ev.position.y})` : ''}`;
+      case 'ROOM_FLOODED':
+        return `El agua sube: ${plural(ev.amount ?? 1, 'fila inundada', 'filas inundadas')}`;
+      case 'INTERLUDE_OPENED':
+        return `Sala ${ev.amount ?? ''} despejada: El Juicio y las puertas`;
+      case 'INTERLUDE_CLOSED':
+        return 'Se cerró El Juicio';
+      case 'FLOOR_ENTERED':
+        return `Entraron a la sala ${ev.amount ?? ''}`;
+      case 'EMBERS_GAINED':
+        if (ev.detail === 'ASSIST') return `${who(ev.actorId)}: asistencia, +${ev.amount ?? 1} de oro`;
+        if (ev.detail === 'WARDEN_BOUNTY') return `${who(ev.actorId)}: reparto del Celador, +${ev.amount ?? 1} de oro`;
+        break;
       case 'BETRAYAL_REVEALED':
         return `${who(ev.actorId)} le costó ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
       case 'HOST_BOARDED':
@@ -1494,6 +1854,8 @@ class MatchController {
       case 'EMBERS_PICKED_UP':
         return `${who(ev.actorId)} recogió ${plural(ev.amount ?? 1, 'de oro', 'de oro')} del suelo`;
       case 'EMBERS_LOST':
+        if (ev.detail === 'TRIAL_PENALTY') return `Te condenaron: perdiste ${Math.abs(ev.amount ?? 3)} de oro`;
+        if (ev.detail === 'TRIAL_FINE') return `Acusaste a un inocente: perdiste ${Math.abs(ev.amount ?? 1)} de oro`;
         return `Perdiste ${plural(Math.abs(ev.amount ?? 1), 'de oro', 'de oro')}`;
       case 'ENEMY_BRIBED':
         return `${who(ev.actorId)} sobornó a ${who(ev.targetId)} con ${plural(ev.amount ?? 1, 'de oro', 'de oro')}`;
@@ -1546,9 +1908,10 @@ function heroOrders(me) {
 }
 
 function describeOrder(order) {
-  return order.direction
+  const action = order.direction
     ? `${label(ORDER_TYPES, order.type)} ${label(DIRECTIONS, order.direction)}`
     : label(ORDER_TYPES, order.type);
+  return order.step ? `Paso ${label(DIRECTIONS, order.step)} y ${action.toLowerCase()}` : action;
 }
 
 function showFinished(m, myPlayerId, onBack) {
@@ -1592,8 +1955,26 @@ function showFinished(m, myPlayerId, onBack) {
     return li;
   }));
 
-  // Traiciones anónimas: aquí se sabe quién fue («Errata le costó 3 de vida a Ana»).
   const byId = new Map(m.standings.map((s) => [s.playerId, s]));
+
+  // Maldiciones con las que se jugó.
+  const curses = m.curses ?? [];
+  $('fin-curses').hidden = !curses.length;
+  $('fin-curses').textContent = curses.length ? `Maldiciones: ${curses.map((c) => `${CURSES[c]?.icon ?? '☠'} ${CURSES[c]?.name ?? c}`).join(' · ')}` : '';
+
+  // Títulos: los calcula el servidor con datos reales; un empate da una fila por jugador.
+  const awards = m.awards ?? [];
+  $('fin-awards-box').hidden = !awards.length;
+  $('fin-awards').replaceChildren(...awards.map((a, i) => {
+    const who = byId.get(a.playerId);
+    const li = el('li', { dataset: who ? { hero: who.hero } : {} },
+      who ? heroAvatar(who.hero, 'sm') : null,
+      el('span', {}, el('b', { class: 'award-title' }, a.title), el('small', {}, `${who?.displayName ?? 'Alguien'}${who ? you(who) : ''} · ${a.reason}`)));
+    li.style.animationDelay = `${0.9 + i * 0.1}s`;
+    return li;
+  }));
+
+  // Traiciones anónimas: aquí se sabe quién fue («Errata le costó 3 de vida a Ana»).
   const betrayals = (m.betrayals ?? []).filter((b) => b.damage > 0);
   $('fin-betrayal-box').hidden = !betrayals.length;
   $('fin-betrayals').replaceChildren(...betrayals.map((b, i) => {
@@ -1618,7 +1999,7 @@ function showFinished(m, myPlayerId, onBack) {
         el('div', { class: `flip-face flip-back ${done ? 'done' : 'failed'}`, 'aria-hidden': 'true' },
           el('span', { class: 'who' }, `${s.displayName}${you(s)}`),
           el('p', {}, s.pact.description),
-          el('span', { class: 'verdict' }, done ? '✔ Cumplido (+4 de oro)' : '✖ No cumplido'))));
+          el('span', { class: 'verdict' }, done ? '✔ Cumplido (+3 de oro)' : '✖ No cumplido'))));
     const flip = () => {
       card.classList.toggle('revealed');
       card.setAttribute('aria-pressed', String(card.classList.contains('revealed')));

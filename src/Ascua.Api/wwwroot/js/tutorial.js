@@ -23,6 +23,11 @@ const SCENARIO = {
     '.........',
   ],
   draftOptions: ['LAMPARA', 'BRASA_VIVA'],
+  pactOptions: [
+    { pactId: 'OPEN_1_CHEST', description: 'Abrir 1 cofre.' },
+    { pactId: 'OPEN_3_CHESTS', description: 'Abrir 3 cofres.' },
+  ],
+  curses: [],
   me: {
     playerId: ME_ID, displayName: 'aprendiz', hero: 'MAMPOSTERO', state: 'ALIVE', hp: 6, maxHp: 6, shield: 0,
     position: { x: 4, y: 7 }, facing: 'N', embers: 0, abilityCooldown: 0,
@@ -91,25 +96,25 @@ const STEPS = [
     text: () => [
       'Ascua es una mazmorra por turnos simultáneos para 2 a 4 jugadores. Juntos deben derrotar al Celador antes de que se apague el fuego… pero solo gana quien reúna más oro.',
       'En esta práctica juegas con El Mampostero, y sin otros jugadores. Hay nueve héroes y cada uno rompe una regla del juego: el suyo rompe «la mazmorra está quieta». Nada de lo que hagas aquí cuenta, así que puedes equivocarte sin problema.',
-      'Mira tu misión secreta en el panel de tu héroe (resaltado): es un objetivo que solo tú conoces y que da +4 de oro si lo cumples. Aquí es «Abrir 1 cofre».',
+      'Tu héroe aparece en el panel resaltado. Ahí verás también tu misión secreta: un objetivo que solo tú conoces y que da +3 de oro si lo cumples.',
     ],
     focus: ['#me-pact'],
     button: 'Empezar',
   },
   {
-    title: 'Elige una mejora',
+    title: 'Elige mejora y misión',
     setup: (c) => c.server.sendOffer(),
     text: () => [
-      'Al empezar cada jugador elige 1 mejora entre 2. Es privada: nadie más sabe cuál tomaste.',
-      'Lee lo que hace cada una y elige la que quieras. Si se acaba el plazo, se elige sola.',
+      'Al empezar cada jugador elige 1 mejora entre 2 y 1 misión secreta entre 2. Nadie más sabe cuáles tomaste.',
+      'Cada mejora tiene un precio: léelo antes de elegir. Elige las dos cosas. Si se acaba el plazo, se eligen solas.',
     ],
-    done: (c) => c.server.me.blessings.length > 0,
+    done: (c) => c.server.me.blessings.length > 0 && Boolean(c.server.me.pact),
   },
   {
     title: 'Muévete',
     text: (c) => [
-      'Cada ronda das UNA orden en secreto. Cuando todos decidieron (o vence el plazo, 20 s en partidas reales) el servidor resuelve todo a la vez.',
-      `Muévete una casilla: pulsa ${keyHint('N')} en el teclado o el botón ↑ N.`,
+      'Cada ronda das una orden en secreto: un paso, una acción, o las dos. Cuando todos decidieron (o vence el plazo, 20 s en partidas reales) el servidor resuelve todo a la vez.',
+      `Muévete una casilla: pulsa ${keyHint('N')} y verás el paso marcado en el tablero. Vuelve a pulsar la misma flecha o Enter para enviarlo solo. Esc lo quita.`,
       c.server.round > 0 ? 'Ves solo hasta 3 casillas a tu alrededor; lo demás queda en niebla.' : 'Espera a que se abra la ronda 1 (mira el reloj arriba del tablero).',
     ],
     focus: ['.dpad', '#m-timer'],
@@ -149,6 +154,27 @@ const STEPS = [
     done: (c, type, msg) => type === 'RoundResolved' && c.mine(msg, 'ENEMY_KILLED'),
   },
   {
+    title: 'Paso y acción',
+    setup: (c) => { if (c.enemies().length === 0) c.spawnNear('CARRONERO', 2, 2, 3); },
+    text: (c) => {
+      const target = c.nearestEnemy();
+      const lines = ['En la misma ronda puedes dar un paso y actuar: primero caminan todos, luego actúa cada uno desde donde quedó.'];
+      if (!target) return [...lines, 'No ves enemigos ahora: espera una ronda (Espacio).'];
+      const me = c.me().position;
+      const dist = manhattan(me, target.position);
+      const first = stepDir(me, target.position);
+      const after = { x: me.x + { E: 1, W: -1 }[first] || me.x, y: me.y + { S: 1, N: -1 }[first] || me.y };
+      const dir = lineDir(after, target.position);
+      lines.push(dist === 2 && dir
+        ? `Marca el paso con ${keyHint(first)} y, sin soltarlo de vista, ataca con Shift + ${keyHint(dir)}. La línea del ataque sale de la casilla marcada.`
+        : `Marca un paso con una flecha y luego usa Shift + flecha para atacar en esa misma orden. Aunque no le des, cuenta para practicar.`);
+      lines.push('Si tu paso rebota, la acción sale de donde estabas. Defender (Espacio) borra el paso: quien defiende se planta.');
+      return lines;
+    },
+    focus: ['#order-plan', '.dpad', '#board'],
+    done: (c, type) => type === 'RoundResolved' && Boolean(c.server.lastOrder?.step),
+  },
+  {
     title: 'Abre el cofre',
     text: (c) => {
       const chest = c.chest();
@@ -159,8 +185,10 @@ const STEPS = [
         'Los cofres (casillas doradas) dan oro y a veces objetos. Su contenido solo lo ve quien lo abre.',
         dist === 1
           ? `Estás al lado: pulsa E y luego ${keyHint(lineDir(me, chest))} para usar.`
+          : dist === 2 && lineDir(me, chest)
+          ? `Puedes hacerlo en una sola orden: marca el paso ${keyHint(lineDir(me, chest))}, pulsa E y otra vez ${keyHint(lineDir(me, chest))}.`
           : `El cofre está en (${chest.x},${chest.y}). Acércate hasta quedar al lado: muévete ${keyHint(stepDir(me, chest))}.`,
-        'Abrirlo también cumple tu misión secreta de esta práctica.',
+        c.me().pact?.pactId === 'OPEN_1_CHEST' ? 'Abrirlo también cumple tu misión secreta de esta práctica.' : 'Cada cofre cuenta para tu misión secreta.',
       ];
     },
     focus: ['.mode[data-mode="INTERACT"]', '#tile-embers'],
@@ -195,6 +223,27 @@ const STEPS = [
     },
     focus: ['#board'],
     done: (c) => c.server.enemies.size === 0,
+  },
+  {
+    title: 'Sabotear y empujar',
+    text: () => [
+      'Todos quieren el mismo oro. Sabotear (R y una dirección): 1 de daño al primer aliado en línea a 2 casillas o menos. Nadie ve quién fue. Solo una vez por sala.',
+      'Empujar (F y una dirección): mueve 1 casilla a quien tengas al lado, aliado o enemigo. Sí se ve quién fue, y luego esperas 3 rondas. Un enemigo que no vuela muere en una grieta; un héroe queda derribado.',
+      'Aquí no hay a quién sabotear. En una partida, ten cuidado: pueden juzgarte.',
+    ],
+    focus: ['.mode[data-mode="SABOTAGE"]', '.mode[data-mode="PUSH"]'],
+    button: 'Sigue',
+  },
+  {
+    title: 'El Juicio y las puertas',
+    setup: (c) => { c.server.paused = true; },
+    text: () => [
+      'Al despejar una sala y bajar por la escalera, el juego se detiene hasta 20 s. Cada uno vota en secreto: a quién acusa (o a nadie) y por qué puerta seguir.',
+      'Con mayoría, el acusado queda condenado. Si traicionó en esa sala es culpable: pierde 3 de oro y se ven sus traiciones. Si era inocente, cada uno de los que lo acusaron pierde 1. Nunca se sabe quién votó qué.',
+      'Cada puerta lleva a una sala con su propia regla: tesoro, arena, santuario, oscura o inundada. Ves su efecto antes de votar. Ante el Celador solo hay Juicio. Los Traidores no votan; un derribado o un Fantasma, sí.',
+    ],
+    focus: ['#board'],
+    button: 'Entendido',
   },
   {
     // Opcional: se explica y se puede ver el diálogo, pero no hace falta jugarlos.
@@ -390,7 +439,7 @@ class Coach {
   finish() {
     setText('coach-step', 'Completado');
     setText('coach-title', '¡Lo lograste!');
-    $('coach-body').replaceChildren(el('p', {}, 'Ya sabes moverte, defender, atacar, abrir cofres y usar tu habilidad.'));
+    $('coach-body').replaceChildren(el('p', {}, 'Ya sabes dar un paso y actuar, defender, atacar, abrir cofres y usar tu habilidad. Y qué esperar de El Juicio.'));
     $('coach-bar').style.width = '100%';
     $('coach-next').hidden = true;
     this.setFocus([]);

@@ -93,6 +93,10 @@ Los códigos siguen la convención *kebab-case* del catálogo REST existente (po
 - Crea una sala **privada** con las mismas maldiciones y tantas plazas como participantes, y sienta a quien la pide. El héroe se vuelve a elegir.
 - El id sale de un hash de la partida, así que todos llegan a la misma sala con el mismo código. Si varios la piden a la vez, `SaveRoom` deja crear a uno solo y los demás releen y entran. Es idempotente: quien ya está sentado recibe la misma sala.
 
+`GET /api/v1/matches/{matchId}/rematch` → `200 { available, players, capacity, joined }`. Sirve para avisar en la pantalla final de que alguien ya la pidió. No sienta a nadie.
+
+`GET /api/v1/matches/{matchId}/rematch` → `200 { available, players, capacity, joined }`. Sirve para avisar en la pantalla final de que alguien ya la pidió. No sienta a nadie.
+
 ## Catálogo
 
 `GET /api/v1/catalog` (con JWT): textos de mejoras (efecto y costo), sinergias, tipos de sala, maldiciones y misiones.

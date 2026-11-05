@@ -422,6 +422,26 @@ public sealed class VersionThreeTests(AscuaApiFactory factory)
         using var forbidden = await strangerHttp.PostAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative), null);
         Assert.Equal(HttpStatusCode.NotFound, forbidden.StatusCode);
 
+        using (var before = await early.GetAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative)))
+        {
+            Assert.False((await before.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("available").GetBoolean());
+        }
+
+        using (var notYours = await strangerHttp.GetAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative)))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, notYours.StatusCode);
+        }
+
+        using (var before = await early.GetAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative)))
+        {
+            Assert.False((await before.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("available").GetBoolean());
+        }
+
+        using (var notYours = await strangerHttp.GetAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative)))
+        {
+            Assert.Equal(HttpStatusCode.NotFound, notYours.StatusCode);
+        }
+
         // Cada uno la pide dos veces y todos a la vez: concurrencia real contra Redis.
         var clients = players.Select(p => Client(host, p)).ToList();
         var requests = clients.SelectMany(c => new[] { c, c }).Select(c => c.PostAsync(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative), null)).ToList();
@@ -444,6 +464,10 @@ public sealed class VersionThreeTests(AscuaApiFactory factory)
         Assert.Equal(4, final.GetProperty("members").GetArrayLength());
         Assert.Equal(4, final.GetProperty("capacity").GetInt32());
         Assert.Equal(["FIERCE"], final.GetProperty("curses").EnumerateArray().Select(c => c.GetString()));
+        var status = await clients[0].GetFromJsonAsync<JsonElement>(new Uri($"/api/v1/matches/{matchId}/rematch", UriKind.Relative));
+        Assert.True(status.GetProperty("available").GetBoolean());
+        Assert.Equal(4, status.GetProperty("players").GetInt32());
+        Assert.True(status.GetProperty("joined").GetBoolean());
 
         foreach (var client in clients)
         {

@@ -3,6 +3,12 @@ using Ascua.Api.Realtime;
 
 namespace Ascua.Api.Endpoints;
 
+/// <summary>Estado de la revancha de una partida, para avisar en la pantalla final.</summary>
+public sealed record RematchStatusResponse(bool Available, int Players, int Capacity, bool Joined);
+
+/// <summary>Estado de la revancha de una partida, para avisar en la pantalla final.</summary>
+public sealed record RematchStatusResponse(bool Available, int Players, int Capacity, bool Joined);
+
 // DTOs de historial, detalle y reproducción. Las vistas reutilizan los DTOs del contrato de tiempo
 // real (PlayerViewDto, StandingDto…), así que una reproducción se ve igual que la partida en vivo.
 
