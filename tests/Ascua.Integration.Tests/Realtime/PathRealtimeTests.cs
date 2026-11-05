@@ -144,21 +144,28 @@ public sealed class PathRealtimeTests(AscuaApiFactory factory)
         Assert.Equal("ACCEPTED", (await ca.ChoosePathAsync(matchId, offer.OfferId, "VENGEANCE")).Result);
         Assert.Equal("ACCEPTED", (await cb.SubmitAsync(matchId, 1, "MOVE", "N")).Result);
 
-        // La misma ronda revela el camino, baja de piso y el Renegado aparece lejos del grupo.
+        // La misma ronda revela el camino y abre el interludio. El Traidor no vota; al cerrar, baja de piso y aparece lejos del grupo.
         var seenByB = await cb.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1);
-        Assert.Equal(2, seenByB.Delta.FloorChanged);
+        Assert.Equal("INTERLUDE", seenByB.Delta.Status);
         Assert.Contains(seenByB.Delta.Events, e => (string)e["type"] == "PATH_CHOSEN" && (string)e["detail"] == "VENGEANCE");
-        var spawned = Assert.Single(seenByB.Delta.Events, e => (string)e["type"] == "RENEGADE_SPAWNED");
-        Assert.False(spawned.ContainsKey("position"));
-        Assert.Equal(1, seenByB.Delta.Me.Shield);
-        Assert.Null(seenByB.Delta.AlliesChanged.Single().Position);
+        var interlude = await cb.WaitForAsync<InterludeOfferMessage>("InterludeOffer");
+        Assert.False((await ca.WaitForAsync<InterludeOfferMessage>("InterludeOffer")).CanVote);
+        Assert.Equal("ACCEPTED", (await cb.VoteAsync(matchId, interlude.OfferId, null, 0)).Result);
 
-        var seenByA = await ca.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1);
-        Assert.Equal("RENEGADE", seenByA.Delta.Me.State);
-        Assert.Equal(PathRules.RenegadeHp(seenByA.Delta.Me.MaxHp, wardenRoom: false), seenByA.Delta.Me.Hp);
-        Assert.Equal(3, seenByA.Delta.Me.Embers);
+        var entered = await cb.WaitForAsync<InterludeResolvedMessage>("InterludeResolved");
+        var spawned = Assert.Single(entered.Events, e => (string)e["type"] == "RENEGADE_SPAWNED");
+        Assert.False(spawned.ContainsKey("position"));
+        var viewOfB = (await cb.GetSnapshotAsync(matchId)).View!;
+        Assert.Equal(2, viewOfB.Floor);
+        Assert.Equal(1, viewOfB.Me.Shield);
+        Assert.Null(viewOfB.Allies.Single().Position);
+
+        var viewOfA = (await ca.GetSnapshotAsync(matchId)).View!;
+        Assert.Equal("RENEGADE", viewOfA.Me.State);
+        Assert.Equal(PathRules.RenegadeHp(viewOfA.Me.MaxHp, wardenRoom: false), viewOfA.Me.Hp);
+        Assert.Equal(3, viewOfA.Me.Embers);
         var current = (await factory.Services.GetRequiredService<MatchEngine>().GetAsync(matchId, CancellationToken.None))!;
-        Assert.Single(current.State.Enemies);
+        Assert.NotEmpty(current.State.Enemies);
 
         var opened = await ca.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 2);
         Assert.Equal(2, opened.ExpectedPlayers);
@@ -216,17 +223,25 @@ public sealed class PathRealtimeTests(AscuaApiFactory factory)
         Assert.Equal("ACCEPTED", (await ca.SubmitAsync(matchId, 2, "GUARD")).Result);
         Assert.Equal("ACCEPTED", (await cb.SubmitAsync(matchId, 2, "MOVE", "N")).Result);
 
-        var reborn = await ca.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 2);
-        Assert.Equal(2, reborn.Delta.FloorChanged);
-        Assert.Contains(reborn.Delta.Events, e => (string)e["type"] == "BEACON_LIT");
-        Assert.Contains(reborn.Delta.Events, e => (string)e["type"] == "EMBER_REBORN");
-        Assert.Equal("ALIVE", reborn.Delta.Me.State);
-        Assert.Equal(PathRules.RebirthHp(reborn.Delta.Me.MaxHp), reborn.Delta.Me.Hp);
-        Assert.Equal(PathRules.RebirthEmbers(10, 0), reborn.Delta.Me.Embers);
-        Assert.Equal(0, reborn.Delta.Me.Path!.SavedEmbers);
-        var rebornForB = await cb.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 2);
-        Assert.Contains(rebornForB.Delta.Events, e => (string)e["type"] == "EMBER_REBORN");
-        Assert.Equal("ALIVE", rebornForB.Delta.AlliesChanged.Single().State);
+        var reached = await ca.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 2);
+        Assert.Contains(reached.Delta.Events, e => (string)e["type"] == "BEACON_LIT");
+
+        // Vota también el Fantasma; al cerrar el interludio renace en la sala nueva.
+        var interlude = await ca.WaitForAsync<InterludeOfferMessage>("InterludeOffer");
+        Assert.True(interlude.CanVote);
+        Assert.Equal("ACCEPTED", (await ca.VoteAsync(matchId, interlude.OfferId, null, 0)).Result);
+        Assert.Equal("ACCEPTED", (await cb.VoteAsync(matchId, interlude.OfferId, null, 0)).Result);
+        var reborn = await ca.WaitForAsync<InterludeResolvedMessage>("InterludeResolved");
+        Assert.Contains(reborn.Events, e => (string)e["type"] == "EMBER_REBORN");
+        var view = (await ca.GetSnapshotAsync(matchId)).View!;
+        Assert.Equal(2, view.Floor);
+        Assert.Equal("ALIVE", view.Me.State);
+        Assert.Equal(PathRules.RebirthHp(view.Me.MaxHp), view.Me.Hp);
+        Assert.Equal(PathRules.RebirthEmbers(10, 0), view.Me.Embers);
+        Assert.Equal(0, view.Me.Path!.SavedEmbers);
+        var rebornForB = await cb.WaitForAsync<InterludeResolvedMessage>("InterludeResolved");
+        Assert.Contains(rebornForB.Events, e => (string)e["type"] == "EMBER_REBORN");
+        Assert.Equal("ALIVE", (await cb.GetSnapshotAsync(matchId)).View!.Allies.Single().State);
 
         var dumpB = cb.Dump();
         Assert.Empty(cb.All<PathOfferMessage>("PathOffer"));

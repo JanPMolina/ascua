@@ -257,7 +257,7 @@ public sealed class MatchEngine(
             deadlineExpired ? TimeSpan.Zero : CommandLockWait,
             async current =>
             {
-                if (!current.IsPlayingRound || current.State.Round != round)
+                if (current.Status != MatchStatus.InProgress || current.IsInInterlude || current.State.Round != round)
                 {
                     return null;
                 }

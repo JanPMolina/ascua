@@ -29,6 +29,52 @@
         ]
       }
     },
+    "/api/v1/catalog": {
+      "get": {
+        "tags": [
+          "Catalog"
+        ],
+        "summary": "Textos de mejoras, sinergias, salas, maldiciones y misiones.",
+        "operationId": "GetCatalog",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/realtime/tickets": {
       "post": {
         "tags": [
@@ -2022,6 +2068,83 @@
         ]
       }
     },
+    "/api/v1/matches/{matchId}/rematch": {
+      "post": {
+        "tags": [
+          "Matches"
+        ],
+        "summary": "Revancha: sala privada para los participantes de una partida terminada, con el mismo código para todos. Idempotente aunque la pidan a la vez.",
+        "operationId": "CreateRematch",
+        "parameters": [
+          {
+            "name": "matchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too Many Requests",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Bearer": []
+          }
+        ]
+      }
+    },
     "/api/v1/admin/matches": {
       "get": {
         "tags": [
@@ -2588,6 +2711,61 @@
   },
   "components": {
     "schemas": {
+      "AccusationDto": {
+        "type": "object",
+        "properties": {
+          "accusedId": {
+            "type": "string"
+          },
+          "votes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "otherVoters": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "convicted": {
+            "type": "boolean"
+          },
+          "guilty": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "goldLost": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "accuserFine": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "exposed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BetrayalDto"
+            }
+          }
+        }
+      },
       "ActiveMatchResponse": {
         "required": [
           "matchId"
@@ -2886,6 +3064,110 @@
           }
         }
       },
+      "BetrayalDto": {
+        "type": "object",
+        "properties": {
+          "traitorId": {
+            "type": "string"
+          },
+          "victimId": {
+            "type": "string"
+          },
+          "damage": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "BlessingCatalogItem": {
+        "required": [
+          "id",
+          "name",
+          "effect",
+          "cost"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id estable, el mismo de DraftOffer.options."
+          },
+          "name": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "cost": {
+            "type": "string"
+          }
+        }
+      },
+      "CatalogEntryItem": {
+        "required": [
+          "id",
+          "name",
+          "effect"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          }
+        }
+      },
+      "CatalogResponse": {
+        "required": [
+          "blessings",
+          "synergies",
+          "roomTypes",
+          "curses",
+          "pacts"
+        ],
+        "type": "object",
+        "properties": {
+          "blessings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlessingCatalogItem"
+            }
+          },
+          "synergies": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SynergyCatalogItem"
+            }
+          },
+          "roomTypes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntryItem"
+            }
+          },
+          "curses": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntryItem"
+            }
+          },
+          "pacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CatalogEntryItem"
+            }
+          }
+        }
+      },
       "ChooseHeroRequest": {
         "required": [
           "hero"
@@ -2992,6 +3274,44 @@
               "string"
             ],
             "description": "Capacidad de la sala (2 a 4).",
+            "format": "int32"
+          },
+          "curses": {
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Maldiciones (dificultad opcional): FIERCE, WARDEN_PLUS, DIM, HASTE. Públicas y fijas desde que se crea la sala."
+          }
+        }
+      },
+      "DoorDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          }
+        }
+      },
+      "DoorTallyDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "votes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
             "format": "int32"
           }
         }
@@ -3422,6 +3742,124 @@
           }
         }
       },
+      "InterludeBallotDto": {
+        "type": "object",
+        "properties": {
+          "accusedId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "door": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "InterludeOfferMessage": {
+        "type": "object",
+        "properties": {
+          "matchId": {
+            "type": "string"
+          },
+          "offerId": {
+            "type": "string"
+          },
+          "endedFloor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "deadline": {
+            "type": "string"
+          },
+          "doors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoorDto"
+            }
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voters": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voted": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "canVote": {
+            "type": "boolean"
+          },
+          "myVote": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InterludeBallotDto"
+              }
+            ]
+          }
+        }
+      },
+      "InterludeVerdictDto": {
+        "type": "object",
+        "properties": {
+          "endedFloor": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "accusations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccusationDto"
+            }
+          },
+          "noAccusation": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "doors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DoorTallyDto"
+            }
+          },
+          "chosenDoor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
       "JoinByCodeRequest": {
         "required": [
           "code"
@@ -3754,6 +4192,14 @@
       "OtherHeroDto": {
         "type": "object",
         "properties": {
+          "convictions": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
           "playerId": {
             "type": "string"
           },
@@ -3844,6 +4290,12 @@
       "PactDto": {
         "type": "object",
         "properties": {
+          "targetId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "pactId": {
             "type": "string"
           },
@@ -3932,6 +4384,35 @@
               },
               {
                 "$ref": "#/components/schemas/BellDto"
+              }
+            ]
+          },
+          "room": {
+            "$ref": "#/components/schemas/RoomInfoDto"
+          },
+          "curses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "interlude": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InterludeOfferMessage"
+              }
+            ]
+          },
+          "lastVerdict": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InterludeVerdictDto"
               }
             ]
           }
@@ -4213,6 +4694,28 @@
           }
         }
       },
+      "RoomInfoDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
+          },
+          "floodedRows": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "RoomMemberResponse": {
         "required": [
           "userId",
@@ -4301,7 +4804,8 @@
           "members",
           "inviteCode",
           "matchId",
-          "createdAt"
+          "createdAt",
+          "curses"
         ],
         "type": "object",
         "properties": {
@@ -4354,6 +4858,13 @@
           "createdAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "curses": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Maldiciones de la sala: públicas."
           }
         }
       },
@@ -4569,6 +5080,25 @@
                 "$ref": "#/components/schemas/SelfPathDto"
               }
             ]
+          },
+          "pushCooldown": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "canSabotage": {
+            "type": "boolean"
+          },
+          "visionRadius": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4717,6 +5247,33 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "SynergyCatalogItem": {
+        "required": [
+          "id",
+          "name",
+          "first",
+          "second",
+          "effect"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "first": {
+            "type": "string"
+          },
+          "second": {
+            "type": "string"
+          },
+          "effect": {
+            "type": "string"
           }
         }
       },
@@ -4883,6 +5440,9 @@
   "tags": [
     {
       "name": "Ascua.Api"
+    },
+    {
+      "name": "Catalog"
     },
     {
       "name": "Realtime"

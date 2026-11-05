@@ -2,7 +2,7 @@ asyncapi: 3.0.0
 id: urn:ascua:realtime:match
 info:
   title: Ascua — protocolo en tiempo real
-  version: 2.0.0
+  version: 3.0.0
   description: |
     Contrato del hub SignalR **`/realtime/match`** del servidor autoritativo de *Ascua*
     (mazmorra semi-cooperativa por turnos simultáneos, 2-4 jugadores).
@@ -15,7 +15,7 @@ info:
     | Aspecto | Valor |
     |---|---|
     | Transporte | Solo **WebSocket seguro (`wss`)**. Sin *negotiate*: el cliente usa `skipNegotiation: true` y `transport: WebSockets`. No hay SSE ni *long polling*, así que no hacen falta *sticky sessions* |
-    | URL | `wss://{apiHost}/realtime/match?protocolVersion=2&access_token={ticket}` |
+    | URL | `wss://{apiHost}/realtime/match?protocolVersion=3&access_token={ticket}` |
     | Protocolo de hub | **MessagePack** (`"protocol":"messagepack","version":1` en el *handshake* de SignalR). Los objetos se serializan como **mapas con claves de texto** (camelCase), nunca como arreglos posicionales, para que agregar campos sea compatible. **JSON** (`"protocol":"json"`) se admite **solo para depuración** en ambientes `local` y `dev`; en `prod` se rechaza |
     | Tamaño máximo | 4 KB por mensaje entrante (`MaximumReceiveMessageSize`) |
     | Heartbeat | El servidor envía *ping* de SignalR cada **10 s** (`KeepAliveInterval`). Si el servidor no recibe nada del cliente en **30 s** (`ClientTimeoutInterval`) cierra la conexión. El cliente debe configurar `serverTimeoutInMilliseconds = 30000` y `keepAliveIntervalInMilliseconds = 10000` |
@@ -40,7 +40,7 @@ info:
 
     ```
     POST /api/v1/realtime/tickets ─► ticket
-    WS upgrade (ticket, protocolVersion=2) ─► handshake MessagePack
+    WS upgrade (ticket, protocolVersion=3) ─► handshake MessagePack
     JoinMatch ─► ACK con Snapshot
     [Drafting]   DraftOffer ─► DraftPick ─► ACK
     [InProgress] RoundOpened ─► SubmitOrder ─► ACK ─► PlayerDecided (a todos) ─► RoundResolved (a cada uno su vista)
@@ -110,6 +110,9 @@ info:
     | `DRAFT_CLOSED` | No | La oferta de draft ya se resolvió o venció |
     | `INVALID_PICK` | No | La bendición elegida no está entre las opciones de esa oferta |
     | `PATH_CLOSED` | No | La oferta de camino no está abierta: no estás extinto, ya elegiste otro camino en esa oferta, el `offerId` es de otra oferta o ya se resolvió/venció (desde 1.3.0) |
+    | `PACT_CLOSED` | No | La oferta de misión no es tuya o ya elegiste otra. Desde 3.0.0. |
+    | `VOTE_CLOSED` | No | No hay un interludio abierto con esa oferta, o ya votaste otra cosa. Desde 3.0.0. |
+    | `INVALID_VOTE` | No | No votas en este interludio, te acusaste a ti mismo o esa puerta no existe. Desde 3.0.0. |
     | `RATE_LIMITED` | Sí | Se agotó el *token bucket* de la conexión (capacidad 20, recarga 5/s), o `SendSignal` antes de 3 s desde tu última señal. `retryAfterMs` indica la espera |
     | `MESSAGE_TOO_LARGE` | No | Mensaje mayor a 4 KB (además cierra la conexión con 1009) |
     | `INTERNAL_ERROR` | Sí | Error del servidor; no se aplicó nada. Se puede reintentar con el **mismo** `clientActionId` |
@@ -135,7 +138,7 @@ info:
     ## 5. Versionado y compatibilidad
 
     - **`protocolVersion`** (entero, *query* del *upgrade*) es la versión **mayor** del protocolo.
-      Esta especificación define `protocolVersion=2`. `info.version` sigue SemVer y su mayor coincide.
+      Esta especificación define `protocolVersion=3`. `info.version` sigue SemVer y su mayor coincide.
     - Dentro de una versión mayor solo hay **cambios aditivos** (sube la menor):
       campos opcionales nuevos, mensajes servidor→cliente nuevos, códigos de error nuevos y
       valores nuevos en enumeraciones marcadas como extensibles (`VisibleEvent.type`).
@@ -209,6 +212,11 @@ info:
 
     ### Changelog
 
+    - **3.0.0** (incompatible): `protocolVersion` pasa a 3 (la 2 se rechaza). La orden lleva `step` opcional; tipos nuevos
+      `SABOTAGE` y `PUSH`. Misión a elegir (`PactOffer`, `ChoosePact`; `pactId` nuevos y se quitan las pasivas). Interludio
+      (`InterludeOffer`, `CastInterludeVote`, `InterludeResolved`, estado `INTERLUDE`). `view.room`, `view.curses`, `view.interlude`,
+      `view.lastVerdict`, `MatchFinished.awards` y `.curses`. Cada evento lleva `phase`. Las reglas están en
+      `planteamiento/06-version-3.md`.
     - **2.0.0** (incompatible): `protocolVersion` pasa a 2 (la 1 se rechaza). `HeroKind` pasa a `ERRATA`,
       `ANTEAYER`, `HILVAN`, `POLIZON`, `ESCUCHA`, `USURERA`, `AVARO`, `MAMPOSTERO` y `CAMPANERO` (fuera `YUNQUE`,
       `CHISPA`, `CUERVO` y `RAIZ`). `SelfHero` pierde `charges` y `stealthRoundsLeft`, suma `secondBody`,
@@ -298,7 +306,7 @@ channels:
           properties:
             protocolVersion:
               type: string
-              enum: ['2']
+              enum: ['3']
               description: Versión mayor del protocolo de Ascua.
             access_token:
               type: string
@@ -334,6 +342,14 @@ channels:
         $ref: '#/components/messages/SendSignal'
       SendSignalAck:
         $ref: '#/components/messages/SendSignalAck'
+      ChoosePact:
+        $ref: '#/components/messages/ChoosePact'
+      ChoosePactAck:
+        $ref: '#/components/messages/ChoosePactAck'
+      CastInterludeVote:
+        $ref: '#/components/messages/CastInterludeVote'
+      CastInterludeVoteAck:
+        $ref: '#/components/messages/CastInterludeVoteAck'
       InvocationError:
         $ref: '#/components/messages/InvocationError'
       RoundOpened:
@@ -348,6 +364,12 @@ channels:
         $ref: '#/components/messages/DraftOffer'
       PathOffer:
         $ref: '#/components/messages/PathOffer'
+      PactOffer:
+        $ref: '#/components/messages/PactOffer'
+      InterludeOffer:
+        $ref: '#/components/messages/InterludeOffer'
+      InterludeResolved:
+        $ref: '#/components/messages/InterludeResolved'
       LastWord:
         $ref: '#/components/messages/LastWord'
       SignalReceived:
@@ -511,7 +533,84 @@ operations:
         - $ref: '#/channels/match/messages/SendSignalAck'
         - $ref: '#/channels/match/messages/InvocationError'
 
+  choosePact:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: ChoosePact
+    summary: Elige 1 de las 2 misiones de una `PactOffer`.
+    description: |
+      Se elige junto con la mejora inicial; la partida empieza cuando todos eligieron las dos cosas. Repetirla igual
+      devuelve `DUPLICATE_ACTION`; otra da `PACT_CLOSED`. Si vence el plazo del draft, la primera. Desde 3.0.0.
+    tags:
+      - name: invocacion
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/ChoosePact'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/ChoosePactAck'
+        - $ref: '#/channels/match/messages/InvocationError'
+  castInterludeVote:
+    action: receive
+    channel:
+      $ref: '#/channels/match'
+    title: CastInterludeVote
+    summary: Voto secreto del interludio. A quién acusas (o a nadie) y qué puerta prefieres.
+    description: |
+      Votan héroes activos, derribados y Fantasmas. Vale el primero: repetirlo igual devuelve `DUPLICATE_ACTION` y cambiarlo
+      da `VOTE_CLOSED`. Se valida esquema → participante → interludio abierto y oferta vigente → puede votar → acusado y
+      puerta válidos. Nadie más recibe lo que votaste. Desde 3.0.0.
+    tags:
+      - name: invocacion
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/CastInterludeVote'
+    reply:
+      channel:
+        $ref: '#/channels/match'
+      messages:
+        - $ref: '#/channels/match/messages/CastInterludeVoteAck'
+        - $ref: '#/channels/match/messages/InvocationError'
+
   # ───────────── Servidor → cliente ─────────────
+  sendPactOffer:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: PactOffer
+    summary: Dos misiones a elegir; solo las ve su destinatario.
+    description: Se reenvía tras `JoinMatch` y `GetSnapshot` mientras siga abierta. Desde 3.0.0.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/PactOffer'
+  sendInterludeOffer:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: InterludeOffer
+    summary: Se activó la escalera. Puertas, candidatos y plazo.
+    description: |
+      Llega a cada jugador justo después del `RoundResolved`; también va en `view.interlude`, que se actualiza con un
+      `Snapshot` cada vez que alguien vota (`voted`), y se reenvía tras `JoinMatch` y `GetSnapshot`. Desde 3.0.0.
+    tags:
+      - name: privado
+    messages:
+      - $ref: '#/channels/match/messages/InterludeOffer'
+  sendInterludeResolved:
+    action: send
+    channel:
+      $ref: '#/channels/match'
+    title: InterludeResolved
+    summary: Recuento público del interludio. Nunca dice quién votó qué.
+    description: Llega al cerrar, antes del `RoundOpened` de la ronda siguiente. Lleva los eventos de la entrada a la sala nueva. Desde 3.0.0.
+    tags:
+      - name: difusion
+    messages:
+      - $ref: '#/channels/match/messages/InterludeResolved'
   sendRoundOpened:
     action: send
     channel:
@@ -762,8 +861,18 @@ components:
             order:
               type: MOVE
               direction: N
+        - name: pasoYAtaque
+          summary: Un paso al este y un ataque al norte desde donde quede.
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            round: 7
+            clientActionId: 0193a1d4-9b21-7e33-a4f0-5c6d7e8f9014
+            order:
+              type: ATTACK
+              direction: N
+              step: E
         - name: guardar
-          summary: '`GUARD` no lleva dirección.'
+          summary: '`GUARD` no lleva dirección ni paso.'
           payload:
             matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
             round: 7
@@ -1041,6 +1150,82 @@ components:
               retryAfterMs: 3000
 
     # ───────────── Servidor → cliente ─────────────
+    ChoosePact:
+      name: ChoosePact
+      title: ChoosePact
+      summary: Elige misión.
+      x-since: 3.0.0
+      x-errors: [INVALID_PAYLOAD, PACT_CLOSED, NOT_PARTICIPANT, NOT_JOINED, MATCH_NOT_ACTIVE, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/ChoosePactRequest'
+    ChoosePactAck:
+      name: ChoosePactAck
+      title: ChoosePactAck
+      x-since: 3.0.0
+      payload:
+        $ref: '#/components/schemas/ChoosePactAck'
+    CastInterludeVote:
+      name: CastInterludeVote
+      title: CastInterludeVote
+      summary: Voto secreto del interludio.
+      x-since: 3.0.0
+      x-errors: [INVALID_PAYLOAD, VOTE_CLOSED, INVALID_VOTE, NOT_PARTICIPANT, NOT_JOINED, MATCH_NOT_ACTIVE, RATE_LIMITED, INTERNAL_ERROR]
+      tags:
+        - name: invocacion
+      traits:
+        - $ref: '#/components/messageTraits/signalrInvocation'
+      payload:
+        $ref: '#/components/schemas/CastInterludeVoteRequest'
+      examples:
+        - name: acusarYPuerta
+          payload:
+            matchId: 0193a1c2-5e7f-7a10-8b2c-3d4e5f607182
+            offerId: 0193a1c3-0000-7d00-8000-0000000000f2
+            accusedId: 0193a1b0-1111-7c00-9a00-00000000a002
+            door: 1
+    CastInterludeVoteAck:
+      name: CastInterludeVoteAck
+      title: CastInterludeVoteAck
+      x-since: 3.0.0
+      payload:
+        $ref: '#/components/schemas/CastInterludeVoteAck'
+    PactOffer:
+      name: PactOffer
+      title: PactOffer
+      summary: Dos misiones a elegir; solo las ve su destinatario.
+      x-since: 3.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/PactOffer'
+    InterludeOffer:
+      name: InterludeOffer
+      title: InterludeOffer
+      summary: Puertas, candidatos y plazo del interludio.
+      x-since: 3.0.0
+      tags:
+        - name: privado
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/InterludeOffer'
+    InterludeResolved:
+      name: InterludeResolved
+      title: InterludeResolved
+      summary: Recuento público al cerrar el interludio.
+      x-since: 3.0.0
+      tags:
+        - name: difusion
+      traits:
+        - $ref: '#/components/messageTraits/signalrPush'
+      payload:
+        $ref: '#/components/schemas/InterludeResolved'
     RoundOpened:
       name: RoundOpened
       title: RoundOpened
@@ -1440,7 +1625,7 @@ components:
                 finalState: DOWN
                 embers: 9
                 placement: 2
-                pact: { pactId: NEVER_DOWNED, description: Terminar sin que te derriben., fulfilled: false }
+                pact: { pactId: REVIVE_2_ALLIES, description: Levantar a 2 aliados., fulfilled: false }
             finishedAt: '2026-11-03T18:13:52Z'
             replayUrl: https://ascua-api.azurecontainerapps.io/api/v1/matches/0193a1c2-5e7f-7a10-8b2c-3d4e5f607182/replay
             betrayals:
@@ -1549,10 +1734,321 @@ components:
       description: '`FRIENDSHIP` = Camino de la Amistad (Brasa errante); `VENGEANCE` = Camino de la Venganza (Renegado). Desde 1.3.0.'
     MatchStatus:
       type: string
-      enum: [LOBBY, DRAFTING, IN_PROGRESS, FINISHED, FAULTED, ABANDONED, EXPIRED, TERMINATED]
+      enum: [LOBBY, DRAFTING, IN_PROGRESS, INTERLUDE, FINISHED, FAULTED, ABANDONED, EXPIRED, TERMINATED]
     BlessingId:
       type: string
       enum: [BRASA_VIVA, PASO_IGNEO, PUNO_DE_PIEDRA, CORAZON_DOBLE, HOJA_HAMBRIENTA, ESPEJO_ROTO, LAMPARA, GANZUA, ULTIMO_ALIENTO, CODICIA, ESCARCHA, OJO_DE_BUHO]
+    PactId:
+      type: string
+      enum: [MOST_WARDEN_DAMAGE, OPEN_3_CHESTS, REVIVE_2_ALLIES, BETRAY_TWICE_UNCONVICTED, OUTGOLD_TARGET, PUSH_2_INTO_HAZARD, CORRECT_CONVICTION]
+      description: Misiones que se ofrecen desde 3.0.0. En partidas viejas pueden salir `FINAL_BLOW_WARDEN`, `NEVER_DOWNED` y `BETRAY_TWICE_UNSEEN`; los clientes deben tolerarlas en el historial.
+    RoomType:
+      type: string
+      enum: [NORMAL, TREASURE, ARENA, SANCTUARY, DARK, FLOODED]
+    Curse:
+      type: string
+      enum: [FIERCE, WARDEN_PLUS, DIM, HASTE]
+    RoomInfo:
+      type: object
+      description: La sala actual; su tipo y efecto son públicos. Desde 3.0.0.
+      additionalProperties: false
+      required: [type, name, effect, floodedRows]
+      properties:
+        type:
+          $ref: '#/components/schemas/RoomType'
+        name:
+          type: string
+          maxLength: 32
+        effect:
+          type: string
+          maxLength: 140
+        floodedRows:
+          type: integer
+          minimum: 0
+          maximum: 9
+          description: Filas inundadas desde el norte. Hacen 1 de daño por ronda a quien no vuela.
+    PactOption:
+      type: object
+      additionalProperties: false
+      required: [pactId, description]
+      properties:
+        pactId:
+          $ref: '#/components/schemas/PactId'
+        description:
+          type: string
+          maxLength: 140
+        targetId:
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+    PactOffer:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, options, deadline]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        options:
+          type: array
+          minItems: 2
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/PactOption'
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+    ChoosePactRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, pactId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        pactId:
+          $ref: '#/components/schemas/PactId'
+    ChoosePactAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, pactId, result, acceptedAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        pactId:
+          $ref: '#/components/schemas/PactId'
+        result:
+          type: string
+          enum: [ACCEPTED, DUPLICATE_ACTION]
+        acceptedAt:
+          $ref: '#/components/schemas/Timestamp'
+    Door:
+      type: object
+      additionalProperties: false
+      required: [type, name, effect]
+      properties:
+        type:
+          $ref: '#/components/schemas/RoomType'
+        name:
+          type: string
+          maxLength: 32
+        effect:
+          type: string
+          maxLength: 140
+    InterludeBallot:
+      type: object
+      additionalProperties: false
+      required: [accusedId, door]
+      properties:
+        accusedId:
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        door:
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 1
+            - type: 'null'
+    InterludeOffer:
+      type: object
+      description: |
+        Oferta del interludio. `doors` tiene 2 puertas, o ninguna si la sala siguiente es la del Celador. `voted` dice quién
+        ya votó, no qué. `myVote` es el tuyo; nunca llega el de otro.
+      additionalProperties: false
+      required: [matchId, offerId, endedFloor, deadline, doors, candidates, voters, voted, canVote, myVote]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        endedFloor:
+          type: integer
+          minimum: 1
+          maximum: 5
+        deadline:
+          $ref: '#/components/schemas/Timestamp'
+        doors:
+          type: array
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Door'
+        candidates:
+          type: array
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/Uuid'
+        voters:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/Uuid'
+        voted:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/Uuid'
+        canVote:
+          type: boolean
+        myVote:
+          anyOf:
+            - $ref: '#/components/schemas/InterludeBallot'
+            - type: 'null'
+    CastInterludeVoteRequest:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        accusedId:
+          description: A quién acusas; `null` o ausente = a nadie.
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        door:
+          description: Puerta que prefieres; `null` o ausente = ninguna.
+          anyOf:
+            - type: integer
+              minimum: 0
+              maximum: 1
+            - type: 'null'
+    CastInterludeVoteAck:
+      type: object
+      additionalProperties: false
+      required: [matchId, offerId, result, acceptedAt]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        offerId:
+          $ref: '#/components/schemas/Uuid'
+        result:
+          type: string
+          enum: [ACCEPTED, DUPLICATE_ACTION]
+        acceptedAt:
+          $ref: '#/components/schemas/Timestamp'
+    Accusation:
+      type: object
+      additionalProperties: false
+      required: [accusedId, votes, otherVoters, convicted, guilty, goldLost, accuserFine, exposed]
+      properties:
+        accusedId:
+          $ref: '#/components/schemas/Uuid'
+        votes:
+          type: integer
+          minimum: 1
+          maximum: 4
+        otherVoters:
+          type: integer
+          minimum: 0
+          maximum: 4
+          description: Votantes sin contar al acusado. Condena si `votes * 2 > otherVoters`.
+        convicted:
+          type: boolean
+        guilty:
+          description: Solo si hubo condena.
+          type: [boolean, 'null']
+        goldLost:
+          type: integer
+          minimum: 0
+          maximum: 3
+        accuserFine:
+          type: integer
+          minimum: 0
+          maximum: 1
+          description: Oro que pierde cada acusador si era inocente. No se dice quiénes.
+        exposed:
+          type: array
+          maxItems: 16
+          description: Traiciones de esa sala que quedan expuestas con su autoría.
+          items:
+            type: object
+            additionalProperties: false
+            required: [traitorId, victimId, damage]
+            properties:
+              traitorId:
+                $ref: '#/components/schemas/Uuid'
+              victimId:
+                $ref: '#/components/schemas/Uuid'
+              damage:
+                type: integer
+                minimum: 0
+    InterludeVerdict:
+      type: object
+      additionalProperties: false
+      required: [endedFloor, accusations, noAccusation, doors, chosenDoor]
+      properties:
+        endedFloor:
+          type: integer
+          minimum: 1
+          maximum: 5
+        accusations:
+          type: array
+          maxItems: 4
+          items:
+            $ref: '#/components/schemas/Accusation'
+        noAccusation:
+          type: integer
+          minimum: 0
+          maximum: 4
+        doors:
+          type: array
+          maxItems: 2
+          items:
+            type: object
+            additionalProperties: false
+            required: [type, votes]
+            properties:
+              type:
+                $ref: '#/components/schemas/RoomType'
+              votes:
+                type: integer
+                minimum: 0
+                maximum: 4
+        chosenDoor:
+          anyOf:
+            - $ref: '#/components/schemas/RoomType'
+            - type: 'null'
+    InterludeResolved:
+      type: object
+      additionalProperties: false
+      required: [matchId, seq, verdict, events]
+      properties:
+        matchId:
+          $ref: '#/components/schemas/Uuid'
+        seq:
+          $ref: '#/components/schemas/Seq'
+        verdict:
+          $ref: '#/components/schemas/InterludeVerdict'
+        events:
+          type: array
+          maxItems: 128
+          items:
+            $ref: '#/components/schemas/VisibleEvent'
+    Award:
+      type: object
+      additionalProperties: false
+      required: [awardId, playerId, title, reason, value]
+      properties:
+        awardId:
+          type: string
+          enum: [MOST_BETRAYALS, MOST_WARDEN_DAMAGE, MOST_REVIVES, MOST_TRIAL_GOLD_LOST, RICHEST_DEATH, MOST_KILLS, MOST_CHESTS, MOST_PUSHES]
+        playerId:
+          $ref: '#/components/schemas/Uuid'
+        title:
+          type: string
+          maxLength: 40
+        reason:
+          type: string
+          maxLength: 80
+        value:
+          type: integer
+          minimum: 1
     EnemyKind:
       type: string
       enum: [CARRONERO, POLILLA, GELATINA, SALTASAPO, BALLESTERO, TOTEM, CELADOR]
@@ -1579,12 +2075,17 @@ components:
     DirectedOrder:
       type: object
       additionalProperties: false
+      description: |
+        `MOVE` es solo paso: su `direction` es el paso y no lleva `step`. Las demás aceptan `step`: el paso se resuelve en la
+        fase de movimientos y la acción después, desde donde quedó (si rebotó, desde la casilla original). Desde 3.0.0.
       required: [type, direction]
       properties:
         type:
           type: string
-          enum: [MOVE, ATTACK, ABILITY, INTERACT]
+          enum: [MOVE, ATTACK, ABILITY, INTERACT, SABOTAGE, PUSH]
         direction:
+          $ref: '#/components/schemas/Direction'
+        step:
           $ref: '#/components/schemas/Direction'
     GuardOrder:
       type: object
@@ -1834,11 +2335,15 @@ components:
       required: [pactId, description]
       properties:
         pactId:
-          type: string
-          enum: [FINAL_BLOW_WARDEN, NEVER_DOWNED, OPEN_3_CHESTS, REVIVE_2_ALLIES, BETRAY_TWICE_UNSEEN]
+          $ref: '#/components/schemas/PactId'
         description:
           type: string
           maxLength: 140
+        targetId:
+          description: Jugador objetivo de `OUTGOLD_TARGET`. Solo lo ve su dueño. Desde 3.0.0.
+          anyOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
     NullablePact:
       anyOf:
         - $ref: '#/components/schemas/Pact'
@@ -1926,7 +2431,21 @@ components:
           items:
             $ref: '#/components/schemas/BlessingId'
         pact:
+          description: Tu misión; `null` mientras no la hayas elegido.
           $ref: '#/components/schemas/NullablePact'
+        pushCooldown:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Rondas para poder empujar. Desde 3.0.0.
+        canSabotage:
+          type: boolean
+          description: Si puedes sabotear en esta sala. Desde 3.0.0.
+        visionRadius:
+          type: integer
+          minimum: 1
+          maximum: 9
+          description: Radio de visión real (la sala Oscura, DIM y Ojo de búho lo bajan). Desde 3.0.0.
         decided:
           type: boolean
           description: Si ya envió su orden en la ronda abierta.
@@ -1995,6 +2514,11 @@ components:
       additionalProperties: false
       required: [playerId, displayName, hero, state, hp, maxHp, position, facing, embers, blessingCount, connected, decided]
       properties:
+        convictions:
+          type: integer
+          minimum: 0
+          maximum: 9
+          description: Veces que lo condenaron en El Juicio. Es público. Desde 3.0.0.
         playerId:
           $ref: '#/components/schemas/Uuid'
         displayName:
@@ -2164,6 +2688,9 @@ components:
         | `HOST_DRAINED` *privado* | `actorId`, `targetId` = `enemy:{id}` | Drenó a su huésped |
         | `WARDEN_TURNED` | `targetId` = `enemy:{id}`, `detail` = hacia dónde mira | Abordar giró al Celador |
         | `SHOUTED` | `actorId` | Grito de La Escucha |
+        | `PUSHED` | `actorId`, `targetId`, `position` = llegada | Empujón: visible y con autor. Desde 3.0.0 |
+        | `ROOM_FLOODED` | `amount` = filas inundadas | Subió el agua. Desde 3.0.0 |
+        | `INTERLUDE_OPENED` | `amount` = sala que termina | Se activó la escalera. Desde 3.0.0 |
         | `DEBT_CHANGED` *privado* | `actorId` = Usurera, `targetId` = deudor, `amount` = cambio, `detail` = `LOAN`/`INTEREST`/`PAID`/`EXTINCTION`/`MATCH_END`/`CANCELLED` | Solo para ellos dos |
         | `EMBERS_DROPPED` | `position`, `amount` | Cayeron ascuas al suelo |
         | `EMBERS_PICKED_UP` | `actorId`, `position`, `amount` | Alguien las recogió |
@@ -2173,14 +2700,21 @@ components:
         | `BELL_RUNG` | `actorId`, `amount` = ronda en que suena | Repique |
         | `BELL_EXPIRED` | `actorId` = quien lo tocó | Venció el plazo reducido |
 
-        `EMBERS_GAINED` puede traer `detail: DEBT_COLLECTED`. `ENEMY_KILLED` no trae `actorId` si el golpe final fue
+        `phase` (desde 3.0.0) dice en qué fase de la resolución ocurrió: sirve para mostrarla paso a paso. Los eventos llegan en orden.
+        Un `DAMAGED` sin `actorId` en la fase `ACTIONS` es un sabotaje: el autor solo lo ve él, con `BETRAYAL_RECORDED` y `detail: SABOTAGE`.
+
+        `EMBERS_GAINED` puede traer `detail: DEBT_COLLECTED`, `ASSIST` o `WARDEN_BOUNTY`; `EMBERS_LOST`, `TRIAL_PENALTY` o `TRIAL_FINE`. `ENEMY_KILLED` no trae `actorId` si el golpe final fue
         anónimo y no es tuyo (desviado por Errata o desde un huésped).
       additionalProperties: false
       required: [type]
       properties:
         type:
           type: string
-          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED, PATH_OFFERED, PATH_SELECTED, PATH_CHOSEN, EMBER_REBORN, RENEGADE_SPAWNED, RENEGADE_DEFEATED, ECHO_GAINED, SHIELD_KINDLED, ATTACK_HINDERED, BEACON_LIT, WARMTH_HEALED, ECHO_FIRED, ATTACK_CORRECTED, BETRAYAL_RECORDED, BETRAYAL_REVEALED, HOST_BOARDED, HOST_EXITED, HOST_DRAINED, WARDEN_TURNED, SHOUTED, DEBT_CHANGED, EMBERS_DROPPED, EMBERS_PICKED_UP, EMBERS_LOST, ENEMY_BRIBED, ROOM_SHIFTED, BELL_RUNG, BELL_EXPIRED]
+          enum: [MOVED, BOUNCED, ATTACKED, DAMAGED, BLOCKED, HEALED, DOWNED, REVIVED, EXTINGUISHED, ENEMY_KILLED, ENEMY_SPAWNED, CHEST_OPENED, EMBERS_GAINED, EMBERS_STOLEN, BLESSING_GAINED, TRAP_TRIGGERED, FIRE_STARTED, FROZEN, BOSS_PHASE_CHANGED, FLOOR_ENTERED, DEFAULT_GUARD_APPLIED, ABILITY_USED, GUARDED, PATH_OFFERED, PATH_SELECTED, PATH_CHOSEN, EMBER_REBORN, RENEGADE_SPAWNED, RENEGADE_DEFEATED, ECHO_GAINED, SHIELD_KINDLED, ATTACK_HINDERED, BEACON_LIT, WARMTH_HEALED, ECHO_FIRED, ATTACK_CORRECTED, BETRAYAL_RECORDED, BETRAYAL_REVEALED, HOST_BOARDED, HOST_EXITED, HOST_DRAINED, WARDEN_TURNED, SHOUTED, DEBT_CHANGED, EMBERS_DROPPED, EMBERS_PICKED_UP, EMBERS_LOST, ENEMY_BRIBED, ROOM_SHIFTED, BELL_RUNG, BELL_EXPIRED, PUSHED, ROOM_FLOODED, INTERLUDE_OPENED, INTERLUDE_CLOSED]
+        phase:
+          type: string
+          enum: [REVEAL, GUARD, SHIFT, MOVEMENT, ACTIONS, ENEMY_ATTACKS, ENEMY_MOVES, CLEANUP, END]
+          description: Fase de la ronda en la que ocurrió; ausente fuera de una resolución. Desde 3.0.0.
         detail:
           type: string
           maxLength: 32
@@ -2269,6 +2803,24 @@ components:
           anyOf:
             - $ref: '#/components/schemas/Bell'
             - type: 'null'
+        room:
+          $ref: '#/components/schemas/RoomInfo'
+        curses:
+          type: array
+          maxItems: 4
+          description: Maldiciones de la partida. Públicas. Desde 3.0.0.
+          items:
+            $ref: '#/components/schemas/Curse'
+        interlude:
+          description: Oferta vigente del interludio; `null` fuera de él. Desde 3.0.0.
+          anyOf:
+            - $ref: '#/components/schemas/InterludeOffer'
+            - type: 'null'
+        lastVerdict:
+          description: Recuento del último interludio cerrado. Desde 3.0.0.
+          anyOf:
+            - $ref: '#/components/schemas/InterludeVerdict'
+            - type: 'null'
     PlayerViewDelta:
       type: object
       description: |
@@ -2351,8 +2903,7 @@ components:
       required: [pactId, description, fulfilled]
       properties:
         pactId:
-          type: string
-          enum: [FINAL_BLOW_WARDEN, NEVER_DOWNED, OPEN_3_CHESTS, REVIVE_2_ALLIES, BETRAY_TWICE_UNSEEN]
+          $ref: '#/components/schemas/PactId'
         description:
           type: string
           maxLength: 140
@@ -2504,8 +3055,13 @@ components:
           $ref: '#/components/schemas/Uuid'
         type:
           type: string
-          enum: [MOVE, ATTACK, ABILITY, INTERACT, GUARD]
+          enum: [MOVE, ATTACK, ABILITY, INTERACT, SABOTAGE, PUSH, GUARD]
         direction:
+          anyOf:
+            - $ref: '#/components/schemas/Direction'
+            - type: 'null'
+        step:
+          description: El paso de esa orden; `null` si no da paso o si solo oyes los tipos. Desde 3.0.0.
           anyOf:
             - $ref: '#/components/schemas/Direction'
             - type: 'null'
@@ -2647,6 +3203,18 @@ components:
           type: string
           format: uri
           maxLength: 256
+        awards:
+          type: array
+          maxItems: 32
+          description: Títulos ganados por alguien, con su motivo. Los empates comparten título. Desde 3.0.0.
+          items:
+            $ref: '#/components/schemas/Award'
+        curses:
+          type: array
+          maxItems: 4
+          description: Maldiciones con las que se jugó. Desde 3.0.0.
+          items:
+            $ref: '#/components/schemas/Curse'
         betrayals:
           type: array
           maxItems: 12
