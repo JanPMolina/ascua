@@ -97,7 +97,7 @@ export const ENEMIES = {
 export const OUTCOMES = {
   WARDEN_DEFEATED: 'El Celador cayó',
   DRAW: 'El Celador cayó — empate en oro',
-  EMBER_EXTINGUISHED: 'Todos cayeron (derrota colectiva)',
+  EMBER_EXTINGUISHED: 'El grupo perdió: el Celador sigue en pie',
   ABANDONED: 'Partida abandonada',
   FAULTED: 'La partida falló en el servidor',
   TERMINATED: 'Un administrador terminó la partida',
