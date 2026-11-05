@@ -46,6 +46,26 @@ public static class OrderValidator
             return new DomainError(ErrorCode.InvalidOrder, "La orden está mal formada.");
         }
 
+        if (order.Step is { } step && !Enum.IsDefined(step))
+        {
+            return new DomainError(ErrorCode.InvalidOrder, "El paso está mal formado.");
+        }
+
+        if (order.Type == OrderType.Sabotage && !hero.CanSabotage(state.RoomIndex))
+        {
+            return new DomainError(ErrorCode.InvalidOrder, "No puedes sabotear ahora: una vez por sala y solo como héroe activo fuera de un huésped.");
+        }
+
+        if (order.Type == OrderType.Push && !hero.CanPush)
+        {
+            return new DomainError(ErrorCode.InvalidOrder, "No puedes empujar ahora.");
+        }
+
+        if (order.Type == OrderType.Push && hero.PushCooldown > 0)
+        {
+            return new DomainError(ErrorCode.SkillOnCooldown, $"Podrás empujar en {hero.PushCooldown} rondas.");
+        }
+
         if (order.Type == OrderType.Skill && hero.SkillCooldown > 0)
         {
             return new DomainError(ErrorCode.SkillOnCooldown, $"La habilidad estará lista en {hero.SkillCooldown} rondas.");

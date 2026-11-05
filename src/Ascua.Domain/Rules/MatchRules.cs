@@ -37,17 +37,52 @@ public static class MatchRules
         }
 
         var heroes = state.Heroes.SetItem(state.Heroes.FindIndex(h => h.Player == player), updated);
-        var next = state with { Heroes = heroes };
-        if (next.Phase == MatchPhase.Drafting && heroes.All(h => h.DraftOptions.IsEmpty))
-        {
-            next = next with { Phase = MatchPhase.InProgress };
-            log.Emit(new MatchStarted());
-        }
-
+        var next = StartIfDrafted(state with { Heroes = heroes }, log);
         return CommandResult.Ok(next with { LastSeq = log.LastSeq }, log.Events);
     }
 
-    /// <summary>Elige la primera opción para quien no decidió a tiempo (vence el plazo del draft).</summary>
+    /// <summary>Elige una de las 2 misiones ofrecidas (privado). Se elige junto con la mejora inicial.</summary>
+    public static CommandResult ChoosePact(GameState state, PlayerId player, int optionIndex)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        var hero = state.FindHero(player);
+        if (hero is null)
+        {
+            return CommandResult.Fail(state, ErrorCode.NotAParticipant, "El jugador no participa en esta partida.");
+        }
+
+        if (state.Phase == MatchPhase.Finished)
+        {
+            return CommandResult.Fail(state, ErrorCode.MatchNotInProgress, "La partida terminó.");
+        }
+
+        if (optionIndex < 0 || optionIndex >= hero.PactOptions.Count)
+        {
+            return CommandResult.Fail(state, ErrorCode.NoPactOffer, "No hay esa misión pendiente.");
+        }
+
+        var log = new EventLog(state.LastSeq, state.Round);
+        var offer = hero.PactOptions[optionIndex];
+        var updated = hero with { Pact = offer.Kind, PactTarget = offer.Target, PactOptions = [] };
+        log.Emit(new PactChosen(player, offer.Kind) { Audience = Audience.Only(player) });
+        var heroes = state.Heroes.SetItem(state.Heroes.FindIndex(h => h.Player == player), updated);
+        var next = StartIfDrafted(state with { Heroes = heroes }, log);
+        return CommandResult.Ok(next with { LastSeq = log.LastSeq }, log.Events);
+    }
+
+    /// <summary>La partida empieza cuando todos eligieron mejora y misión.</summary>
+    private static GameState StartIfDrafted(GameState state, EventLog log)
+    {
+        if (state.Phase != MatchPhase.Drafting || !state.Heroes.All(h => h.DraftOptions.IsEmpty && h.PactOptions.IsEmpty))
+        {
+            return state;
+        }
+
+        log.Emit(new MatchStarted());
+        return state with { Phase = MatchPhase.InProgress };
+    }
+
+    /// <summary>Elige la primera opción (mejora y misión) para quien no decidió a tiempo (vence el plazo del draft).</summary>
     public static CommandResult AutoChooseBlessings(GameState state)
     {
         ArgumentNullException.ThrowIfNull(state);
@@ -59,8 +94,23 @@ public static class MatchRules
             events.AddRange(result.Events);
         }
 
+        foreach (var hero in state.Heroes.Where(h => !h.PactOptions.IsEmpty).ToList())
+        {
+            var result = ChoosePact(state, hero.Player, 0);
+            state = result.State;
+            events.AddRange(result.Events);
+        }
+
         return CommandResult.Ok(state, events);
     }
+
+    /// <summary>Voto secreto del interludio: a quién acusa (o a nadie) y qué puerta prefiere.</summary>
+    public static CommandResult CastInterludeVote(GameState state, PlayerId player, PlayerId? accused, int? door) =>
+        Interludes.CastVote(state, player, accused, door);
+
+    /// <summary>Cierra el interludio y pasa a la sala siguiente. <paramref name="absent"/>: desconectados (no se les espera).</summary>
+    public static CommandResult CloseInterlude(GameState state, IReadOnlySet<PlayerId> absent, Domain.Abstractions.IRandom rng) =>
+        Interludes.Close(state, absent, rng);
 
     /// <summary>
     /// Elige camino tras extinguirse (planteamiento/04-caminos-tras-morir.md). La elección es privada: se guarda
@@ -129,6 +179,7 @@ public static class MatchRules
             Echoes = 0,
             Hp = 0,
             DraftOptions = [],
+            PactOptions = [],
             PathOfferPending = false,
             PathChoice = null,
             AwaitingSpawn = false,
@@ -152,6 +203,11 @@ public static class MatchRules
         }
 
         var next = state with { Heroes = heroes };
+        if (next.Interlude is { } interlude)
+        {
+            next = next with { Interlude = interlude with { Ballots = interlude.Ballots.RemoveAll(b => b.Voter == player) } };
+        }
+
         if (next.BellRinger == player)
         {
             next = next with { BellRound = 0, BellRinger = null, BellClosed = false };
@@ -162,14 +218,14 @@ public static class MatchRules
             var outcome = new GameOutcome(OutcomeKind.Abandoned, DefeatReason.None, [], Outcomes.Scores(heroes))
             {
                 Betrayals = Outcomes.Summarize(next.Betrayals),
+                Awards = Awards.Compute(heroes),
             };
-            next = next with { Phase = MatchPhase.Finished, Outcome = outcome };
+            next = next with { Phase = MatchPhase.Finished, Outcome = outcome, Interlude = null };
             log.Emit(new MatchEnded(outcome));
         }
-        else if (next.Phase == MatchPhase.Drafting && heroes.All(h => h.DraftOptions.IsEmpty))
+        else
         {
-            next = next with { Phase = MatchPhase.InProgress };
-            log.Emit(new MatchStarted());
+            next = StartIfDrafted(next, log);
         }
 
         return CommandResult.Ok(next with { LastSeq = log.LastSeq }, log.Events);
@@ -184,7 +240,7 @@ public static class MatchRules
             return CommandResult.Fail(state, ErrorCode.NotAParticipant, "El jugador no participa en esta partida.");
         }
 
-        if (state.Phase != MatchPhase.InProgress)
+        if (state.Phase is not (MatchPhase.InProgress or MatchPhase.Interlude))
         {
             return CommandResult.Fail(state, ErrorCode.MatchNotInProgress, "La partida no está en curso.");
         }

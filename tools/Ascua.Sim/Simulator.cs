@@ -20,7 +20,24 @@ public sealed record GameRecord(
     IReadOnlyDictionary<HeroClass, HeroGameStats> Stats,
     int Rooms,
     IReadOnlyList<int> RoundsByRoom,
-    IReadOnlyList<int> RoundsToClear);
+    IReadOnlyList<int> RoundsToClear)
+{
+    /// <summary>Lo nuevo de la versión 3: sabotajes, empujones, juicios y puertas de la partida.</summary>
+    public V3Stats V3 { get; init; } = new();
+}
+
+/// <summary>Cuánto se usó lo nuevo en una partida.</summary>
+public sealed class V3Stats
+{
+    public int Sabotages { get; set; }
+    public int Pushes { get; set; }
+    public int Interludes { get; set; }
+    public int Accusations { get; set; }
+    public int GuiltyConvictions { get; set; }
+    public int InnocentConvictions { get; set; }
+    public Dictionary<RoomType, int> Rooms { get; } = [];
+    public int PactsFulfilled { get; set; }
+}
 
 /// <summary>Lo que hizo un héroe en una partida: sirve para ver si está roto o si no hace nada.</summary>
 public sealed record HeroGameStats(int SkillUses, int Kills, int Embers, bool Fell, bool WentExtinct, int DamageToAllies);
@@ -40,6 +57,7 @@ public static class MatchSimulator
         var fallen = new HashSet<PlayerId>();
         var roundsByRoom = new int[state.Rooms.Count];
         var roundsToClear = new int[state.Rooms.Count];
+        var v3 = new V3Stats();
 
         state = PickDrafts(state, bots);
         if (options.StartRoom > 0)
@@ -67,16 +85,18 @@ public static class MatchSimulator
             trace?.Invoke(state, orders);
             roundsByRoom[state.RoomIndex]++;
             var (next, events) = Resolver.Resolve(state, orders, engineRng);
-            Tally(events, stats, fallen);
+            Tally(events, stats, fallen, v3);
+            Witness(next, events, bots);
             if (next.RoomIndex == state.RoomIndex && next.Enemies.IsEmpty && roundsToClear[state.RoomIndex] == 0)
             {
                 roundsToClear[state.RoomIndex] = roundsByRoom[state.RoomIndex];
             }
 
-            state = next;
+            state = next.Phase == MatchPhase.Interlude ? RunInterlude(next, bots, engineRng, v3) : next;
         }
 
         var outcome = state.Outcome!;
+        v3.PactsFulfilled = outcome.Scores.Count(s => s.PactFulfilled);
         var classOf = setups.ToDictionary(s => s.Player, s => s.Class);
         return new GameRecord(
             [.. heroes],
@@ -97,7 +117,46 @@ public static class MatchSimulator
                     stats[h.Player].DamageToAllies)),
             state.RoomIndex + 1,
             roundsByRoom,
-            roundsToClear);
+            roundsToClear)
+        {
+            V3 = v3,
+        };
+    }
+
+    /// <summary>Solo se le pasa a cada bot lo que vería: un golpe sin autor en la fase de acciones se puede notar.</summary>
+    private static void Witness(GameState next, IReadOnlyList<DomainEvent> events, Dictionary<PlayerId, HeroBot> bots)
+    {
+        if (!events.Any(e => e is BetrayalRecorded or EntityDamaged { Source: null, Phase: RoundPhase.Actions }))
+        {
+            return;
+        }
+
+        foreach (var (player, bot) in bots)
+        {
+            bot.Witness(PlayerViewProjector.For(next, player), PlayerViewProjector.VisibleEvents(next, events, player));
+        }
+    }
+
+    private static GameState RunInterlude(GameState state, Dictionary<PlayerId, HeroBot> bots, SeededRandom rng, V3Stats v3)
+    {
+        foreach (var voter in Interludes.Voters(state).ToList())
+        {
+            var (accused, door) = bots[voter.Player].Vote(PlayerViewProjector.For(state, voter.Player));
+            state = MatchRules.CastInterludeVote(state, voter.Player, accused, door).State;
+            v3.Accusations += accused is null ? 0 : 1;
+        }
+
+        var closed = MatchRules.CloseInterlude(state, new HashSet<PlayerId>(), rng).State;
+        v3.Interludes++;
+        var verdict = closed.LastVerdict!;
+        v3.GuiltyConvictions += verdict.Accusations.Count(a => a is { Convicted: true, Guilty: true });
+        v3.InnocentConvictions += verdict.Accusations.Count(a => a is { Convicted: true, Guilty: false });
+        if (verdict.ChosenDoor is { } door1)
+        {
+            v3.Rooms[door1] = v3.Rooms.GetValueOrDefault(door1) + 1;
+        }
+
+        return closed;
     }
 
     private static GameState PickDrafts(GameState state, Dictionary<PlayerId, HeroBot> bots)
@@ -106,6 +165,12 @@ public static class MatchSimulator
         {
             var view = PlayerViewProjector.For(state, hero.Player);
             state = MatchRules.ChooseBlessing(state, hero.Player, bots[hero.Player].ChooseBlessing(view.Self)).State;
+        }
+
+        foreach (var hero in state.Heroes.Where(h => !h.PactOptions.IsEmpty).ToList())
+        {
+            var view = PlayerViewProjector.For(state, hero.Player);
+            state = MatchRules.ChoosePact(state, hero.Player, bots[hero.Player].ChoosePact(view.Self)).State;
         }
 
         return state;
@@ -142,7 +207,7 @@ public static class MatchSimulator
         return orders;
     }
 
-    private static void Tally(IReadOnlyList<DomainEvent> events, Dictionary<PlayerId, MutableStats> stats, HashSet<PlayerId> fallen)
+    private static void Tally(IReadOnlyList<DomainEvent> events, Dictionary<PlayerId, MutableStats> stats, HashSet<PlayerId> fallen, V3Stats v3)
     {
         foreach (var domainEvent in events)
         {
@@ -165,6 +230,10 @@ public static class MatchSimulator
                     break;
                 case BetrayalRecorded betrayal:
                     stats[betrayal.Traitor].DamageToAllies += betrayal.Damage;
+                    v3.Sabotages += betrayal.Kind == BetrayalKind.Sabotage ? 1 : 0;
+                    break;
+                case Pushed:
+                    v3.Pushes++;
                     break;
                 case EntityDamaged { Source.Hero: { } source, Target.Hero: { } target } when source != target:
                     stats[source].DamageToAllies += domainEvent is EntityDamaged d ? d.Amount : 0;
@@ -375,6 +444,9 @@ public sealed class BalanceReport
             return cleared.Count == 0 ? "-" : $"{cleared.Average(g => (double)g.RoundsToClear[i]):F1}";
         });
         text.AppendLine(culture, $"Rondas por sala (si se llega): {string.Join(" / ", perRoom)}; hasta despejarla: {string.Join(" / ", toClear)}.");
+        text.AppendLine(culture, $"Por partida: {_games.Average(g => g.V3.Sabotages):F2} sabotajes, {_games.Average(g => g.V3.Pushes):F2} empujones, {_games.Average(g => g.V3.Interludes):F2} interludios, {_games.Average(g => g.V3.Accusations):F2} acusaciones, {_games.Average(g => g.V3.GuiltyConvictions):F2} condenas de culpables, {_games.Average(g => g.V3.InnocentConvictions):F2} de inocentes, {_games.Average(g => g.V3.PactsFulfilled):F2} misiones cumplidas.");
+        var doors = _games.SelectMany(g => g.V3.Rooms).GroupBy(r => r.Key).OrderBy(r => r.Key);
+        text.AppendLine(culture, $"Puertas elegidas: {string.Join(", ", doors.Select(d => $"{d.Key} {d.Sum(r => r.Value)}"))}.");
         return text.ToString();
     }
 

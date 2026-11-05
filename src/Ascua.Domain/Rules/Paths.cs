@@ -91,7 +91,7 @@ internal static class Paths
         ctx.Update(ember with { Facing = direction, SkillCooldown = PathRules.KindleCooldown });
         var target = RoundContext.FirstInLine(ember.Position, direction, PathRules.KindleRange, p =>
             ctx.HeroAt(p) is { IsActive: true } hero ? hero : null);
-        if (target is not null && target.EmberShieldBy.Count < PathRules.MaxEmberShield)
+        if (target is not null && target.EmberShieldBy.Count < PathRules.MaxEmberShield && !target.Has(Blessing.BrokenMirror))
         {
             ctx.Update(target with { Shield = target.Shield + 1, EmberShieldBy = target.EmberShieldBy.Add(ember.Player) });
         }
@@ -110,7 +110,7 @@ internal static class Paths
     public static void Rekindle(RoundContext ctx, Hero ember, Direction direction)
     {
         ctx.Update(ember with { Facing = direction });
-        if (ctx.HeroAt(ember.Position.Step(direction)) is not { Status: HeroStatus.Down } fallen)
+        if (ctx.HeroAt(ember.Position.Step(direction)) is not { Status: HeroStatus.Down, CanBeRevived: true } fallen)
         {
             return;
         }
@@ -167,7 +167,7 @@ internal static class Paths
         foreach (var ember in ctx.Heroes.Where(h => h.IsEmber).OrderBy(h => h.Seat).ToList())
         {
             var allies = ctx.Heroes
-                .Where(h => h is { IsActive: true, HasBody: true, WarmthCooldown: 0 } && h.Hp < h.MaxHp && h.DistanceTo(ember.Position) <= 1)
+                .Where(h => h is { IsActive: true, HasBody: true, WarmthCooldown: 0, CanHeal: true } && h.Hp < h.MaxHp && h.DistanceTo(ember.Position) <= 1)
                 .OrderBy(h => h.Seat)
                 .ToList();
             foreach (var ally in allies)
@@ -276,7 +276,7 @@ internal static class Paths
 
         foreach (var hero in ctx.Heroes.Where(h => h.IsActive).ToList())
         {
-            ctx.Update(hero with { Shield = hero.Shield + 1 });
+            ctx.Update(hero with { Shield = hero.Shield + (hero.Has(Blessing.BrokenMirror) ? 0 : 1) });
         }
 
         if (wardenRoom && ctx.Enemies.Find(e => e.Kind == EnemyKind.Warden) is { } warden)

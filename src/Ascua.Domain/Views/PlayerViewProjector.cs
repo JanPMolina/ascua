@@ -40,6 +40,7 @@ public static class PlayerViewProjector
                 {
                     SecondBody = h.SecondBody is { } second && IsShown(state, me, h, second) ? second : null,
                     DebtToMe = h.DebtTo == viewer && h.Debt > 0 ? h.Debt : null,
+                    Convictions = h.Progress.Convictions,
                 };
             })
             .ToImmutableList();
@@ -57,7 +58,7 @@ public static class PlayerViewProjector
 
         var plunderer = me.HasSynergy(Synergy.Plunderer);
         var chests = room.Chests
-            .Where(c => CanSee(c.Position))
+            .Where(c => plunderer || CanSee(c.Position))
             .Select(c => new ChestView(
                 c.Id,
                 c.Position,
@@ -97,7 +98,7 @@ public static class PlayerViewProjector
             me.Frozen,
             me.BurnRounds,
             me.SilverKeys,
-            me.VisionRadius,
+            state.VisionOf(me),
             me.Blessings,
             BlessingRules.SynergiesOf(me.Blessings),
             me.DraftOptions,
@@ -118,9 +119,13 @@ public static class PlayerViewProjector
             DebtTo = me.DebtTo,
             RewindTile = rewind?.Position,
             RewindHp = rewind?.Hp,
+            PactOptions = me.PactOptions,
+            PactTarget = me.PactOptions.IsEmpty ? me.PactTarget : null,
+            PushCooldown = me.PushCooldown,
+            CanSabotage = me.CanSabotage(state.RoomIndex),
         };
 
-        var outcome = state.Outcome is { } o ? new OutcomeView(o.Kind, o.Reason, o.Winners, o.Scores) { Betrayals = o.Betrayals } : null;
+        var outcome = state.Outcome is { } o ? new OutcomeView(o.Kind, o.Reason, o.Winners, o.Scores) { Betrayals = o.Betrayals, Awards = o.Awards } : null;
 
         return new PlayerView(
             viewer,
@@ -144,7 +149,30 @@ public static class PlayerViewProjector
             Noise = me.IsBlind ? state.NoiseTiles : [],
             BellRinger = state.IsBellRound ? state.BellRinger : null,
             BellClosed = state.IsBellRound && state.BellClosed,
+            Room = new RoomInfoView(room.Type, room.FloodedRows(state.Round)),
+            Curses = state.Curses,
+            Interlude = ProjectInterlude(state, viewer),
+            LastVerdict = state.LastVerdict,
         };
+    }
+
+    /// <summary>De los votos, cada jugador solo recibe el suyo; de los demás, si ya votaron.</summary>
+    private static InterludeView? ProjectInterlude(GameState state, PlayerId viewer)
+    {
+        if (state is not { Phase: MatchPhase.Interlude, Interlude: { } interlude })
+        {
+            return null;
+        }
+
+        ImmutableList<PlayerId> voters = [.. Rules.Interludes.Voters(state).Select(h => h.Player)];
+        return new InterludeView(
+            interlude.EndedRoom,
+            interlude.Doors,
+            voters,
+            [.. interlude.Ballots.Select(b => b.Voter)],
+            [.. Rules.Interludes.Candidates(state, viewer).Select(h => h.Player)],
+            voters.Contains(viewer),
+            interlude.Ballots.Find(b => b.Voter == viewer));
     }
 
     /// <summary>
@@ -256,7 +284,7 @@ public static class PlayerViewProjector
 
     private static bool SeesTile(GameState state, Hero me, Position position)
     {
-        if (me.DistanceTo(position) <= me.VisionRadius)
+        if (me.DistanceTo(position) <= state.VisionOf(me) || me.Has(Blessing.Lamp))
         {
             return true;
         }

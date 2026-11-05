@@ -33,7 +33,7 @@ public static class Outcomes
             outcome = Defeat(ctx.Heroes, DefeatReason.RoundLimit);
         }
 
-        return outcome with { Betrayals = Summarize(ctx.Betrayals) };
+        return outcome with { Betrayals = Summarize(ctx.Betrayals), Awards = Awards.Compute(ctx.Heroes) };
     }
 
     /// <summary>Traiciones sumadas por traidor y víctima, en el orden en que ocurrieron.</summary>
@@ -82,16 +82,20 @@ public static class Outcomes
         };
     }
 
-    /// <summary>Puntuación final: ascuas más el pacto cumplido (+4), que se revela ahora.</summary>
-    public static ImmutableList<FinalScore> Scores(IEnumerable<Hero> heroes) =>
-    [
-        .. heroes.OrderBy(h => h.Seat).Select(h =>
-        {
-            var fulfilled = PactRules.IsFulfilled(h.Pact, h.Progress);
-            var embers = FinalEmbers(h);
-            return new FinalScore(h.Player, embers, h.Pact, fulfilled, embers + (fulfilled ? PactRules.Reward : 0));
-        }),
-    ];
+    /// <summary>Puntuación final: ascuas más la misión cumplida (+3), que se revela ahora.</summary>
+    public static ImmutableList<FinalScore> Scores(IReadOnlyCollection<Hero> heroes)
+    {
+        ArgumentNullException.ThrowIfNull(heroes);
+        return
+        [
+            .. heroes.OrderBy(h => h.Seat).Select(h =>
+            {
+                var fulfilled = PactRules.IsFulfilled(h, heroes);
+                var embers = FinalEmbers(h);
+                return new FinalScore(h.Player, embers, h.Pact, fulfilled, embers + (fulfilled ? PactRules.Reward : 0));
+            }),
+        ];
+    }
 
     /// <summary>
     /// Gana quien tenga más ascuas entre los héroes no extintos, las Brasas y los Renegados en pie;

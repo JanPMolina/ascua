@@ -4,6 +4,12 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
+/// <summary>Enemigo muerto esta ronda en la fase de acciones: quien lo mató y quién ya cobró su asistencia.</summary>
+internal sealed record FallenEnemy(int EnemyId, Position Tile, PlayerId? Killer)
+{
+    public HashSet<PlayerId> Assisted { get; } = [];
+}
+
 /// <summary>
 /// Copia de trabajo controlada de una ronda: listas mutables de registros inmutables.
 /// Solo vive dentro de <see cref="Resolver"/>; al final se congela en un <see cref="GameState"/> nuevo.
@@ -21,6 +27,7 @@ internal sealed class RoundContext
         Rooms = [.. state.Rooms];
         RoomIndex = state.RoomIndex;
         NextEnemyId = state.NextEnemyId;
+        NextChestId = state.NextChestId;
         Betrayals = [.. state.Betrayals];
         BellRound = state.BellRound;
         BellRinger = state.BellRinger;
@@ -36,6 +43,24 @@ internal sealed class RoundContext
     public List<Room> Rooms { get; }
     public int RoomIndex { get; set; }
     public int NextEnemyId { get; set; }
+    public int NextChestId { get; set; }
+
+    /// <summary>Se activó la escalera esta ronda: al terminar se abre este interludio.</summary>
+    public InterludeState? OpeningInterlude { get; set; }
+
+    /// <summary>Quién intentó dar un paso esta ronda (aunque rebotara).</summary>
+    public HashSet<PlayerId> Stepped { get; } = [];
+
+    /// <summary>Quién le dio un ataque a cada enemigo esta ronda.</summary>
+    public Dictionary<int, HashSet<PlayerId>> Attackers { get; } = [];
+
+    /// <summary>Enemigos que murieron en la fase de acciones: un ataque posterior que llegue allí es asistencia.</summary>
+    public List<FallenEnemy> Corpses { get; } = [];
+
+    public RoundPhase Phase
+    {
+        set => _log.Phase = value;
+    }
     public bool WardenSlain { get; set; }
 
     public HashSet<PlayerId> Guarding { get; } = [];
@@ -115,9 +140,6 @@ internal sealed class RoundContext
         NoiseTiles.Clear();
     }
 
-    /// <summary>Tirada de probabilidad. Solo consume azar si el resultado no es seguro.</summary>
-    public bool Chance(int percent) => percent > 0 && (percent >= 100 || Rng.Next(100) < percent);
-
     public Hero Hero(PlayerId player) =>
         Heroes.Find(h => h.Player == player) ?? throw new InvalidOperationException($"Héroe desconocido: {player}.");
 
@@ -173,7 +195,7 @@ internal sealed class RoundContext
 
     public Enemy Spawn(EnemyKind kind, Position position, int? hp = null, bool isSplit = false)
     {
-        var enemy = Model.Enemy.Create(NextEnemyId++, kind, position, hp) with { IsSplit = isSplit };
+        var enemy = Model.Enemy.Create(NextEnemyId++, kind, position, EnemyCatalog.HpOf(kind, hp ?? EnemyCatalog.For(kind).MaxHp, Start.Curses)) with { IsSplit = isSplit };
         Enemies.Add(enemy);
         MakeNoise(enemy);
         Emit(new EnemySpawned(enemy.Id, kind, position) { Audience = Audience.At(position) });

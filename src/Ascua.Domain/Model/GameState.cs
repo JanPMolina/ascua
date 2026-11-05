@@ -8,6 +8,9 @@ public enum MatchPhase
     Drafting,
     InProgress,
     Finished,
+
+    /// <summary>Interludio tras la escalera: El Juicio y la elección de puerta (06-version-3.md §3). No corren rondas.</summary>
+    Interlude,
 }
 
 public enum OutcomeKind
@@ -37,11 +40,35 @@ public enum DefeatReason
 
 public sealed record FinalScore(PlayerId Player, int Embers, PactKind Pact, bool PactFulfilled, int Total);
 
+public enum BetrayalKind
+{
+    /// <summary>Un golpe desviado por Errata.</summary>
+    Diverted,
+
+    /// <summary>Un golpe dado desde un huésped por Polizón.</summary>
+    FromHost,
+
+    /// <summary>Un sabotaje.</summary>
+    Sabotage,
+}
+
 /// <summary>
-/// Daño anónimo a un aliado: un golpe desviado por Errata o dado desde un huésped por Polizón. El registro culpa
-/// al monstruo; esto se guarda en secreto y se revela en la pantalla final.
+/// Daño anónimo a un aliado. El registro no muestra al autor; esto se guarda en secreto, se puede juzgar en el
+/// interludio de la sala en que ocurrió y se revela en la pantalla final.
 /// </summary>
-public sealed record Betrayal(PlayerId Traitor, PlayerId Victim, int Damage);
+public sealed record Betrayal(PlayerId Traitor, PlayerId Victim, int Damage)
+{
+    public BetrayalKind Kind { get; init; }
+
+    /// <summary>Sala en la que ocurrió.</summary>
+    public int Room { get; init; }
+
+    /// <summary>Ya se juzgó y condenó: no cuenta como oculta.</summary>
+    public bool Judged { get; init; }
+}
+
+/// <summary>Título de la pantalla final, calculado con datos reales.</summary>
+public sealed record Award(AwardKind Kind, PlayerId Player, int Value);
 
 public sealed record GameOutcome(
     OutcomeKind Kind,
@@ -51,6 +78,9 @@ public sealed record GameOutcome(
 {
     /// <summary>Traiciones anónimas de la partida, sumadas por traidor y víctima (se revelan al final).</summary>
     public ImmutableList<Betrayal> Betrayals { get; init; } = [];
+
+    /// <summary>Títulos ganados por alguien. Los empates comparten título.</summary>
+    public ImmutableList<Award> Awards { get; init; } = [];
 }
 
 /// <summary>
@@ -76,6 +106,17 @@ public sealed record GameState
     public ImmutableList<Enemy> Enemies { get; init; } = [];
 
     public int NextEnemyId { get; init; } = 1;
+
+    public int NextChestId { get; init; } = 1;
+
+    /// <summary>Maldiciones de la partida: públicas y fijas desde que se crea.</summary>
+    public ImmutableList<Curse> Curses { get; init; } = [];
+
+    /// <summary>Interludio abierto: votos secretos y puertas. Solo existe en <see cref="MatchPhase.Interlude"/>.</summary>
+    public InterludeState? Interlude { get; init; }
+
+    /// <summary>Recuento público del último interludio cerrado.</summary>
+    public InterludeVerdict? LastVerdict { get; init; }
 
     /// <summary>Número de secuencia del último evento emitido.</summary>
     public long LastSeq { get; init; }
@@ -106,6 +147,16 @@ public sealed record GameState
     public Room CurrentRoom => Rooms[RoomIndex];
 
     public Hero? FindHero(PlayerId player) => Heroes.Find(h => h.Player == player);
+
+    public bool HasCurse(Curse curse) => Curses.Contains(curse);
+
+    /// <summary>Radio de visión real de un héroe: el suyo, menos la sala Oscura y la maldición DIM. Mínimo 1.</summary>
+    public int VisionOf(Hero hero)
+    {
+        ArgumentNullException.ThrowIfNull(hero);
+        var penalty = (CurrentRoom.Type == RoomType.Dark ? 1 : 0) + (HasCurse(Curse.Dim) ? 1 : 0);
+        return Math.Max(1, hero.VisionRadius - penalty);
+    }
 
     /// <summary>¿Suena el Repique en la ronda abierta?</summary>
     public bool IsBellRound => BellRinger is not null && BellRound == Round;

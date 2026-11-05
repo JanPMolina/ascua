@@ -9,9 +9,12 @@ internal sealed class EventLog(long lastSeq, int round)
 
     public IReadOnlyList<DomainEvent> Events => _events;
 
+    /// <summary>Fase de la ronda con la que se marcan los eventos.</summary>
+    public RoundPhase? Phase { get; set; }
+
     public void Emit(DomainEvent domainEvent)
     {
         LastSeq++;
-        _events.Add(domainEvent with { Seq = LastSeq, Round = round });
+        _events.Add(domainEvent with { Seq = LastSeq, Round = round, Phase = Phase });
     }
 }

@@ -18,6 +18,15 @@ public enum ErrorCode
     NoPathOffer,
 
     InvalidPathChoice,
+
+    /// <summary>No hay una elección de misión abierta.</summary>
+    NoPactOffer,
+
+    /// <summary>No hay un interludio abierto, o ya votó.</summary>
+    VoteClosed,
+
+    /// <summary>Voto inválido: no puede votar, se acusa a sí mismo o la puerta no existe.</summary>
+    InvalidVote,
 }
 
 /// <summary>Error de dominio tipado. <see cref="Code"/> es estable y es lo que viaja al cliente.</summary>
@@ -35,6 +44,9 @@ public sealed record DomainError(ErrorCode Kind, string Message)
         ErrorCode.InvalidDraftChoice => "INVALID_DRAFT_CHOICE",
         ErrorCode.NoPathOffer => "NO_PATH_OFFER",
         ErrorCode.InvalidPathChoice => "INVALID_PATH_CHOICE",
+        ErrorCode.NoPactOffer => "NO_PACT_OFFER",
+        ErrorCode.VoteClosed => "VOTE_CLOSED",
+        ErrorCode.InvalidVote => "INVALID_VOTE",
         _ => "UNKNOWN",
     };
 }

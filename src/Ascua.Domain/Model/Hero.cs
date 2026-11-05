@@ -134,6 +134,14 @@ public static class HeroRules
 
     /// <summary>Daño de Corrimiento a la criatura que sale por un borde y entra por el otro.</summary>
     public const int WrapDamage = 2;
+
+    /// <summary>Alcance del sabotaje, en línea.</summary>
+    public const int SabotageReach = 2;
+
+    public const int SabotageDamage = 1;
+
+    /// <summary>Espera del empujón (usado en la ronda N, disponible en N+3).</summary>
+    public const int PushCooldown = 3;
 }
 
 /// <summary>Ataque de Anteayer que se repetirá en <see cref="FireRound"/> desde <see cref="Origin"/>.</summary>
@@ -163,7 +171,20 @@ public sealed record Hero
     public ImmutableList<Blessing> Blessings { get; init; } = [];
     public ImmutableList<Blessing> DraftOptions { get; init; } = [];
     public PactKind Pact { get; init; }
+
+    /// <summary>Jugador objetivo de la misión <see cref="PactKind.OutgoldTarget"/>. Solo lo ve su dueño.</summary>
+    public PlayerId? PactTarget { get; init; }
+
+    /// <summary>Las 2 misiones entre las que elige al empezar; vacío cuando ya eligió.</summary>
+    public ImmutableList<PactOffer> PactOptions { get; init; } = [];
+
     public PactProgress Progress { get; init; } = new();
+
+    /// <summary>Sala en la que ya saboteó (-1 = ninguna). Es una vez por sala.</summary>
+    public int SabotagedRoom { get; init; } = -1;
+
+    /// <summary>Rondas que faltan para poder volver a empujar.</summary>
+    public int PushCooldown { get; init; }
 
     /// <summary>Hilván: su segundo cuerpo. <c>null</c> para los demás o mientras no tenga cuerpo en el tablero.</summary>
     public Position? SecondBody { get; init; }
@@ -237,10 +258,22 @@ public sealed record Hero
     public int MaxHp => IsMiser ? Stats.MaxHp : Stats.MaxHp + (Has(Blessing.DoubleHeart) ? 2 : 0) - (Has(Blessing.StoneFist) ? 1 : 0);
 
     /// <summary>Daño básico. El Renegado hace como máximo 1 por golpe (sin Puño de piedra).</summary>
-    public int Damage => IsRenegade ? PathRules.RenegadeMaxDamage : Stats.Damage + (Has(Blessing.StoneFist) ? 1 : 0);
+    public int Damage => IsRenegade ? PathRules.RenegadeMaxDamage : Stats.Damage;
 
+    /// <summary>Su radio de visión, sin la sala ni las maldiciones (ver <see cref="GameState.VisionOf"/>).</summary>
     public int VisionRadius =>
-        (IsEmber ? PathRules.EmberVisionRadius : IsBlind ? HeroRules.BlindVisionRadius : HeroCatalog.VisionRadius) + (Has(Blessing.Lamp) ? 1 : 0);
+        Math.Max(1, (IsEmber ? PathRules.EmberVisionRadius : IsBlind ? HeroRules.BlindVisionRadius : HeroCatalog.VisionRadius) - (Has(Blessing.OwlEye) ? 1 : 0));
+
+    /// <summary>Corazón doble: nada lo cura. El Avaro tampoco se cura: su vida son sus ascuas.</summary>
+    public bool CanHeal => !IsMiser && !Has(Blessing.DoubleHeart);
+
+    /// <summary>Último aliento ya gastado: si vuelve a caer, nadie puede levantarlo.</summary>
+    public bool CanBeRevived => !(Has(Blessing.LastBreath) && LastBreathUsed);
+
+    public bool CanSabotage(int roomIndex) => IsActive && !IsInHost && SabotagedRoom != roomIndex;
+
+    /// <summary>Empujan los héroes activos y los Renegados presentes, salvo dentro de un huésped.</summary>
+    public bool CanPush => (IsActive || IsPresentRenegade) && !IsInHost;
 
     /// <summary>Enfriamiento que deja la habilidad al usarse (×2 para el Renegado).</summary>
     public int SkillCooldownOnUse => Stats.SkillCooldown * (IsRenegade ? PathRules.RenegadeCooldownFactor : 1);

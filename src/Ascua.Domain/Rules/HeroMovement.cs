@@ -25,11 +25,12 @@ internal static class HeroMovement
         var bounced = new List<Intent>();
         foreach (var (player, order) in plan.OrderBy(p => ctx.Hero(p.Key).Seat))
         {
-            if (order.Type != OrderType.Move || order.Direction is not { } direction)
+            if (order.Walk is not { } direction)
             {
                 continue;
             }
 
+            ctx.Stepped.Add(player);
             var hero = ctx.Hero(player);
             if (hero.IsEmber)
             {
@@ -145,7 +146,7 @@ internal static class HeroMovement
         ctx.MakeNoise(hero);
         ctx.Emit(new HeroMoved(intent.Player, intent.From, intent.To) { Body = intent.Mover.Body, Audience = Audience.At(intent.To) });
 
-        if (hero.Has(Blessing.FireStep) && ctx.Chance(15))
+        if (hero.Has(Blessing.FireStep))
         {
             Combat.StartFire(ctx, intent.From, hero);
         }

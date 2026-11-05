@@ -34,6 +34,12 @@ internal readonly record struct Attacker(PlayerId? Hero, int? EnemyId, Position?
 internal static class Combat
 {
     public const int FriendlyFireSteal = 1;
+    public const int AssistReward = 1;
+
+    /// <summary>Oro que reparte el Celador al morir, según el daño hecho a él.</summary>
+    public const int WardenBounty = 6;
+
+    public const int WardenFinalBlowReward = 1;
 
     /// <summary>
     /// Golpea a un héroe. Orden: fuego amigo (½, redondeo arriba) → GUARDAR (½, redondeo abajo) → Codicia (+1) → escudo
@@ -90,7 +96,7 @@ internal static class Combat
             return 0;
         }
 
-        var absorbed = Math.Min(target.Shield, damage);
+        var absorbed = Math.Min(target.Has(Blessing.BrokenMirror) ? 0 : target.Shield, damage);
         var kindled = target.EmberShieldBy.Take(Math.Min(absorbed, target.EmberShieldBy.Count)).ToList();
         var remaining = damage - absorbed;
         target = target with { Shield = target.Shield - absorbed, EmberShieldBy = target.EmberShieldBy.RemoveRange(0, kindled.Count) };
@@ -195,6 +201,13 @@ internal static class Combat
 
         var hp = Math.Max(0, enemy.Hp - damage);
         ctx.Emit(new EntityDamaged(enemyRef, damage, attacker.Ref, hp) { Audience = audience });
+        if (enemy.Kind == EnemyKind.Warden && attacker.Hero is { } striker)
+        {
+            // Solo cuenta el daño real: el exceso del último golpe no reparte oro.
+            var hero = ctx.Hero(striker);
+            ctx.Update(hero with { Progress = hero.Progress with { WardenDamage = hero.Progress.WardenDamage + (enemy.Hp - hp) } });
+        }
+
         if (hp == 0)
         {
             Kill(ctx, enemy, attacker);
@@ -255,9 +268,9 @@ internal static class Combat
     public static void Heal(RoundContext ctx, PlayerId player, int amount)
     {
         var hero = ctx.Hero(player);
-        if (!hero.IsVulnerable || hero.IsMiser)
+        if (!hero.IsVulnerable || !hero.CanHeal)
         {
-            // Curarse no existe para el Avaro: ni pociones ni Calidez ni Préstamo.
+            // Curarse no existe para el Avaro ni con Corazón doble: ni pociones ni Calidez ni Préstamo.
             return;
         }
 
@@ -289,6 +302,7 @@ internal static class Combat
         var extinctions = hero.Extinctions + 1;
         hero = hero with
         {
+            Progress = hero.Progress with { GoldAtDeath = Math.Max(hero.Progress.GoldAtDeath, kept) },
             Status = HeroStatus.Extinct,
             Hp = 0,
             Shield = 0,
@@ -353,12 +367,12 @@ internal static class Combat
         ctx.Emit(change with { Audience = Audience.Only(creditor) });
     }
 
-    public static void RecordBetrayal(RoundContext ctx, PlayerId traitorId, PlayerId victim, int damage)
+    public static void RecordBetrayal(RoundContext ctx, PlayerId traitorId, PlayerId victim, int damage, BetrayalKind kind)
     {
-        ctx.Betrayals.Add(new Betrayal(traitorId, victim, damage));
+        ctx.Betrayals.Add(new Betrayal(traitorId, victim, damage) { Kind = kind, Room = ctx.RoomIndex });
         var traitor = ctx.Hero(traitorId);
-        ctx.Update(traitor with { Progress = traitor.Progress with { SneakyAllyHits = traitor.Progress.SneakyAllyHits + 1 } });
-        ctx.Emit(new BetrayalRecorded(traitorId, victim, damage) { Audience = Audience.Only(traitorId) });
+        ctx.Update(traitor with { Progress = traitor.Progress with { Betrayals = traitor.Progress.Betrayals + 1 } });
+        ctx.Emit(new BetrayalRecorded(traitorId, victim, damage) { Kind = kind, Audience = Audience.Only(traitorId) });
     }
 
     /// <summary>Tira ascuas al suelo: se quedan en la casilla hasta que alguien la pise o se cambie de sala.</summary>
@@ -402,13 +416,12 @@ internal static class Combat
     public static void ApplyOnHitEffects(RoundContext ctx, PlayerId attackerId, EntityRef target)
     {
         var attacker = ctx.Hero(attackerId);
-        if (attacker.Has(Blessing.LivingEmber) && ctx.Chance(20))
+        if (attacker.Has(Blessing.LivingEmber))
         {
-            var inferno = attacker.HasSynergy(Synergy.Inferno);
-            Burn(ctx, target, rounds: inferno ? 3 : 2, damage: inferno ? 2 : 1);
+            Burn(ctx, target, rounds: 1, damage: 1);
         }
 
-        if (attacker.Has(Blessing.Frost) && ctx.Chance(20))
+        if (attacker.Has(Blessing.Frost))
         {
             Freeze(ctx, target);
         }
@@ -423,7 +436,7 @@ internal static class Combat
         }
 
         var inferno = owner?.HasSynergy(Synergy.Inferno) == true;
-        var fire = new Fire(position, inferno ? 3 : 2, inferno ? 2 : 1);
+        var fire = new Fire(position, inferno ? 3 : 2, 1);
         ctx.Room = ctx.Room with { Fires = ctx.Room.Fires.RemoveAll(f => f.Position == position).Add(fire) };
         ctx.Emit(new FireStarted(position, fire.Rounds) { Audience = Audience.At(position) });
     }
@@ -436,6 +449,16 @@ internal static class Combat
         foreach (var direction in Directions.All)
         {
             StartFire(ctx, position.Step(direction), owner);
+        }
+    }
+
+    /// <summary>Lo derriban sin daño (empujón a una grieta). Último aliento se aplica como en cualquier caída.</summary>
+    public static void KnockDown(RoundContext ctx, PlayerId player)
+    {
+        var target = ctx.Hero(player);
+        if (target.IsActive)
+        {
+            ctx.Update(Fall(ctx, target with { Hp = 0 }));
         }
     }
 
@@ -460,15 +483,7 @@ internal static class Combat
 
     private static void OnFriendlyFire(RoundContext ctx, Attacker attacker, PlayerId victimId, int miserStolen)
     {
-        var attackerId = attacker.Hero!.Value;
-        var victim = ctx.Hero(victimId);
-        if (attacker.Origin is { } origin && victim.Position.DirectionTo(origin) == victim.Facing.Opposite())
-        {
-            var traitor = ctx.Hero(attackerId);
-            ctx.Update(traitor with { Progress = traitor.Progress with { SneakyAllyHits = traitor.Progress.SneakyAllyHits + 1 } });
-        }
-
-        Steal(ctx, attackerId, victimId, miserStolen);
+        Steal(ctx, attacker.Hero!.Value, victimId, miserStolen);
     }
 
     /// <summary>Golpe de un Renegado que conecta: roba 1 ascua (como el fuego amigo) y +2 si dejó caído al héroe.</summary>
@@ -503,7 +518,7 @@ internal static class Combat
     }
 
     /// <summary>Quien derrota a un Renegado gana +2 ascuas; el Renegado se extingue de nuevo y vuelve a elegir camino.</summary>
-    private static void DefeatRenegade(RoundContext ctx, PlayerId renegadeId, Attacker attacker)
+    public static void DefeatRenegade(RoundContext ctx, PlayerId renegadeId, Attacker attacker)
     {
         ctx.Emit(new RenegadeDefeated(renegadeId, attacker.Hero) { HiddenBy = attacker.Hidden });
         if (attacker.Hero is { } killer && killer != renegadeId)
@@ -522,18 +537,14 @@ internal static class Combat
             return;
         }
 
-        if (!ctx.Chance(target.HasSynergy(Synergy.LivingArmor) ? 50 : 25))
-        {
-            return;
-        }
-
+        var damage = target.HasSynergy(Synergy.LivingArmor) ? 2 : 1;
         if (attacker.EnemyId is { } enemyId)
         {
-            HitEnemy(ctx, enemyId, 1, new Attacker(targetId, null, null));
+            HitEnemy(ctx, enemyId, damage, new Attacker(targetId, null, null));
         }
         else if (attacker.Hero is { } heroId)
         {
-            HitHero(ctx, heroId, 1, Attacker.None);
+            HitHero(ctx, heroId, damage, Attacker.None);
         }
     }
 
@@ -543,6 +554,7 @@ internal static class Combat
         ctx.Enemies.RemoveAll(e => e.Id == enemy.Id);
         ctx.Emit(new EnemyKilled(enemy.Id, enemy.Kind, killer) { HiddenKiller = attacker.Hidden, Audience = Audience.At(enemy.Position) });
         var isWarden = enemy.Kind == EnemyKind.Warden;
+        PayAssists(ctx, enemy, killer);
         if (killer is not null)
         {
             Paths.OnKill(ctx, enemy.Position);
@@ -566,19 +578,29 @@ internal static class Combat
         // El enemigo sobornado suelta lo que le pagaron.
         DropEmbers(ctx, enemy.Position, enemy.Bribes);
 
+        if (isWarden)
+        {
+            PayWardenBounty(ctx);
+        }
+
         if (killer is { } player && ctx.Hero(player) is var hero)
         {
-            var reward = (isWarden ? 5 : 1) + (hero.Has(Blessing.Greed) ? 1 : 0);
+            var kill = isWarden ? WardenFinalBlowReward : ctx.Room.Type == RoomType.Arena ? RoomTypes.ArenaKillReward : 1;
+            var reward = kill + (hero.Has(Blessing.Greed) ? 1 : 0);
+            hero = ctx.Hero(player);
+            ctx.Update(hero with { Progress = hero.Progress with { Kills = hero.Progress.Kills + 1, KilledWarden = hero.Progress.KilledWarden || isWarden } });
             GainEmbers(ctx, player, reward, isWarden ? EmberReason.WardenSlain : EmberReason.EnemySlain);
-            if (isWarden)
-            {
-                hero = ctx.Hero(player);
-                ctx.Update(hero with { Progress = hero.Progress with { KilledWarden = true } });
-            }
-
+            hero = ctx.Hero(player);
             if (hero.Has(Blessing.HungryBlade))
             {
-                Heal(ctx, player, 1);
+                if (hero.IsMiser)
+                {
+                    GainEmbers(ctx, player, 1, EmberReason.EnemySlain);
+                }
+                else
+                {
+                    Heal(ctx, player, 1);
+                }
             }
         }
 
@@ -589,6 +611,49 @@ internal static class Combat
                 ctx.Spawn(EnemyKind.Slime, tile, hp: 1, isSplit: true);
             }
         }
+    }
+
+    /// <summary>Quien le dio un ataque esta ronda sin matarlo gana +1. Un ataque posterior también (ver <see cref="HeroActions"/>).</summary>
+    private static void PayAssists(RoundContext ctx, Enemy enemy, PlayerId? killer)
+    {
+        var corpse = new FallenEnemy(enemy.Id, enemy.Position, killer);
+        foreach (var attacker in ctx.Attackers.GetValueOrDefault(enemy.Id, []).Where(a => a != killer).OrderBy(a => ctx.Hero(a).Seat))
+        {
+            corpse.Assisted.Add(attacker);
+            GainEmbers(ctx, attacker, AssistReward, EmberReason.Assist);
+        }
+
+        ctx.Corpses.Add(corpse);
+    }
+
+    /// <summary>Reparte 6 de oro por el daño hecho al Celador: mayores restos y, en empate, menor asiento. Un retirado no cobra.</summary>
+    private static void PayWardenBounty(RoundContext ctx)
+    {
+        var shares = ctx.Heroes.Where(h => h.Progress.WardenDamage > 0 && h.Status != HeroStatus.Retired)
+            .Select(h => (h.Player, h.Seat, Damage: h.Progress.WardenDamage))
+            .ToList();
+        foreach (var (player, amount) in SplitByLargestRemainder(shares, WardenBounty))
+        {
+            GainEmbers(ctx, player, amount, EmberReason.WardenBounty);
+        }
+    }
+
+    /// <summary>Mayores restos: la parte entera a cada uno y lo que sobra a los restos mayores (empate: menor asiento).</summary>
+    internal static List<(PlayerId Player, int Amount)> SplitByLargestRemainder(IReadOnlyCollection<(PlayerId Player, int Seat, int Damage)> shares, int total)
+    {
+        var sum = shares.Sum(s => s.Damage);
+        if (sum == 0)
+        {
+            return [];
+        }
+
+        var rows = shares
+            .OrderBy(s => s.Seat)
+            .Select(s => (s.Player, s.Seat, Whole: total * s.Damage / sum, Remainder: total * s.Damage % sum))
+            .ToList();
+        var left = total - rows.Sum(r => r.Whole);
+        var extra = rows.OrderByDescending(r => r.Remainder).ThenBy(r => r.Seat).Take(left).Select(r => r.Player).ToHashSet();
+        return [.. rows.Select(r => (r.Player, r.Whole + (extra.Contains(r.Player) ? 1 : 0))).Where(r => r.Item2 > 0)];
     }
 
     private static void Burn(RoundContext ctx, EntityRef target, int rounds, int damage)

@@ -98,6 +98,17 @@ internal static class EnemyTurn
             return shouter.Position;
         }
 
+        // Lámpara: te eligen siempre (con varias, la más cercana). Dentro de un huésped no atrae a nadie.
+        var lamp = ctx.Heroes
+            .Where(h => h.IsActive && !h.IsInHost && h.Has(Blessing.Lamp))
+            .OrderBy(h => h.DistanceTo(enemy.Position))
+            .ThenBy(h => h.Seat)
+            .FirstOrDefault();
+        if (lamp is not null)
+        {
+            return lamp.NearestBody(enemy.Position);
+        }
+
         return ctx.Heroes
             .Where(h => h.IsActive && !h.IsInHost)
             .OrderBy(h => h.DistanceTo(enemy.Position))

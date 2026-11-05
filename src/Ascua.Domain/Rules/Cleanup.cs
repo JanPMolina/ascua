@@ -16,6 +16,7 @@ internal static class Cleanup
     {
         TriggerSpikes(ctx);
         BurnFires(ctx);
+        Flood(ctx);
         TickBurns(ctx);
         TickDownedHeroes(ctx, downAtStart);
         HeroSkills.DrainHosts(ctx);
@@ -60,9 +61,10 @@ internal static class Cleanup
     {
         foreach (var fire in ctx.Room.Fires.ToList())
         {
-            if (ctx.HeroAt(fire.Position) is { IsActive: true } hero)
+            // Infierno: su fuego no le daña. Paso ígneo: el fuego le hace 1 más.
+            if (ctx.HeroAt(fire.Position) is { IsActive: true } hero && !hero.HasSynergy(Synergy.Inferno))
             {
-                Combat.HitHero(ctx, hero.Player, fire.Damage, Attacker.None, fire.Position);
+                Combat.HitHero(ctx, hero.Player, fire.Damage + (hero.Has(Blessing.FireStep) ? 1 : 0), Attacker.None, fire.Position);
             }
 
             if (ctx.EnemyAt(fire.Position) is { } enemy)
@@ -75,6 +77,34 @@ internal static class Cleanup
         {
             Fires = [.. ctx.Room.Fires.Select(f => f with { Rounds = f.Rounds - 1 }).Where(f => f.Rounds > 0)],
         };
+    }
+
+    /// <summary>Sala inundada: el agua sube desde el norte y daña a quien no vuela (se define por fila: un Corrimiento no la mueve).</summary>
+    private static void Flood(RoundContext ctx)
+    {
+        var rows = ctx.Room.FloodedRows(ctx.Round);
+        if (rows == 0)
+        {
+            return;
+        }
+
+        if (rows != ctx.Room.FloodedRows(ctx.Round - 1))
+        {
+            ctx.Emit(new RoomFlooded(rows));
+        }
+
+        foreach (var hero in ctx.Heroes.Where(h => h is { IsActive: true, HasBody: true }).ToList())
+        {
+            foreach (var body in hero.Bodies.Where(b => b.Y < rows).ToList())
+            {
+                Combat.HitHero(ctx, hero.Player, RoomTypes.FloodDamage, Attacker.None, body);
+            }
+        }
+
+        foreach (var id in ctx.Enemies.Where(e => !e.Flies && e.Position.Y < rows).Select(e => e.Id).ToList())
+        {
+            Combat.HitEnemy(ctx, id, RoomTypes.FloodDamage, Attacker.None);
+        }
     }
 
     private static void TickBurns(RoundContext ctx)
@@ -122,6 +152,7 @@ internal static class Cleanup
             {
                 SkillCooldown = Math.Max(0, hero.SkillCooldown - 1),
                 HinderCooldown = Math.Max(0, hero.HinderCooldown - 1),
+                PushCooldown = Math.Max(0, hero.PushCooldown - 1),
                 WarmthCooldown = Math.Max(0, hero.WarmthCooldown - 1),
             });
         }
@@ -151,10 +182,7 @@ internal static class Cleanup
         }
     }
 
-    /// <summary>
-    /// Con la sala sin enemigos, un héroe activo en la escalera lleva a todos a la siguiente sala. Las Brasas
-    /// renacen en la entrada, cada Renegado quita un monstruo de la sala (mínimo 1) y aparece lejos del grupo.
-    /// </summary>
+    /// <summary>Con la sala sin enemigos, un héroe activo en la escalera abre el interludio antes de la sala siguiente.</summary>
     private static void TryAdvanceRoom(RoundContext ctx)
     {
         if (ctx.Enemies.Count > 0 || ctx.RoomIndex >= ctx.Rooms.Count - 1)
@@ -169,6 +197,15 @@ internal static class Cleanup
             return;
         }
 
+        Interludes.Open(ctx);
+    }
+
+    /// <summary>
+    /// Al cerrarse el interludio, todos pasan a la sala siguiente: las Brasas renacen en la entrada, cada Renegado quita un
+    /// monstruo de la sala (mínimo 1) y aparece lejos del grupo.
+    /// </summary>
+    internal static void EnterNextRoom(RoundContext ctx)
+    {
         ctx.RoomIndex++;
         var room = ctx.Room;
         var enemies = room.InitialEnemies;
@@ -202,7 +239,7 @@ internal static class Cleanup
 
         // En la sala nueva nadie hizo ruido todavía.
         ctx.ClearNoise();
-        ctx.Emit(new RoomEntered(ctx.RoomIndex));
+        ctx.Emit(new RoomEntered(ctx.RoomIndex) { Type = room.Type });
         foreach (var player in reborn)
         {
             var hero = ctx.Hero(player);

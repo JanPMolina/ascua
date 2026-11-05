@@ -38,7 +38,34 @@ public sealed record PlayerView(
 
     /// <summary>Venció el plazo reducido del Repique en la ronda abierta.</summary>
     public bool BellClosed { get; init; }
+
+    /// <summary>Tipo de la sala y hasta dónde subió el agua: público.</summary>
+    public RoomInfoView Room { get; init; } = new(RoomType.Normal, 0);
+
+    /// <summary>Maldiciones de la partida: públicas.</summary>
+    public ImmutableList<Curse> Curses { get; init; } = [];
+
+    /// <summary>Interludio abierto; <c>null</c> fuera de él.</summary>
+    public InterludeView? Interlude { get; init; }
+
+    /// <summary>Recuento del último interludio cerrado: público y sin quién votó qué.</summary>
+    public InterludeVerdict? LastVerdict { get; init; }
 }
+
+public sealed record RoomInfoView(RoomType Type, int FloodedRows);
+
+/// <summary>
+/// Interludio visto por un jugador: las puertas, a quién puede acusar y quiénes ya votaron (no qué votaron). De los votos
+/// solo recibe el suyo.
+/// </summary>
+public sealed record InterludeView(
+    int EndedRoom,
+    ImmutableList<RoomType> Doors,
+    ImmutableList<PlayerId> Voters,
+    ImmutableList<PlayerId> Voted,
+    ImmutableList<PlayerId> Candidates,
+    bool CanVote,
+    InterludeBallot? MyBallot);
 
 /// <summary>
 /// Datos completos del propio héroe, incluidos sus secretos (pacto, bendiciones, draft) y los de los caminos:
@@ -82,6 +109,18 @@ public sealed record SelfView(
 
     /// <summary>Anteayer: vida que tenía allí.</summary>
     public int? RewindHp { get; init; }
+
+    /// <summary>Misiones entre las que elegir; vacío si ya eligió.</summary>
+    public ImmutableList<PactOffer> PactOptions { get; init; } = [];
+
+    /// <summary>Objetivo de su misión, si tiene (solo él lo ve).</summary>
+    public PlayerId? PactTarget { get; init; }
+
+    /// <summary>Rondas que faltan para poder empujar.</summary>
+    public int PushCooldown { get; init; }
+
+    /// <summary>¿Puede sabotear en esta sala?</summary>
+    public bool CanSabotage { get; init; }
 }
 
 /// <summary>
@@ -119,6 +158,9 @@ public sealed record AllyView(
 
     /// <summary>Lo que le debe a quien mira: solo lo ven el deudor y la Usurera.</summary>
     public int? DebtToMe { get; init; }
+
+    /// <summary>Veces que lo condenaron en El Juicio: es público.</summary>
+    public int Convictions { get; init; }
 }
 
 /// <summary>Casilla conocida: la visión, o toda la sala para La Escucha. Las de fuera no se envían.</summary>
@@ -144,4 +186,6 @@ public sealed record GroundEmbersView(Position Position, int Amount);
 public sealed record OutcomeView(OutcomeKind Kind, DefeatReason Reason, ImmutableList<PlayerId> Winners, ImmutableList<FinalScore> Scores)
 {
     public ImmutableList<Betrayal> Betrayals { get; init; } = [];
+
+    public ImmutableList<Award> Awards { get; init; } = [];
 }

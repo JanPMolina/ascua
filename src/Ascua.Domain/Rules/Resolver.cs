@@ -7,8 +7,8 @@ namespace Ascua.Domain.Rules;
 /// <summary>
 /// Resolución pura y determinista de una ronda: (estado, órdenes, azar) → (estado nuevo, eventos).
 /// Orden fijo (planteamiento/05-heroes.md, §3): 0) se revelan los caminos elegidos; 1) GUARDAR y Volver;
-/// 2) Corrimiento; 3) movimientos con rebote (Espejo de Hilván, Polizón mueve a su huésped); 4) ataques,
-/// habilidades e interacciones por iniciativa, con el Eco de Anteayer justo después de su dueño; 5) los enemigos
+/// 2) Corrimiento; 3) todos los pasos, con rebote (Espejo de Hilván, Polizón mueve a su huésped); 4) todas las acciones
+/// por iniciativa, desde donde quedó cada uno, con el Eco de Anteayer justo después de su dueño; 5) los enemigos
 /// ejecutan lo anunciado; 6) los enemigos se mueven y anuncian (salvo el huésped); 7) disparadores y limpieza.
 /// </summary>
 public static class Resolver
@@ -26,21 +26,29 @@ public static class Resolver
             throw new InvalidOperationException("Solo se resuelven rondas de partidas en curso.");
         }
 
-        var ctx = new RoundContext(state, rng);
+        var ctx = new RoundContext(state, rng) { Phase = RoundPhase.Reveal };
         Paths.RevealChoices(ctx);
         HeroSkills.ClearShouts(ctx);
         HeroSkills.RecordHistory(ctx);
         var downAtStart = state.Heroes.Where(h => h.Status == HeroStatus.Down).Select(h => h.Player).ToHashSet();
         var plan = PlanOrders(ctx, orders);
 
+        ctx.Phase = RoundPhase.Guard;
         ActivateGuards(ctx, plan);
         HeroSkills.Rewind(ctx, plan);
+        ctx.Phase = RoundPhase.Shift;
         RoomShift.Resolve(ctx, plan);
+        ctx.Phase = RoundPhase.Movement;
         HeroMovement.Resolve(ctx, plan);
+        ctx.Phase = RoundPhase.Actions;
         HeroActions.Resolve(ctx, plan);
+        ctx.Phase = RoundPhase.EnemyAttacks;
         EnemyTurn.ExecuteTelegraphs(ctx);
+        ctx.Phase = RoundPhase.EnemyMoves;
         EnemyTurn.MoveAndAnnounce(ctx);
+        ctx.Phase = RoundPhase.Cleanup;
         Cleanup.Run(ctx, downAtStart);
+        ctx.Phase = RoundPhase.End;
 
         return Finish(ctx);
     }
@@ -87,9 +95,9 @@ public static class Resolver
             {
                 Paths.Beacon(ctx, hero);
             }
-            else if (!hero.IsInHost)
+            else if (!hero.IsInHost && !hero.Has(Blessing.HungryBlade))
             {
-                // Dentro de un huésped, GUARDAR no hace nada.
+                // Dentro de un huésped, GUARDAR no hace nada; con Hoja hambrienta, tampoco.
                 ctx.Guarding.Add(player);
                 ctx.Emit(new HeroGuarded(player) { Audience = RoundContext.AudienceOf(hero) });
             }
@@ -126,25 +134,33 @@ public static class Resolver
         }
 
         ctx.Emit(new RoundResolved(ctx.Round));
-        var next = ctx.Start with
+        var interlude = outcome is null ? ctx.OpeningInterlude : null;
+        var next = Freeze(ctx) with
         {
             Round = outcome is null ? ctx.Round + 1 : ctx.Round,
-            Phase = outcome is null ? MatchPhase.InProgress : MatchPhase.Finished,
-            Heroes = [.. ctx.Heroes],
-            Enemies = [.. ctx.Enemies],
-            Rooms = [.. ctx.Rooms],
-            RoomIndex = ctx.RoomIndex,
-            NextEnemyId = ctx.NextEnemyId,
-            LastSeq = ctx.LastSeq,
+            Phase = outcome is not null ? MatchPhase.Finished : interlude is not null ? MatchPhase.Interlude : MatchPhase.InProgress,
+            Interlude = interlude,
             Outcome = outcome,
-            Betrayals = [.. ctx.Betrayals],
-            NoisyHeroes = [.. ctx.NoisyHeroes],
-            NoisyEnemies = [.. ctx.NoisyEnemies],
-            NoiseTiles = [.. ctx.NoiseTiles],
-            BellRound = ctx.BellRound,
-            BellRinger = ctx.BellRinger,
-            BellClosed = ctx.BellClosed,
         };
         return (next, ctx.Events);
     }
+
+    /// <summary>Congela la copia de trabajo en un estado nuevo (sin tocar ronda, fase ni resultado).</summary>
+    internal static GameState Freeze(RoundContext ctx) => ctx.Start with
+    {
+        Heroes = [.. ctx.Heroes],
+        Enemies = [.. ctx.Enemies],
+        Rooms = [.. ctx.Rooms],
+        RoomIndex = ctx.RoomIndex,
+        NextEnemyId = ctx.NextEnemyId,
+        NextChestId = ctx.NextChestId,
+        LastSeq = ctx.LastSeq,
+        Betrayals = [.. ctx.Betrayals],
+        NoisyHeroes = [.. ctx.NoisyHeroes],
+        NoisyEnemies = [.. ctx.NoisyEnemies],
+        NoiseTiles = [.. ctx.NoiseTiles],
+        BellRound = ctx.BellRound,
+        BellRinger = ctx.BellRinger,
+        BellClosed = ctx.BellClosed,
+    };
 }

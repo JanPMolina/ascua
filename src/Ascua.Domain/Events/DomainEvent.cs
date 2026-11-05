@@ -21,6 +21,20 @@ public enum AudienceKind
     Group,
 }
 
+/// <summary>Fases de la resolución de una ronda (06-version-3.md §1): el cliente agrupa los eventos con esto.</summary>
+public enum RoundPhase
+{
+    Reveal,
+    Guard,
+    Shift,
+    Movement,
+    Actions,
+    EnemyAttacks,
+    EnemyMoves,
+    Cleanup,
+    End,
+}
+
 /// <summary>Quién puede recibir un evento. Lo usa <c>PlayerViewProjector</c> para filtrar.</summary>
 public readonly record struct Audience(AudienceKind Kind, PlayerId? Player, Position? Position)
 {
@@ -42,6 +56,9 @@ public abstract record DomainEvent
     public long Seq { get; init; }
     public int Round { get; init; }
     public Audience Audience { get; init; } = Audience.Everyone;
+
+    /// <summary>Fase de la ronda en la que ocurrió; <c>null</c> fuera de una resolución.</summary>
+    public RoundPhase? Phase { get; init; }
 }
 
 public enum PreventionReason
@@ -78,6 +95,18 @@ public enum EmberReason
 {
     EnemySlain,
     WardenSlain,
+
+    /// <summary>Parte del reparto de 6 por el daño hecho al Celador.</summary>
+    WardenBounty,
+
+    /// <summary>Asistencia: su ataque también alcanzó al enemigo que murió.</summary>
+    Assist,
+
+    /// <summary>Condenado en El Juicio.</summary>
+    TrialPenalty,
+
+    /// <summary>Acusó a un inocente que resultó condenado.</summary>
+    TrialFine,
     ChestOpened,
     AllyRevived,
     StolenFromAlly,
@@ -202,7 +231,10 @@ public sealed record BrazierToppled(Position Position) : DomainEvent;
 
 public sealed record TrapTriggered(Position Position) : DomainEvent;
 
-public sealed record RoomEntered(int RoomIndex) : DomainEvent;
+public sealed record RoomEntered(int RoomIndex) : DomainEvent
+{
+    public RoomType Type { get; init; }
+}
 
 public sealed record PactRevealed(PlayerId Player, PactKind Pact, bool Fulfilled) : DomainEvent;
 
@@ -244,7 +276,10 @@ public sealed record EchoFired(PlayerId Player, Position Origin, Direction Direc
 public sealed record AttackCorrected(int? EnemyId, ImmutableList<Position> Tiles) : DomainEvent;
 
 /// <summary>Traición anónima (privado: solo la ve quien la cometió hasta la pantalla final).</summary>
-public sealed record BetrayalRecorded(PlayerId Traitor, PlayerId Victim, int Damage) : DomainEvent;
+public sealed record BetrayalRecorded(PlayerId Traitor, PlayerId Victim, int Damage) : DomainEvent
+{
+    public BetrayalKind Kind { get; init; }
+}
 
 /// <summary>Al terminar se revelan las traiciones, sumadas por traidor y víctima.</summary>
 public sealed record BetrayalRevealed(PlayerId Traitor, PlayerId Victim, int Damage) : DomainEvent;
@@ -269,7 +304,7 @@ public enum DebtReason
     /// <summary>Nuevo Préstamo de la Usurera.</summary>
     Loan,
 
-    /// <summary>Subió por el interés (cada 3 rondas).</summary>
+    /// <summary>Subió por el interés (cada 5 rondas).</summary>
     Interest,
 
     /// <summary>Se pagó con ascuas ganadas.</summary>
@@ -311,3 +346,21 @@ public sealed record BellRung(PlayerId Player, int ForRound) : DomainEvent;
 
 /// <summary>Venció el plazo reducido del Repique en la ronda abierta.</summary>
 public sealed record BellExpired(PlayerId Ringer) : DomainEvent;
+
+/// <summary>El jugador eligió misión (privado).</summary>
+public sealed record PactChosen(PlayerId Player, PactKind Pact) : DomainEvent;
+
+/// <summary>Empujón: es visible y lleva autor. <see cref="Target"/> es un héroe o un enemigo.</summary>
+public sealed record Pushed(PlayerId Pusher, EntityRef Target, Position From, Position To) : DomainEvent;
+
+/// <summary>El agua subió: ya hay tantas filas inundadas desde el norte.</summary>
+public sealed record RoomFlooded(int Rows) : DomainEvent;
+
+/// <summary>Se activó la escalera: abre El Juicio y, si toca, la votación de puertas.</summary>
+public sealed record InterludeOpened(int EndedRoom, ImmutableList<RoomType> Doors) : DomainEvent;
+
+/// <summary>Su voto (privado: nadie más sabe qué votó).</summary>
+public sealed record VoteCast(PlayerId Voter, PlayerId? Accused, int? Door) : DomainEvent;
+
+/// <summary>Se cerró el interludio: el recuento público.</summary>
+public sealed record InterludeClosed(InterludeVerdict Verdict) : DomainEvent;

@@ -1,12 +1,14 @@
+using Ascua.Domain.Rules;
+
 namespace Ascua.Domain.Model;
 
-/// <summary>Pactos secretos: uno por jugador, al azar; se revelan al final.</summary>
+/// <summary>Misiones secretas: cada jugador elige 1 entre 2 y se revelan al final (06-version-3.md §6).</summary>
 public enum PactKind
 {
-    /// <summary>Dar el golpe final al Celador.</summary>
+    /// <summary>Obsoleta: solo existe para poder leer partidas viejas.</summary>
     SlayWarden,
 
-    /// <summary>Terminar sin haber caído.</summary>
+    /// <summary>Obsoleta: solo existe para poder leer partidas viejas.</summary>
     NeverFall,
 
     /// <summary>Abrir 3 cofres.</summary>
@@ -15,31 +17,88 @@ public enum PactKind
     /// <summary>Levantar a 2 aliados.</summary>
     ReviveTwoAllies,
 
-    /// <summary>Golpear a un aliado al menos 2 veces sin que te descubran (por la espalda o con una traición anónima).</summary>
+    /// <summary>Obsoleta: solo existe para poder leer partidas viejas.</summary>
     BetrayUnseen,
+
+    /// <summary>Hacer el mayor daño al Celador.</summary>
+    MostWardenDamage,
+
+    /// <summary>2 traiciones anónimas sin que te condenen nunca.</summary>
+    BetrayTwiceUnconvicted,
+
+    /// <summary>Que un jugador concreto (secreto) termine con menos oro que tú.</summary>
+    OutgoldTarget,
+
+    /// <summary>Empujar a 2 enemigos a pinchos, fuego o grietas.</summary>
+    PushTwoIntoHazard,
+
+    /// <summary>Acusar a alguien que resulta condenado y culpable.</summary>
+    CorrectConviction,
 }
 
-/// <summary>Contadores que deciden si un pacto se cumplió.</summary>
+/// <summary>Una misión ofrecida. <see cref="Target"/> solo en <see cref="PactKind.OutgoldTarget"/>.</summary>
+public sealed record PactOffer(PactKind Kind, PlayerId? Target);
+
+/// <summary>Contadores de lo que hizo cada héroe: deciden las misiones y los títulos finales.</summary>
 public sealed record PactProgress
 {
     public int ChestsOpened { get; init; }
     public int Revives { get; init; }
-    public int SneakyAllyHits { get; init; }
     public bool KilledWarden { get; init; }
     public bool HasFallen { get; init; }
+
+    /// <summary>Traiciones anónimas cometidas.</summary>
+    public int Betrayals { get; init; }
+
+    /// <summary>Veces que lo condenaron en El Juicio.</summary>
+    public int Convictions { get; init; }
+
+    /// <summary>Acusaciones suyas que acabaron en condena de un culpable.</summary>
+    public int CorrectAccusations { get; init; }
+
+    public int HazardPushes { get; init; }
+    public int Pushes { get; init; }
+    public int Kills { get; init; }
+    public int WardenDamage { get; init; }
+    public int TrialGoldLost { get; init; }
+
+    /// <summary>El mayor oro con el que murió.</summary>
+    public int GoldAtDeath { get; init; }
 }
 
 public static class PactRules
 {
-    public const int Reward = 4;
+    public const int Reward = 3;
+    public const int OfferedOptions = 2;
 
-    public static bool IsFulfilled(PactKind pact, PactProgress progress) => pact switch
+    /// <summary>Misiones que se ofrecen hoy.</summary>
+    public static IReadOnlyList<PactKind> Offered { get; } =
+    [
+        PactKind.MostWardenDamage,
+        PactKind.OpenThreeChests,
+        PactKind.ReviveTwoAllies,
+        PactKind.BetrayTwiceUnconvicted,
+        PactKind.OutgoldTarget,
+        PactKind.PushTwoIntoHazard,
+        PactKind.CorrectConviction,
+    ];
+
+    public static bool IsFulfilled(Hero hero, IReadOnlyCollection<Hero> heroes)
     {
-        PactKind.SlayWarden => progress.KilledWarden,
-        PactKind.NeverFall => !progress.HasFallen,
-        PactKind.OpenThreeChests => progress.ChestsOpened >= 3,
-        PactKind.ReviveTwoAllies => progress.Revives >= 2,
-        PactKind.BetrayUnseen => progress.SneakyAllyHits >= 2,
-        _ => false,
-    };
+        ArgumentNullException.ThrowIfNull(hero);
+        ArgumentNullException.ThrowIfNull(heroes);
+        var progress = hero.Progress;
+        return hero.Pact switch
+        {
+            PactKind.MostWardenDamage => progress.WardenDamage > 0 && progress.WardenDamage >= heroes.Max(h => h.Progress.WardenDamage),
+            PactKind.OpenThreeChests => progress.ChestsOpened >= 3,
+            PactKind.ReviveTwoAllies => progress.Revives >= 2,
+            PactKind.BetrayTwiceUnconvicted => progress.Betrayals >= 2 && progress.Convictions == 0,
+            PactKind.OutgoldTarget => heroes.FirstOrDefault(h => h.Player == hero.PactTarget) is { } target
+                && Outcomes.FinalEmbers(hero) > Outcomes.FinalEmbers(target),
+            PactKind.PushTwoIntoHazard => progress.HazardPushes >= 2,
+            PactKind.CorrectConviction => progress.CorrectAccusations >= 1,
+            _ => false,
+        };
+    }
 }

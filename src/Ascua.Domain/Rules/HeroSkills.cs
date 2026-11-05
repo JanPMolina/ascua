@@ -98,7 +98,7 @@ internal static class HeroSkills
 
         if (hero is { IsVulnerable: true })
         {
-            AnonymousHit(ctx, errata, hero, damage, announcer.Id, tile);
+            AnonymousHit(ctx, errata, hero, damage, announcer.Id, tile, BetrayalKind.Diverted);
         }
     }
 
@@ -106,7 +106,7 @@ internal static class HeroSkills
     /// Golpe anónimo de un héroe a otro portador: sin fuego amigo ni robo. A un aliado es una traición secreta; a un
     /// rival cuenta para quien lo dio (y un Renegado nunca hace más de 1).
     /// </summary>
-    private static void AnonymousHit(RoundContext ctx, Hero author, Hero target, int damage, int shownEnemy, Position tile)
+    private static void AnonymousHit(RoundContext ctx, Hero author, Hero target, int damage, int shownEnemy, Position tile, BetrayalKind kind)
     {
         if (target.Player == author.Player)
         {
@@ -133,7 +133,7 @@ internal static class HeroSkills
         var dealt = Combat.HitHero(ctx, target.Player, damage, new Attacker(null, shownEnemy, null), tile);
         if (dealt > 0)
         {
-            Combat.RecordBetrayal(ctx, author.Player, target.Player, dealt);
+            Combat.RecordBetrayal(ctx, author.Player, target.Player, dealt, kind);
         }
     }
 
@@ -360,7 +360,7 @@ internal static class HeroSkills
 
             if (ctx.HeroAt(position) is { IsVulnerable: true } hero)
             {
-                AnonymousHit(ctx, polizon, hero, host.Stats.Damage, host.Id, position);
+                AnonymousHit(ctx, polizon, hero, host.Stats.Damage, host.Id, position, BetrayalKind.FromHost);
                 return;
             }
         }
@@ -433,7 +433,7 @@ internal static class HeroSkills
     {
         var target = RoundContext.FirstInLine(usurera.Position, direction, HeroRules.LoanReach, p =>
             ctx.HeroAt(p) is { } hero && hero.Player != usurera.Player && !hero.IsMiser && hero.IsSameFaction(usurera)
-                && (hero.Status == HeroStatus.Down || (hero.IsVulnerable && hero.Hp < hero.MaxHp))
+                && (hero is { Status: HeroStatus.Down, CanBeRevived: true } || (hero is { IsVulnerable: true, CanHeal: true } && hero.Hp < hero.MaxHp))
                 ? hero
                 : null);
         if (target is null)

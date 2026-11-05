@@ -7,13 +7,33 @@ public enum OrderType
     Attack,
     Skill,
     Interact,
+
+    /// <summary>Sabotaje: 1 de daño anónimo al primer aliado en línea, una vez por sala (06-version-3.md §2).</summary>
+    Sabotage,
+
+    /// <summary>Empujón: mueve 1 casilla a lo que esté adyacente en esa dirección (06-version-3.md §7).</summary>
+    Push,
 }
 
-/// <summary>Intención de un jugador para una ronda. El cliente nunca envía resultados.</summary>
+/// <summary>
+/// Intención de un jugador para una ronda: un paso opcional y una acción opcional con dirección. El cliente nunca envía
+/// resultados. <c>MOVE</c> es solo paso (su dirección es el paso) y <c>GUARD</c> no admite paso: quien defiende se planta.
+/// </summary>
 public sealed record Order(OrderType Type, Direction? Direction)
 {
     /// <summary>Acción por defecto cuando el jugador no decide a tiempo.</summary>
     public static Order DefaultGuard { get; } = new(OrderType.Guard, null);
 
-    public bool IsWellFormed() => Type == OrderType.Guard ? Direction is null : Direction is not null;
+    /// <summary>Paso previo a la acción. Se resuelve en la fase de movimientos.</summary>
+    public Direction? Step { get; init; }
+
+    /// <summary>Hacia dónde camina en la fase de movimientos, si camina.</summary>
+    public Direction? Walk => Type == OrderType.Move ? Direction : Step;
+
+    public bool IsWellFormed() => Type switch
+    {
+        OrderType.Guard => Direction is null && Step is null,
+        OrderType.Move => Direction is not null && Step is null,
+        _ => Direction is not null,
+    };
 }

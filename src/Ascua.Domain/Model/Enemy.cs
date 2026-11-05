@@ -37,6 +37,21 @@ public static class EnemyCatalog
     public const int TotemSummonEvery = 5;
     public const int TotemMaxSummons = 3;
 
+    /// <summary>Vida con la que nace un monstruo en una partida con estas maldiciones (el Celador va aparte).</summary>
+    public static int HpOf(EnemyKind kind, int baseHp, IReadOnlyCollection<Curse> curses)
+    {
+        ArgumentNullException.ThrowIfNull(curses);
+        return kind != EnemyKind.Warden && curses.Contains(Curse.Fierce) ? baseHp + 1 : baseHp;
+    }
+
+    /// <summary>Vida del Celador según jugadores y maldiciones.</summary>
+    public static int WardenHp(int playerCount, IReadOnlyCollection<Curse> curses)
+    {
+        ArgumentNullException.ThrowIfNull(curses);
+        var hp = WardenHpPerPlayer * playerCount;
+        return curses.Contains(Curse.WardenPlus) ? ((hp * 3) + 1) / 2 : hp;
+    }
+
     public static EnemyStats For(EnemyKind kind) => kind switch
     {
         EnemyKind.Scavenger => new(MaxHp: 1, Damage: 1, Speed: 1, Flies: false),

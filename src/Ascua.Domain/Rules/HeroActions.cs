@@ -59,6 +59,12 @@ internal static class HeroActions
                 case OrderType.Interact when !hero.IsRenegade:
                     Interact(ctx, hero, direction);
                     break;
+                case OrderType.Sabotage:
+                    Treachery.Sabotage(ctx, hero, direction);
+                    break;
+                case OrderType.Push:
+                    Treachery.Push(ctx, hero, direction);
+                    break;
                 default:
                     break;
             }
@@ -112,10 +118,12 @@ internal static class HeroActions
         ctx.MakeNoise(hero);
         ctx.Emit(new HeroAttacked(hero.Player, direction) { Audience = RoundContext.AudienceOf(hero) });
 
-        LineAttack(ctx, hero.Player, hero.Position, direction, hero.Stats.Range, hero.Damage);
+        // Puño de piedra: atacar plantado pega más. Un paso que rebotó también cuenta como paso.
+        var damage = hero.Damage + (hero.Has(Blessing.StoneFist) && !hero.IsRenegade && !ctx.Stepped.Contains(hero.Player) ? 1 : 0);
+        LineAttack(ctx, hero.Player, hero.Position, direction, hero.Stats.Range, damage);
         if (hero.SecondBody is { } second && ctx.Hero(hero.Player).HasBody)
         {
-            LineAttack(ctx, hero.Player, second, direction.Mirrored(), hero.Stats.Range, hero.Damage);
+            LineAttack(ctx, hero.Player, second, direction.Mirrored(), hero.Stats.Range, damage);
         }
     }
 
@@ -138,9 +146,30 @@ internal static class HeroActions
                 return;
             }
 
+            Assist(ctx, player, position);
             if (StrikeAt(ctx, player, origin, position, damage))
             {
                 return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Asistencia: el ataque llega a la casilla de un enemigo que murió esta misma ronda. Gana +1, una vez por enemigo, y
+    /// la línea sigue. Los Renegados no asisten: no dañan monstruos.
+    /// </summary>
+    private static void Assist(RoundContext ctx, PlayerId player, Position tile)
+    {
+        if (ctx.Hero(player).IsRenegade)
+        {
+            return;
+        }
+
+        foreach (var corpse in ctx.Corpses.Where(c => c.Tile == tile && c.Killer != player))
+        {
+            if (corpse.Assisted.Add(player))
+            {
+                Combat.GainEmbers(ctx, player, Combat.AssistReward, EmberReason.Assist);
             }
         }
     }
@@ -160,13 +189,18 @@ internal static class HeroActions
         var hero = ctx.Hero(player);
         if (ctx.HeroAt(target) is { Status: HeroStatus.Down } fallen)
         {
-            Revive(ctx, hero, fallen);
+            // Ganzúa no levanta y Último aliento gastado no se deja levantar.
+            if (!hero.Has(Blessing.Lockpick) && fallen.CanBeRevived)
+            {
+                Revive(ctx, hero, fallen);
+            }
         }
         else if (ctx.Room.ChestAt(target) is { Opened: false } chest)
         {
             OpenChest(ctx, hero, chest);
         }
-        else if (ctx.Room.TerrainAt(target) == Terrain.Altar && hero.SilverKeys > 0 && hero.DraftOptions.IsEmpty)
+        else if (ctx.Room.TerrainAt(target) == Terrain.Altar && hero.DraftOptions.IsEmpty
+            && (hero.SilverKeys > 0 || ctx.Room.Type == RoomType.Sanctuary))
         {
             ActivateAltar(ctx, hero, target);
         }
@@ -189,7 +223,7 @@ internal static class HeroActions
         };
         hero = hero with
         {
-            Shield = hero.Shield + (chest.Loot == ChestLoot.Shield ? 1 : 0),
+            Shield = hero.Shield + (chest.Loot == ChestLoot.Shield && !hero.Has(Blessing.BrokenMirror) ? 1 : 0),
             SilverKeys = hero.SilverKeys + (chest.HasSilverKey ? 1 : 0),
             Progress = hero.Progress with { ChestsOpened = hero.Progress.ChestsOpened + 1 },
         };
@@ -197,10 +231,16 @@ internal static class HeroActions
         ctx.MakeNoise(hero);
         ctx.Emit(new ChestOpened(hero.Player, chest.Id) { Audience = RoundContext.AudienceOf(hero) });
         ctx.Emit(new ChestLooted(hero.Player, chest.Id, chest.Loot, chest.HasSilverKey) { Audience = Audience.Only(hero.Player) });
-        Combat.GainEmbers(ctx, hero.Player, 1 + (hero.Has(Blessing.Lockpick) ? 1 : 0), EmberReason.ChestOpened);
+        Combat.GainEmbers(ctx, hero.Player, 1 + (hero.Has(Blessing.Lockpick) ? 2 : 0), EmberReason.ChestOpened);
         if (chest.Loot == ChestLoot.HealingPotion)
         {
             Combat.Heal(ctx, hero.Player, PotionHeal);
+        }
+
+        // El precio de Brasa viva: el cofre le quema al abrirlo.
+        if (hero.Has(Blessing.LivingEmber))
+        {
+            Combat.HitHero(ctx, hero.Player, 1, Attacker.None);
         }
     }
 
@@ -216,7 +256,8 @@ internal static class HeroActions
         }
 
         ctx.Room = ctx.Room.WithTerrain(altar, Terrain.Floor);
-        ctx.Update(hero with { SilverKeys = hero.SilverKeys - 1, DraftOptions = [.. options] });
+        var keyless = ctx.Room.Type == RoomType.Sanctuary;
+        ctx.Update(hero with { SilverKeys = hero.SilverKeys - (keyless ? 0 : 1), DraftOptions = [.. options] });
         ctx.MakeNoise(hero);
         ctx.Emit(new AltarActivated(hero.Player, altar) { Audience = RoundContext.AudienceOf(hero) });
         ctx.Emit(new DraftOffered(hero.Player, [.. options]) { Audience = Audience.Only(hero.Player) });
@@ -234,9 +275,16 @@ internal static class HeroActions
                 return true;
             }
 
-            var dealt = damage + QuietBonus(attacker, !ctx.Start.NoisyEnemies.Contains(enemy.Id));
-            if (Combat.HitEnemy(ctx, enemy.Id, dealt, Attacker.FromHero(attacker, origin)))
+            var chilling = attacker.Has(Blessing.Frost) && enemy.Kind != EnemyKind.Warden;
+            var dealt = chilling ? 0 : damage + QuietBonus(attacker, !ctx.Start.NoisyEnemies.Contains(enemy.Id));
+            if (chilling || Combat.HitEnemy(ctx, enemy.Id, dealt, Attacker.FromHero(attacker, origin)))
             {
+                if (!ctx.Attackers.TryGetValue(enemy.Id, out var attackers))
+                {
+                    ctx.Attackers[enemy.Id] = attackers = [];
+                }
+
+                attackers.Add(attackerId);
                 Combat.ApplyOnHitEffects(ctx, attackerId, EntityRef.ForEnemy(enemy.Id));
             }
 
@@ -250,8 +298,10 @@ internal static class HeroActions
                 return true;
             }
 
+            // Escarcha no daña a quien puede congelar. A un Renegado no se le congela: le hace daño normal.
+            var chilling = attacker.Has(Blessing.Frost) && target.IsActive;
             var dealt = damage + QuietBonus(attacker, !ctx.Start.NoisyHeroes.Contains(target.Player));
-            if (Combat.HitHero(ctx, target.Player, dealt, Attacker.FromHero(attacker, origin), position) > 0)
+            if (chilling || Combat.HitHero(ctx, target.Player, dealt, Attacker.FromHero(attacker, origin), position) > 0)
             {
                 Combat.ApplyOnHitEffects(ctx, attackerId, EntityRef.ForHero(target.Player));
             }

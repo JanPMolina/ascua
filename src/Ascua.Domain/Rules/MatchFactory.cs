@@ -34,7 +34,8 @@ public static class MatchFactory
     public static (GameState State, IReadOnlyList<DomainEvent> Events) Create(
         IReadOnlyList<PlayerSetup> players,
         IRandom rng,
-        int maxRounds = GameState.DefaultMaxRounds)
+        int maxRounds = GameState.DefaultMaxRounds,
+        IReadOnlyCollection<Curse>? curses = null)
     {
         ArgumentNullException.ThrowIfNull(players);
         ArgumentNullException.ThrowIfNull(rng);
@@ -48,23 +49,35 @@ public static class MatchFactory
             throw new ArgumentException("Hay jugadores repetidos.", nameof(players));
         }
 
+        ImmutableList<Curse> chosenCurses = [.. (curses ?? []).Distinct().Order()];
         var nextEnemyId = 1;
         var nextChestId = 1;
         var rooms = ImmutableList.CreateBuilder<Room>();
         for (var index = 0; index < RoomCount; index++)
         {
-            rooms.Add(GenerateRoom(index, players.Count, rng, ref nextEnemyId, ref nextChestId));
+            rooms.Add(GenerateRoom(index, RoomType.Normal, players.Count, chosenCurses, rng, ref nextEnemyId, ref nextChestId));
         }
 
-        var pacts = Shuffle(Enum.GetValues<PactKind>().ToList(), rng);
+        // Las 2 opciones de cada uno salen seguidas de un mazo barajado: nadie ve la misma misión dos veces.
+        var deck = Shuffle(PactRules.Offered.ToList(), rng);
         var heroes = ImmutableList.CreateBuilder<Hero>();
         for (var seat = 0; seat < players.Count; seat++)
         {
             var setup = players[seat];
             var options = Shuffle(BlessingRules.All.ToList(), rng).Take(2);
+            var pactOptions = ImmutableList.CreateBuilder<PactOffer>();
+            for (var i = 0; i < PactRules.OfferedOptions; i++)
+            {
+                var kind = deck[((seat * PactRules.OfferedOptions) + i) % deck.Count];
+                var others = players.Where(p => p.Player != setup.Player).ToList();
+                pactOptions.Add(new PactOffer(kind, kind == PactKind.OutgoldTarget ? others[rng.Next(others.Count)].Player : null));
+            }
+
             heroes.Add(Hero.Create(setup.Player, seat, setup.Class, SpawnPoints[seat]) with
             {
-                Pact = pacts[seat % pacts.Count],
+                Pact = pactOptions[0].Kind,
+                PactTarget = pactOptions[0].Target,
+                PactOptions = pactOptions.ToImmutable(),
                 DraftOptions = [.. options],
                 SecondBody = setup.Class == HeroClass.Hilvan ? SecondBodyAt(seat, players.Count) : null,
             });
@@ -88,6 +101,8 @@ public static class MatchFactory
             RoomIndex = 0,
             Enemies = first.InitialEnemies,
             NextEnemyId = nextEnemyId,
+            NextChestId = nextChestId,
+            Curses = chosenCurses,
             LastSeq = log.LastSeq,
         };
         return (state, log.Events);
@@ -102,24 +117,36 @@ public static class MatchFactory
             : SpawnPoints[seat].Step(Direction.West, HeroRules.BodySpacing);
     }
 
-    private static Room GenerateRoom(int index, int playerCount, IRandom rng, ref int nextEnemyId, ref int nextChestId)
+    /// <summary>Genera una sala del tipo elegido. La sala siguiente se regenera al elegirse su puerta.</summary>
+    internal static Room GenerateRoom(
+        int index, RoomType type, int playerCount, IReadOnlyCollection<Curse> curses, IRandom rng, ref int nextEnemyId, ref int nextChestId)
     {
         var isBossRoom = index == RoomCount - 1;
         for (var attempt = 0; attempt < MaxLayoutAttempts; attempt++)
         {
-            var room = TryLayout(index, isBossRoom, rng, simple: false);
+            var room = TryLayout(index, type, isBossRoom, rng, simple: false);
             if (RoomValidator.IsValid(room))
             {
-                return Populate(room, index, playerCount, rng, ref nextEnemyId, ref nextChestId);
+                return Populate(room, index, playerCount, curses, rng, ref nextEnemyId, ref nextChestId);
             }
         }
 
-        return Populate(TryLayout(index, isBossRoom, rng, simple: true), index, playerCount, rng, ref nextEnemyId, ref nextChestId);
+        return Populate(TryLayout(index, type, isBossRoom, rng, simple: true), index, playerCount, curses, rng, ref nextEnemyId, ref nextChestId);
     }
 
-    private static Room TryLayout(int index, bool isBossRoom, IRandom rng, bool simple)
+    /// <summary>Cuántos cofres trae una sala según su tipo.</summary>
+    private static int ChestsIn(RoomType type) => type switch
     {
-        var room = new Room { Index = index, SpawnPoints = SpawnPoints };
+        RoomType.Treasure => 4,
+        RoomType.Arena => 0,
+        RoomType.Sanctuary => 1,
+        RoomType.Dark => 3,
+        _ => 2,
+    };
+
+    private static Room TryLayout(int index, RoomType type, bool isBossRoom, IRandom rng, bool simple)
+    {
+        var room = new Room { Index = index, Type = type, SpawnPoints = SpawnPoints };
         var reserved = new HashSet<Position>(SpawnPoints.SelectMany(p => new[] { p, p.Step(Direction.North) }))
         {
             StairsPosition,
@@ -134,7 +161,17 @@ public static class MatchFactory
 
         if (simple)
         {
-            return room;
+            // Sin obstáculos, pero el santuario sigue trayendo su altar y los cofres su cantidad.
+            var open = Room.AllPositions().Where(p => p.Y is >= 1 and <= 6 && !reserved.Contains(p)).ToList();
+            if (type == RoomType.Sanctuary)
+            {
+                room = room.WithTerrain(open[0], Terrain.Altar);
+                open.RemoveAt(0);
+            }
+
+            return isBossRoom
+                ? room
+                : room with { Chests = [.. open.Take(ChestsIn(type)).Select(p => new Chest(-1, p, ChestLoot.Nothing, HasSilverKey: false))] };
         }
 
         var free = Room.AllPositions().Where(p => p.Y is >= 1 and <= 6 && !reserved.Contains(p)).ToList();
@@ -152,7 +189,7 @@ public static class MatchFactory
             room = room.WithTerrain(Take(), Terrain.Wall);
         }
 
-        for (var i = 0; i < (isBossRoom ? 2 : 3); i++)
+        for (var i = 0; i < (isBossRoom ? 2 : type == RoomType.Sanctuary ? 6 : 3); i++)
         {
             room = room.WithTerrain(Take(), Terrain.Spikes);
         }
@@ -167,7 +204,7 @@ public static class MatchFactory
             room = room.WithTerrain(Take(), Terrain.Crack);
         }
 
-        if (index is 1 or 3)
+        if (index is 1 or 3 || type == RoomType.Sanctuary)
         {
             room = room.WithTerrain(Take(), Terrain.Altar);
         }
@@ -175,7 +212,7 @@ public static class MatchFactory
         if (!isBossRoom)
         {
             var chests = ImmutableList.CreateBuilder<Chest>();
-            for (var i = 0; i < 2; i++)
+            for (var i = 0; i < ChestsIn(type); i++)
             {
                 chests.Add(new Chest(-1, Take(), ChestLoot.Nothing, HasSilverKey: false));
             }
@@ -189,7 +226,30 @@ public static class MatchFactory
     /// <summary>Los monstruos nacen a esta distancia o menos de la escalera: a la vista del grupo y sin rincones que recorrer.</summary>
     public const int MonsterSpread = 4;
 
-    private static Room Populate(Room room, int index, int playerCount, IRandom rng, ref int nextEnemyId, ref int nextChestId)
+    private static IEnumerable<EnemyKind> MonstersFor(Room room, int index, int playerCount, IRandom rng)
+    {
+        // Con 2 jugadores la sala trae un monstruo menos: los mismos enemigos tardarían el doble en caer.
+        var kinds = RoomEnemies[index];
+        var list = (playerCount == MinPlayers ? kinds.Take(2) : kinds).ToList();
+        switch (room.Type)
+        {
+            case RoomType.Treasure:
+                list.Add(EnemyKind.Scavenger);
+                break;
+            case RoomType.Arena:
+                list.AddRange(Enumerable.Repeat(EnemyKind.Scavenger, 1 + rng.Next(2)));
+                break;
+            case RoomType.Sanctuary:
+                list = [list[0]];
+                break;
+            default:
+                break;
+        }
+
+        return list;
+    }
+
+    private static Room Populate(Room room, int index, int playerCount, IReadOnlyCollection<Curse> curses, IRandom rng, ref int nextEnemyId, ref int nextChestId)
     {
         var chests = ImmutableList.CreateBuilder<Chest>();
         foreach (var chest in room.Chests)
@@ -202,13 +262,11 @@ public static class MatchFactory
 
         var occupied = new HashSet<Position>(room.Chests.Select(c => c.Position));
         var enemies = ImmutableList.CreateBuilder<Enemy>();
-        // Con 2 jugadores la sala trae un monstruo menos: los mismos enemigos tardarían el doble en caer.
-        var kinds = RoomEnemies[index];
-        foreach (var kind in playerCount == MinPlayers ? kinds.Take(2) : kinds)
+        foreach (var kind in MonstersFor(room, index, playerCount, rng))
         {
             if (kind == EnemyKind.Warden)
             {
-                enemies.Add(Enemy.Create(nextEnemyId++, kind, WardenPosition, EnemyCatalog.WardenHpPerPlayer * playerCount));
+                enemies.Add(Enemy.Create(nextEnemyId++, kind, WardenPosition, EnemyCatalog.WardenHp(playerCount, curses)));
                 continue;
             }
 
@@ -224,7 +282,7 @@ public static class MatchFactory
 
             var position = candidates[rng.Next(candidates.Count)];
             occupied.Add(position);
-            enemies.Add(Enemy.Create(nextEnemyId++, kind, position));
+            enemies.Add(Enemy.Create(nextEnemyId++, kind, position, EnemyCatalog.HpOf(kind, EnemyCatalog.For(kind).MaxHp, curses)));
         }
 
         return room with { InitialEnemies = enemies.ToImmutable() };

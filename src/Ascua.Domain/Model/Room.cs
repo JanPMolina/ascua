@@ -48,11 +48,48 @@ public sealed record Fire(Position Position, int Rounds, int Damage);
 /// <summary>Ascuas tiradas en una casilla (del Avaro o de un enemigo sobornado). Las recoge el primero que la pise.</summary>
 public sealed record GroundEmbers(Position Position, int Amount);
 
+/// <summary>Salas con reglas propias, elegidas por votación entre 2 puertas (06-version-3.md §4).</summary>
+public enum RoomType
+{
+    /// <summary>Sin regla propia: la primera sala y la del Celador.</summary>
+    Normal,
+
+    /// <summary>4 cofres y 1 monstruo más.</summary>
+    Treasure,
+
+    /// <summary>Sin cofres, 1 o 2 monstruos más y cada golpe final da +2.</summary>
+    Arena,
+
+    /// <summary>Pocos monstruos, un altar que no pide llave y más trampas.</summary>
+    Sanctuary,
+
+    /// <summary>Visión 1 menos para todos y 1 cofre más.</summary>
+    Dark,
+
+    /// <summary>Desde el norte, cada 6 rondas se inunda una fila más y hace 1 de daño a quien no vuela.</summary>
+    Flooded,
+}
+
+public static class RoomTypes
+{
+    /// <summary>Tipos que pueden salir en una puerta.</summary>
+    public static IReadOnlyList<RoomType> Doors { get; } = [RoomType.Treasure, RoomType.Arena, RoomType.Sanctuary, RoomType.Dark, RoomType.Flooded];
+
+    public const int FloodEvery = 6;
+    public const int FloodDamage = 1;
+    public const int ArenaKillReward = 2;
+}
+
 public sealed record Room
 {
     public const int Size = 9;
 
     public required int Index { get; init; }
+
+    public RoomType Type { get; init; } = RoomType.Normal;
+
+    /// <summary>Ronda en la que el grupo entró (de ahí sale el avance del agua).</summary>
+    public int EnteredRound { get; init; } = 1;
     public ImmutableList<Feature> Features { get; init; } = [];
     public ImmutableList<Chest> Chests { get; init; } = [];
     public ImmutableList<Fire> Fires { get; init; } = [];
@@ -103,6 +140,10 @@ public sealed record Room
         var without = Features.RemoveAll(f => f.Position == position);
         return this with { Features = terrain == Terrain.Floor ? without : without.Add(new Feature(position, terrain)) };
     }
+
+    /// <summary>Filas inundadas desde el norte en esa ronda; 0 salvo en la sala inundada.</summary>
+    public int FloodedRows(int round) =>
+        Type == RoomType.Flooded ? Math.Clamp((round - EnteredRound) / RoomTypes.FloodEvery, 0, Size) : 0;
 
     public Chest? ChestAt(Position position) => Chests.Find(c => c.Position == position);
 

@@ -1,4 +1,5 @@
 using Ascua.Domain.Abstractions;
+using Ascua.Domain.Events;
 using Ascua.Domain.Model;
 using Ascua.Domain.Views;
 
@@ -9,7 +10,8 @@ namespace Ascua.Sim;
 /// <param name="VengeancePercent">Probabilidad de elegir el Camino de la Venganza al extinguirse.</param>
 /// <param name="BellMissPercent">Con el Repique, probabilidad de que otro jugador no decida a tiempo (guarda).</param>
 /// <param name="StartRoom">Sala en la que empieza (0 = partida normal; 4 = solo la pelea con el Celador, para medirla aparte).</param>
-public sealed record BotOptions(int BetrayalPercent = 10, int VengeancePercent = 30, int BellMissPercent = 20, int StartRoom = 0);
+/// <param name="AccusePercent">Con una sospecha, probabilidad de acusar en El Juicio.</param>
+public sealed record BotOptions(int BetrayalPercent = 10, int VengeancePercent = 30, int BellMissPercent = 20, int StartRoom = 0, int AccusePercent = 70);
 
 /// <summary>
 /// Un jugador simulado. Decide solo con su <see cref="PlayerView"/> (más lo que recuerda de lo que vio en esta sala):
@@ -40,6 +42,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private HashSet<Position> _danger = [];
     private Dictionary<Position, EnemyView> _enemies = [];
     private Dictionary<Position, AllyView> _others = [];
+    private readonly Dictionary<PlayerId, int> _suspects = [];
+    private bool _betrayedHere;
 
     public PlayerId Player { get; } = player;
 
@@ -48,6 +52,77 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
 
     /// <summary>Con el Repique sonando, ¿este bot no llega a decidir a tiempo?</summary>
     public bool MissesTheBell() => Roll(options.BellMissPercent);
+
+    /// <summary>Elige misión: la que mejor le va a su héroe, si no, al azar.</summary>
+    public int ChoosePact(SelfView self)
+    {
+        ArgumentNullException.ThrowIfNull(self);
+        var offers = self.PactOptions;
+        for (var i = 0; i < offers.Count; i++)
+        {
+            if (offers[i].Kind == PactKind.MostWardenDamage || (offers[i].Kind == PactKind.BetrayTwiceUnconvicted && options.BetrayalPercent >= 30))
+            {
+                return i;
+            }
+        }
+
+        return rng.Next(offers.Count);
+    }
+
+    /// <summary>
+    /// Lo que vio en la resolución: un golpe sin autor en la fase de acciones no puede ser una trampa, así que quien
+    /// estuviera en línea a 2 casillas de la víctima queda bajo sospecha. Solo usa su vista y los eventos que recibe.
+    /// </summary>
+    public void Witness(PlayerView view, IReadOnlyList<DomainEvent> events)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        ArgumentNullException.ThrowIfNull(events);
+        foreach (var domainEvent in events)
+        {
+            if (domainEvent is BetrayalRecorded { Traitor: var traitor } && traitor == Player)
+            {
+                _betrayedHere = true;
+            }
+
+            if (domainEvent is not EntityDamaged { Source: null, Phase: RoundPhase.Actions, Target.Hero: { } victim })
+            {
+                continue;
+            }
+
+            var tile = victim == Player ? view.Self.Position : view.Allies.FirstOrDefault(a => a.Player == victim)?.Position;
+            if (tile is not { } at)
+            {
+                continue;
+            }
+
+            foreach (var ally in view.Allies.Where(a => a.Player != victim && a.Position is { } p && p.DistanceTo(at) <= HeroRules.SabotageReach + 1 && (p.X == at.X || p.Y == at.Y)))
+            {
+                _suspects[ally.Player] = _suspects.GetValueOrDefault(ally.Player) + 1;
+            }
+        }
+    }
+
+    /// <summary>Voto del interludio: acusa a quien más sospecha le da (si no traicionó él) y elige puerta según su misión.</summary>
+    public (PlayerId? Accused, int? Door) Vote(PlayerView view)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        var interlude = view.Interlude!;
+        PlayerId? accused = null;
+        if (!_betrayedHere && _suspects.Count > 0 && Roll(options.AccusePercent))
+        {
+            var top = _suspects.Where(s => interlude.Candidates.Contains(s.Key)).OrderByDescending(s => s.Value).ThenBy(s => s.Key.Value).Select(s => (PlayerId?)s.Key).FirstOrDefault();
+            accused = top;
+        }
+
+        int? door = null;
+        if (!interlude.Doors.IsEmpty)
+        {
+            var wanted = view.Self.Pact == PactKind.OpenThreeChests ? interlude.Doors.IndexOf(RoomType.Treasure) : -1;
+            door = wanted >= 0 ? wanted : rng.Next(interlude.Doors.Count);
+        }
+
+        return (accused, door);
+    }
 
     /// <summary>Elige una bendición del draft: la primera que le sirve más a su héroe.</summary>
     public int ChooseBlessing(SelfView self)
@@ -76,16 +151,149 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     {
         ArgumentNullException.ThrowIfNull(view);
         Observe(view);
-        var order = _self.Status switch
-        {
-            HeroStatus.EmberSpirit => DecideEmber(),
-            HeroStatus.Renegade => _self.HostEnemyId is null ? DecideRenegade() : DecideInHost(),
-            _ when _self.HostEnemyId is not null => DecideInHost(),
-            _ => DecideHero(heard),
-        };
+        var order = Combine(DecideOnce(heard), heard);
         _lastOrder = order;
         _lastBodies = _bodies;
         return order;
+    }
+
+    private Order DecideOnce(IReadOnlyList<(PlayerId Player, Order Order)>? heard) => _self.Status switch
+    {
+        HeroStatus.EmberSpirit => DecideEmber(),
+        HeroStatus.Renegade => _self.HostEnemyId is null ? DecideRenegade() : DecideInHost(),
+        _ when _self.HostEnemyId is not null => DecideInHost(),
+        _ => DecideHero(heard),
+    };
+
+    /// <summary>
+    /// Paso y acción en la misma ronda. Si quería caminar, mira qué haría desde donde quedaría y lo suma. Si quería actuar
+    /// bajo un golpe, busca un paso que lo saque y le deje hacer lo mismo.
+    /// </summary>
+    private Order Combine(Order first, IReadOnlyList<(PlayerId Player, Order Order)>? heard)
+    {
+        if (first is { Type: OrderType.Move, Direction: { } step })
+        {
+            var second = AsIf(AfterWalking(step), heard);
+            return second.Type is OrderType.Attack or OrderType.Skill or OrderType.Interact or OrderType.Sabotage or OrderType.Push
+                ? second with { Step = step }
+                : first;
+        }
+
+        if (first.Type is OrderType.Attack or OrderType.Skill or OrderType.Interact && _self.Status != HeroStatus.EmberSpirit && InDanger)
+        {
+            foreach (var direction in Directions.All)
+            {
+                var after = AfterWalking(direction);
+                if (after.SequenceEqual(_bodies) || after.Exists(_danger.Contains))
+                {
+                    continue;
+                }
+
+                var second = AsIf(after, heard);
+                if (second.Type == first.Type)
+                {
+                    return second with { Step = direction };
+                }
+            }
+        }
+
+        return first;
+    }
+
+    private List<Position> AfterWalking(Direction direction)
+    {
+        if (_self.Status != HeroStatus.EmberSpirit)
+        {
+            return AfterMove(direction);
+        }
+
+        var target = _self.Position;
+        for (var i = 0; i < PathRules.DriftDistance && Room.IsInside(target.Step(direction)); i++)
+        {
+            target = target.Step(direction);
+        }
+
+        return [target];
+    }
+
+    /// <summary>Qué haría si ya estuviera en esas casillas.</summary>
+    private Order AsIf(List<Position> after, IReadOnlyList<(PlayerId Player, Order Order)>? heard)
+    {
+        var (self, bodies) = (_self, _bodies);
+        _self = _self with { Position = after[0], SecondBody = after.Count > 1 ? after[1] : _self.SecondBody };
+        _bodies = after;
+        var order = DecideOnce(heard);
+        (_self, _bodies) = (self, bodies);
+        return order;
+    }
+
+    /// <summary>Sabotea según el parámetro de traición (más si su misión lo pide), si hay un aliado en línea.</summary>
+    private Order? SabotageOrder()
+    {
+        if (!_self.CanSabotage || options.BetrayalPercent <= 0)
+        {
+            return null;
+        }
+
+        var chance = options.BetrayalPercent * (_self.Pact == PactKind.BetrayTwiceUnconvicted ? 3 : 1);
+        foreach (var direction in Directions.All)
+        {
+            var position = _self.Position;
+            for (var i = 0; i < HeroRules.SabotageReach; i++)
+            {
+                position = position.Step(direction);
+                if (TerrainAt(position) is Terrain.Wall or Terrain.Brazier)
+                {
+                    break;
+                }
+
+                if (_others.TryGetValue(position, out var other) && other.Status == HeroStatus.Active)
+                {
+                    return Roll(chance) ? new Order(OrderType.Sabotage, direction) : null;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Empuja a un enemigo a una grieta o a unos pinchos; un Traidor, a un héroe a una grieta.</summary>
+    private Order? PushOrder()
+    {
+        if (_self.PushCooldown > 0)
+        {
+            return null;
+        }
+
+        foreach (var direction in Directions.All)
+        {
+            var from = _self.Position.Step(direction);
+            var to = from.Step(direction);
+            var terrain = TerrainAt(to);
+            if (!Room.IsInside(to) || _enemies.ContainsKey(to) || _others.ContainsKey(to) || _chests.ContainsValue(to)
+                || terrain is Terrain.Wall or Terrain.Brazier or Terrain.Altar)
+            {
+                continue;
+            }
+
+            if (_self.Status == HeroStatus.Renegade)
+            {
+                if (terrain == Terrain.Crack && _others.TryGetValue(from, out var victim) && victim.Status == HeroStatus.Active && victim.Class != HeroClass.Mampostero)
+                {
+                    return new Order(OrderType.Push, direction);
+                }
+
+                continue;
+            }
+
+            if (_enemies.TryGetValue(from, out var enemy) && enemy.Kind is not (EnemyKind.Warden or EnemyKind.Totem or EnemyKind.Moth)
+                && (terrain == Terrain.Crack || (terrain == Terrain.Spikes && _self.Pact == PactKind.PushTwoIntoHazard)))
+            {
+                return new Order(OrderType.Push, direction);
+            }
+        }
+
+        return null;
     }
 
     private void Observe(PlayerView view)
@@ -105,6 +313,8 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             _waits = 0;
             _lastOrder = null;
             _trail.Clear();
+            _suspects.Clear();
+            _betrayedHere = false;
         }
 
         _trail.Add(_self.Position);
@@ -138,7 +348,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         _bodies = _self.SecondBody is { } second ? [_self.Position, second] : [_self.Position];
 
         // Si el paso anterior rebotó, esa casilla está tapada por algo que no se ve: se deja de insistir un rato.
-        if (_lastOrder is { Type: OrderType.Move, Direction: { } moved } && _lastBodies.SequenceEqual(_bodies))
+        if (_lastOrder is { Walk: { } moved } && _lastBodies.SequenceEqual(_bodies))
         {
             _bumped[_self.Position.Step(moved)] = view.Round + 2 + rng.Next(3);
         }
@@ -154,6 +364,12 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             {
                 _danger.Add(spikes.Key);
             }
+        }
+
+        // El agua sube desde el norte: nadie se queda donde ya llegó.
+        foreach (var flooded in Room.AllPositions().Where(p => p.Y < view.Room.FloodedRows))
+        {
+            _danger.Add(flooded);
         }
 
         _enemies = view.Enemies.GroupBy(e => e.Position).ToDictionary(g => g.Key, g => g.First());
@@ -509,6 +725,16 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
 
     private Order DecideHero(IReadOnlyList<(PlayerId Player, Order Order)>? heard)
     {
+        if (SabotageOrder() is { } sabotage)
+        {
+            return sabotage;
+        }
+
+        if (PushOrder() is { } push)
+        {
+            return push;
+        }
+
         if (KillThreat() is { } kill)
         {
             return new Order(OrderType.Attack, kill);
@@ -1234,6 +1460,11 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
 
     private Order DecideRenegade()
     {
+        if (PushOrder() is { } push)
+        {
+            return push;
+        }
+
         if (SkillReady && _self.Class == HeroClass.Hilvan && TugPlan() is { } tug)
         {
             return tug;
