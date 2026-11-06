@@ -2314,11 +2314,12 @@ components:
         hp:
           type: integer
           minimum: 0
-          maximum: 64
+          maximum: 120
         maxHp:
           type: integer
           minimum: 1
-          maximum: 64
+          maximum: 120
+          description: Hasta 120 desde 4.0.0 (el Celador con 5 jugadores tiene 75; con Celador imponente, 113).
         position:
           $ref: '#/components/schemas/Position'
         facing:

@@ -56,6 +56,9 @@ public static class RealtimeMapper
     /// <summary>Tope de ronda en el contrato: no hay límite de reglas, pero sí uno de validación (el frío termina antes).</summary>
     public const int MaxRound = 9999;
 
+    /// <summary>Tope de vida de un enemigo en el contrato: el Celador con 5 jugadores y Celador imponente llega a 113.</summary>
+    public const int MaxEnemyHp = 120;
+
     public static string StatusCode(MatchSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -454,8 +457,8 @@ public static class RealtimeMapper
         {
             EnemyId = e.Id,
             Kind = EnemyKind(e.Kind),
-            Hp = Math.Clamp(e.Hp, 0, 64),
-            MaxHp = Math.Clamp(e.MaxHp, 1, 64),
+            Hp = Math.Clamp(e.Hp, 0, MaxEnemyHp),
+            MaxHp = Math.Clamp(e.MaxHp, 1, MaxEnemyHp),
             Position = Position(e.Position),
             Facing = Direction(e.Facing),
             Phase = e.Kind == Domain.Model.EnemyKind.Warden ? Math.Clamp(e.Phase, 1, 2) : null,

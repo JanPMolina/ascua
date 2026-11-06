@@ -14,7 +14,7 @@ Jugadores automáticos que deciden con lo que ve cada uno y ordenan **solo con c
 | 4 | Anteayer, Mampostero | 9 × 9 | Oscura, Tesoro, Inundada | Derrota de todos | 40 |
 | 5 | La Escucha, Usurera | 9 × 9 | Arena, Oscura, Tesoro | Derrota de todos | 96 |
 | 6 | Campanero, Errata | 9 × 9 | Santuario, Oscura, Tesoro | Derrota de todos | 48 |
-| 7 | Errata, Avaro, Hilván, Polizón, La Escucha | 11 × 11 | Santuario, Inundada, Oscura | Derrota de todos: **el frío la cerró** (Celador en 39 de 64 en la ronda 95) | 114 |
+| 7 | Errata, Avaro, Hilván, Polizón, La Escucha | 11 × 11 | Santuario, Inundada, Oscura | Derrota de todos: **el frío la cerró** (Celador en 39 de 75 en la ronda 95) | 114 |
 
 | Comprobado | Resultado |
 |---|---|
@@ -32,6 +32,7 @@ Jugadores automáticos que deciden con lo que ve cada uno y ordenan **solo con c
 - El cliente seguía pidiendo el protocolo 3.
 - El servidor rechazaba órdenes después de la ronda 60, y la pantalla final y la reproducción cortaban en 60.
 - La sala no dejaba elegir 5 plazas.
+- La vista recortaba la vida de los enemigos a 64: el Celador de 5 jugadores (75) se veía con 64.
 - El resumen decía «atacas a al Polilla».
 
 **Sin probar todavía:** partidas entre personas, el tutorial completo de punta a punta, la revancha y una victoria con 5 jugadores: los jugadores automáticos tardan mucho en llegar al costado del Celador en la sala de 11.
