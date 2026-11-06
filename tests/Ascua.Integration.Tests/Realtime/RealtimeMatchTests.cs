@@ -18,7 +18,7 @@ public sealed class RealtimeMatchTests(AscuaApiFactory factory)
     [Fact]
     public async Task Two_players_play_a_full_match_with_contiguous_seq_and_immutable_result()
     {
-        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:MaxRounds"] = "3" });
+        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:TestRoundLimit"] = "3" });
         var (a, b, matchId) = await NewMatchAsync(host);
         var (ca, ackA) = await RealtimeSetup.JoinAsync(host, a, matchId);
         var (cb, ackB) = await RealtimeSetup.JoinAsync(host, b, matchId);

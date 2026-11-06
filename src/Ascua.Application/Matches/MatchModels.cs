@@ -50,7 +50,7 @@ public static class MatchStatusExtensions
     public static MatchStatus From(GameState state) => state.Phase switch
     {
         MatchPhase.Drafting => MatchStatus.Drafting,
-        MatchPhase.InProgress or MatchPhase.Interlude => MatchStatus.InProgress,
+        MatchPhase.InProgress => MatchStatus.InProgress,
         _ => state.Outcome?.Kind == OutcomeKind.Abandoned ? MatchStatus.Abandoned : MatchStatus.Finished,
     };
 }
@@ -89,7 +89,7 @@ public sealed record MatchSnapshot
     /// Planificación de cada ronda de ESTA partida. Se fija al crearla para que una réplica con otra
     /// configuración (p. ej. durante un despliegue) no cambie el ritmo de una partida en curso.
     /// </summary>
-    public TimeSpan RoundDuration { get; init; } = TimeSpan.FromSeconds(20);
+    public TimeSpan RoundDuration { get; init; } = TimeSpan.FromSeconds(11);
 
     /// <summary>
     /// Plazo para elegir camino tras extinguirse (15 s). Cuenta desde que abre la ronda: la oferta nace al
@@ -102,7 +102,7 @@ public sealed record MatchSnapshot
     /// Plazo reducido del Repique. Como <see cref="RoundDuration"/>, se fija al crear la partida y es durable: el plazo
     /// sale de <see cref="Deadline"/>, de esto y del estado, así que sobrevive a un reinicio.
     /// </summary>
-    public TimeSpan BellDuration { get; init; } = TimeSpan.FromSeconds(8);
+    public TimeSpan BellDuration { get; init; } = TimeSpan.FromSeconds(5);
 
     public required DateTimeOffset CreatedAt { get; init; }
 
@@ -139,12 +139,6 @@ public sealed record MatchSnapshot
 
     /// <summary>Hay una ronda abierta (en el interludio el estado sigue siendo IN_PROGRESS, pero no corren rondas).</summary>
     public bool IsPlayingRound => Status == MatchStatus.InProgress && State.Phase == MatchPhase.InProgress;
-
-    /// <summary>Interludio abierto: <see cref="Deadline"/> es su plazo durable.</summary>
-    public bool IsInInterlude => Status == MatchStatus.InProgress && State.Phase == MatchPhase.Interlude;
-
-    /// <summary>Id de la oferta de interludio vigente de esta partida.</summary>
-    public Guid? InterludeOfferId => IsInInterlude ? MatchEngine.InterludeOfferIdFor(MatchId, State.Interlude!.EndedRoom) : null;
 
     /// <summary>Próximo instante en que el temporizador debe procesar la partida (elección de camino, Repique o plazo).</summary>
     public DateTimeOffset? WakeAt
@@ -192,8 +186,6 @@ public sealed record OrderAck(Guid MatchId, int Round, Guid ClientActionId, Guid
 public sealed record DraftAck(Guid MatchId, Guid OfferId, Blessing Blessing, DateTimeOffset AcceptedAt);
 
 /// <summary>ACK de un voto del interludio. <see cref="Duplicate"/>: ya había votado eso mismo.</summary>
-public sealed record VoteAck(Guid MatchId, Guid OfferId, DateTimeOffset AcceptedAt, bool Duplicate);
-
 /// <summary>ACK de la elección de misión.</summary>
 public sealed record PactAck(Guid MatchId, Guid OfferId, PactKind Pact, DateTimeOffset AcceptedAt, bool Duplicate);
 

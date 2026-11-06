@@ -122,26 +122,13 @@ internal static class TestWorld
 
     public static Order Push(Direction d) => new(OrderType.Push, d);
 
-    /// <summary>
-    /// Una ronda y, si abre el interludio, lo cierra sin puertas ni votos: la mayoría de las pruebas no van de eso y usan
-    /// las salas que pusieron a mano. Las del interludio usan <see cref="ResolveRaw"/>.
-    /// </summary>
+    /// <summary>Una ronda.</summary>
     public static (GameState State, IReadOnlyList<DomainEvent> Events) Resolve(
         GameState state,
         IRandom? rng = null,
-        params (PlayerId Player, Order Order)[] orders)
-    {
-        var (next, events) = ResolveRaw(state, rng, orders);
-        if (next.Phase != MatchPhase.Interlude)
-        {
-            return (next, events);
-        }
+        params (PlayerId Player, Order Order)[] orders) => ResolveRaw(state, rng, orders);
 
-        var closed = MatchRules.CloseInterlude(next with { Interlude = next.Interlude! with { Doors = [] } }, new HashSet<PlayerId>(), rng ?? FixedRandom.Never);
-        return (closed.State, [.. events, .. closed.Events]);
-    }
-
-    /// <summary>Una ronda tal cual, sin cerrar el interludio.</summary>
+    /// <summary>Una ronda tal cual.</summary>
     public static (GameState State, IReadOnlyList<DomainEvent> Events) ResolveRaw(
         GameState state,
         IRandom? rng = null,

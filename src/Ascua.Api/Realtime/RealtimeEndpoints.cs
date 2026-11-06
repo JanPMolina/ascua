@@ -23,8 +23,8 @@ public sealed record RealtimeTicketResponse(
 
 public sealed class DevMatchRequest
 {
-    [Required, MinLength(2), MaxLength(4)]
-    [Description("Jugadores (2-4) con su héroe: ERRATA, ANTEAYER, HILVAN, POLIZON, ESCUCHA, USURERA, AVARO, MAMPOSTERO o CAMPANERO. Debe incluir al que llama.")]
+    [Required, MinLength(2), MaxLength(5)]
+    [Description("Jugadores (2-5) con su héroe: ERRATA, ANTEAYER, HILVAN, POLIZON, ESCUCHA, USURERA, AVARO, MAMPOSTERO o CAMPANERO. Debe incluir al que llama.")]
     public IReadOnlyList<DevSeat> Players { get; init; } = [];
 }
 

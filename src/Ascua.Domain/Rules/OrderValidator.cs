@@ -51,9 +51,9 @@ public static class OrderValidator
             return new DomainError(ErrorCode.InvalidOrder, "El paso está mal formado.");
         }
 
-        if (order.Type == OrderType.Sabotage && !hero.CanSabotage(state.RoomIndex))
+        if (order.Type == OrderType.Sabotage)
         {
-            return new DomainError(ErrorCode.InvalidOrder, "No puedes sabotear ahora: una vez por sala y solo como héroe activo fuera de un huésped.");
+            return new DomainError(ErrorCode.InvalidOrder, "El sabotaje ya no existe.");
         }
 
         if (order.Type == OrderType.Push && !hero.CanPush)

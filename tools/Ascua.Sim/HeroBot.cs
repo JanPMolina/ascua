@@ -11,8 +11,7 @@ namespace Ascua.Sim;
 /// <param name="VengeancePercent">Probabilidad de elegir el Camino de la Venganza al extinguirse.</param>
 /// <param name="BellMissPercent">Con el Repique, probabilidad de que otro jugador no decida a tiempo (guarda).</param>
 /// <param name="StartRoom">Sala en la que empieza (0 = partida normal; 4 = solo la pelea con el Celador, para medirla aparte).</param>
-/// <param name="AccusePercent">Con una sospecha, probabilidad de acusar en El Juicio.</param>
-public sealed record BotOptions(int BetrayalPercent = 10, int VengeancePercent = 30, int BellMissPercent = 20, int StartRoom = 0, int AccusePercent = 70);
+public sealed record BotOptions(int BetrayalPercent = 10, int VengeancePercent = 30, int BellMissPercent = 20, int StartRoom = 0);
 
 /// <summary>
 /// Un jugador simulado. Decide solo con su <see cref="PlayerView"/> (más lo que recuerda de lo que vio en esta sala):
@@ -46,9 +45,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private HashSet<Position> _danger = [];
     private Dictionary<Position, EnemyView> _enemies = [];
     private Dictionary<Position, AllyView> _others = [];
-    private readonly Dictionary<PlayerId, int> _suspects = [];
-    private bool _betrayedHere;
-    private bool? _sabotageRolled;
+    private int _size = Room.DefaultSize;
     private Position? _wardenSeenAt;
 
     public PlayerId Player { get; } = player;
@@ -66,68 +63,13 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         var offers = self.PactOptions;
         for (var i = 0; i < offers.Count; i++)
         {
-            if (offers[i].Kind == PactKind.MostWardenDamage || (offers[i].Kind == PactKind.BetrayTwiceUnconvicted && options.BetrayalPercent >= 30))
+            if (offers[i].Kind == PactKind.MostWardenDamage)
             {
                 return i;
             }
         }
 
         return rng.Next(offers.Count);
-    }
-
-    /// <summary>
-    /// Lo que vio en la resolución: un golpe sin autor en la fase de acciones no puede ser una trampa, así que quien
-    /// estuviera en línea a 2 casillas de la víctima queda bajo sospecha. Solo usa su vista y los eventos que recibe.
-    /// </summary>
-    public void Witness(PlayerView view, IReadOnlyList<DomainEvent> events)
-    {
-        ArgumentNullException.ThrowIfNull(view);
-        ArgumentNullException.ThrowIfNull(events);
-        foreach (var domainEvent in events)
-        {
-            if (domainEvent is BetrayalRecorded { Traitor: var traitor } && traitor == Player)
-            {
-                _betrayedHere = true;
-            }
-
-            if (domainEvent is not EntityDamaged { Source: null, Phase: RoundPhase.Actions, Target.Hero: { } victim })
-            {
-                continue;
-            }
-
-            var tile = victim == Player ? view.Self.Position : view.Allies.FirstOrDefault(a => a.Player == victim)?.Position;
-            if (tile is not { } at)
-            {
-                continue;
-            }
-
-            foreach (var ally in view.Allies.Where(a => a.Player != victim && a.Position is { } p && p.DistanceTo(at) <= HeroRules.SabotageReach + 1 && (p.X == at.X || p.Y == at.Y)))
-            {
-                _suspects[ally.Player] = _suspects.GetValueOrDefault(ally.Player) + 1;
-            }
-        }
-    }
-
-    /// <summary>Voto del interludio: acusa a quien más sospecha le da (si no traicionó él) y elige puerta según su misión.</summary>
-    public (PlayerId? Accused, int? Door) Vote(PlayerView view)
-    {
-        ArgumentNullException.ThrowIfNull(view);
-        var interlude = view.Interlude!;
-        PlayerId? accused = null;
-        if (!_betrayedHere && _suspects.Count > 0 && Roll(options.AccusePercent))
-        {
-            var top = _suspects.Where(s => interlude.Candidates.Contains(s.Key)).OrderByDescending(s => s.Value).ThenBy(s => s.Key.Value).Select(s => (PlayerId?)s.Key).FirstOrDefault();
-            accused = top;
-        }
-
-        int? door = null;
-        if (!interlude.Doors.IsEmpty)
-        {
-            var wanted = view.Self.Pact == PactKind.OpenThreeChests ? interlude.Doors.IndexOf(RoomType.Treasure) : -1;
-            door = wanted >= 0 ? wanted : rng.Next(interlude.Doors.Count);
-        }
-
-        return (accused, door);
     }
 
     /// <summary>Elige una bendición del draft: la primera que le sirve más a su héroe.</summary>
@@ -180,7 +122,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         if (first is { Type: OrderType.Move, Direction: { } step })
         {
             var second = AsIf(AfterWalking(step), heard);
-            return second.Type is OrderType.Attack or OrderType.Skill or OrderType.Interact or OrderType.Sabotage or OrderType.Push
+            return second.Type is OrderType.Attack or OrderType.Skill or OrderType.Interact or OrderType.Push
                 ? second with { Step = step }
                 : first;
         }
@@ -214,7 +156,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         }
 
         var target = _self.Position;
-        for (var i = 0; i < PathRules.DriftDistance && Room.IsInside(target.Step(direction)); i++)
+        for (var i = 0; i < PathRules.DriftDistance && Inside(target.Step(direction)); i++)
         {
             target = target.Step(direction);
         }
@@ -242,38 +184,6 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         return order;
     }
 
-    /// <summary>Sabotea según el parámetro de traición (más si su misión lo pide), si hay un aliado en línea.</summary>
-    private Order? SabotageOrder()
-    {
-        if (!_self.CanSabotage || options.BetrayalPercent <= 0)
-        {
-            return null;
-        }
-
-        var chance = options.BetrayalPercent * (_self.Pact == PactKind.BetrayTwiceUnconvicted ? 3 : 1);
-        foreach (var direction in Directions.All)
-        {
-            var position = _self.Position;
-            for (var i = 0; i < HeroRules.SabotageReach; i++)
-            {
-                position = position.Step(direction);
-                if (TerrainAt(position) is Terrain.Wall or Terrain.Brazier)
-                {
-                    break;
-                }
-
-                if (_others.TryGetValue(position, out var other) && other.Status == HeroStatus.Active)
-                {
-                    // Una sola tirada por ronda: esta función corre otra vez al sumar paso y acción.
-                    _sabotageRolled ??= Roll(chance);
-                    return _sabotageRolled == true ? new Order(OrderType.Sabotage, direction) : null;
-                }
-            }
-        }
-
-        return null;
-    }
-
     /// <summary>Empuja a un enemigo a una grieta o a unos pinchos; un Traidor, a un héroe a una grieta.</summary>
     private Order? PushOrder()
     {
@@ -287,7 +197,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             var from = _self.Position.Step(direction);
             var to = from.Step(direction);
             var terrain = TerrainAt(to);
-            if (!Room.IsInside(to) || _enemies.ContainsKey(to) || _others.ContainsKey(to) || _chests.ContainsValue(to)
+            if (!Inside(to) || _enemies.ContainsKey(to) || _others.ContainsKey(to) || _chests.ContainsValue(to)
                 || terrain is Terrain.Wall or Terrain.Brazier or Terrain.Altar)
             {
                 continue;
@@ -313,11 +223,24 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         return null;
     }
 
+    private bool Inside(Position position) => position.IsInside(_size, _size);
+
+    private IEnumerable<Position> AllTiles()
+    {
+        for (var y = 0; y < _size; y++)
+        {
+            for (var x = 0; x < _size; x++)
+            {
+                yield return new Position(x, y);
+            }
+        }
+    }
+
     private void Observe(PlayerView view)
     {
+        _size = view.Room.Size;
         _view = view;
         _self = view.Self;
-        _sabotageRolled = null;
         if (_room != view.RoomIndex)
         {
             _room = view.RoomIndex;
@@ -331,13 +254,11 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             _waits = 0;
             _lastOrder = null;
             _trail.Clear();
-            _suspects.Clear();
-            _betrayedHere = false;
         }
 
         _trail.Add(_self.Position);
 
-        foreach (var position in Room.AllPositions())
+        foreach (var position in AllTiles())
         {
             if (position.DistanceTo(_self.Position) <= _self.VisionRadius)
             {
@@ -385,7 +306,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         }
 
         // El agua sube desde el norte: nadie se queda donde ya llegó.
-        foreach (var flooded in Room.AllPositions().Where(p => p.Y < view.Room.FloodedRows))
+        foreach (var flooded in AllTiles().Where(p => p.Y < view.Room.FloodedRows))
         {
             _danger.Add(flooded);
         }
@@ -413,7 +334,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private bool IsHostile(AllyView other) => (other.Status == HeroStatus.Renegade) != (_self.Status == HeroStatus.Renegade);
 
     private Terrain TerrainAt(Position position) =>
-        !Room.IsInside(position) ? Terrain.Wall : _known.GetValueOrDefault(position, Terrain.Floor);
+        !Inside(position) ? Terrain.Wall : _known.GetValueOrDefault(position, Terrain.Floor);
 
     private bool IsPassable(Position position)
     {
@@ -737,17 +658,12 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
     private Position StairsTile() =>
         _known.FirstOrDefault(k => k.Value == Terrain.Stairs).Key is var stairs && TerrainAt(stairs) == Terrain.Stairs
             ? stairs
-            : Ascua.Domain.Rules.MatchFactory.StairsPosition;
+            : MatchFactory.StairsFor(_size);
 
     // ───────────── Héroe ─────────────
 
     private Order DecideHero(IReadOnlyList<(PlayerId Player, Order Order)>? heard)
     {
-        if (SabotageOrder() is { } sabotage)
-        {
-            return sabotage;
-        }
-
         if (PushOrder() is { } push)
         {
             return push;
@@ -778,7 +694,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         // Fuera de la vista no se le olvida dónde está: se va a donde se le vio por última vez (al empezar, al centro).
         if (_view.RoomIndex == _view.RoomCount - 1 && !InDanger)
         {
-            var lastSeen = _wardenSeenAt ?? MatchFactory.WardenPosition;
+            var lastSeen = _wardenSeenAt ?? MatchFactory.WardenFor(_size);
             if (!_view.Allies.Any(a => a.Status == HeroStatus.Down) && _self.Position.DistanceTo(lastSeen) > 1)
             {
                 return Walk(p => p.DistanceTo(lastSeen) <= 1, lastSeen);
@@ -1042,7 +958,7 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
             _triedStairs = true;
         }
 
-        var oldest = Room.AllPositions().Where(IsPassable).OrderBy(p => _lastSeen.GetValueOrDefault(p)).ThenBy(p => _self.Position.DistanceTo(p)).FirstOrDefault();
+        var oldest = AllTiles().Where(IsPassable).OrderBy(p => _lastSeen.GetValueOrDefault(p)).ThenBy(p => _self.Position.DistanceTo(p)).FirstOrDefault();
         if (_lastSeen.GetValueOrDefault(oldest) < _view.Round)
         {
             return Walk(p => p.DistanceTo(oldest) <= _self.VisionRadius, oldest);
@@ -1348,10 +1264,10 @@ public sealed class HeroBot(PlayerId player, BotOptions options, IRandom rng)
         var line = horizontal ? _self.Position.Y : _self.Position.X;
         var step = direction is Direction.East or Direction.South ? 1 : -1;
         var score = 0;
-        for (var i = 0; i < Room.Size; i++)
+        for (var i = 0; i < _size; i++)
         {
             var from = horizontal ? new Position(i, line) : new Position(line, i);
-            var moved = (i + step + Room.Size) % Room.Size;
+            var moved = (i + step + _size) % _size;
             var to = horizontal ? new Position(moved, line) : new Position(line, moved);
             var wraps = from.DistanceTo(to) > 1;
             if (_enemies.TryGetValue(from, out var enemy))

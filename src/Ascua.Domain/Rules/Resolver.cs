@@ -16,7 +16,8 @@ public static class Resolver
     public static (GameState Next, IReadOnlyList<DomainEvent> Events) Resolve(
         GameState state,
         IReadOnlyDictionary<PlayerId, Order> orders,
-        IRandom rng)
+        IRandom rng,
+        int? testRoundLimit = null)
     {
         ArgumentNullException.ThrowIfNull(state);
         ArgumentNullException.ThrowIfNull(orders);
@@ -26,7 +27,7 @@ public static class Resolver
             throw new InvalidOperationException("Solo se resuelven rondas de partidas en curso.");
         }
 
-        var ctx = new RoundContext(state, rng) { Phase = RoundPhase.Reveal };
+        var ctx = new RoundContext(state, rng) { Phase = RoundPhase.Reveal, TestRoundLimit = testRoundLimit };
         Paths.RevealChoices(ctx);
         HeroSkills.ClearShouts(ctx);
         HeroSkills.RecordHistory(ctx);
@@ -134,12 +135,10 @@ public static class Resolver
         }
 
         ctx.Emit(new RoundResolved(ctx.Round));
-        var interlude = outcome is null ? ctx.OpeningInterlude : null;
         var next = Freeze(ctx) with
         {
             Round = outcome is null ? ctx.Round + 1 : ctx.Round,
-            Phase = outcome is not null ? MatchPhase.Finished : interlude is not null ? MatchPhase.Interlude : MatchPhase.InProgress,
-            Interlude = interlude,
+            Phase = outcome is not null ? MatchPhase.Finished : MatchPhase.InProgress,
             Outcome = outcome,
         };
         return (next, ctx.Events);

@@ -53,7 +53,7 @@ public sealed class PlayerViewTests
         var origin = new Position(1, 7);
 
         Assert.All(view.Tiles, t => Assert.True(t.Position.DistanceTo(origin) <= HeroCatalog.VisionRadius));
-        Assert.Equal(Room.AllPositions().Count(p => p.DistanceTo(origin) <= HeroCatalog.VisionRadius), view.Tiles.Count);
+        Assert.Equal(EmptyRoom().AllPositions().Count(p => p.DistanceTo(origin) <= HeroCatalog.VisionRadius), view.Tiles.Count);
         Assert.Empty(view.Enemies);
         Assert.Empty(view.Chests);
     }
@@ -64,7 +64,7 @@ public sealed class PlayerViewTests
         var view = PlayerViewProjector.For(SecretsOfB(), B);
 
         Assert.Equal(HeroCatalog.VisionRadius, view.Self.VisionRadius);
-        Assert.Equal(Room.Size * Room.Size, view.Tiles.Count);
+        Assert.Equal(Room.DefaultSize * Room.DefaultSize, view.Tiles.Count);
     }
 
     [Fact]

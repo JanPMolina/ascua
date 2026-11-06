@@ -51,7 +51,7 @@ public interface IMatchmakingQueue
     Task<QueueStatus> GetStatusAsync(Guid userId, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Saca de forma atómica un grupo de 2 a 4 jugadores: 4 en cuanto los haya, o los que haya (≥2) si el más
+    /// Saca de forma atómica un grupo de 2 a 5 jugadores: 5 en cuanto los haya, o los que haya (≥2) si el más
     /// antiguo esperó al menos <paramref name="maxWait"/>. Los deja en estado "agrupado" hasta
     /// <see cref="CompleteGroupAsync"/> o <see cref="AbortGroupAsync"/>.
     /// </summary>

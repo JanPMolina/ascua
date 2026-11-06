@@ -7,115 +7,19 @@ using static Ascua.Domain.Tests.Support.TestWorld;
 
 namespace Ascua.Domain.Tests.V3;
 
-/// <summary>06-version-3.md §2 y §7.</summary>
+/// <summary>06-version-3.md §7 (el sabotaje de §2 se quitó en la versión 4).</summary>
 public class SabotageAndPushTests
 {
-    /// <summary>Quien no da orden defiende y anularía el golpe: la víctima está haciendo otra cosa.</summary>
+    /// <summary>Quien no da orden defiende: la otra parte está haciendo otra cosa.</summary>
     private static readonly (PlayerId, Order) BBusy = (B, Interact(Direction.South));
 
     [Fact]
-    public void Sabotage_hits_the_first_ally_in_line_for_one_with_no_author_and_is_recorded()
+    public void Sabotage_no_longer_exists_and_is_always_rejected()
     {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0, facing: Direction.West);
-        var b = Hero(B, HeroClass.Mampostero, 4, 2, seat: 1) with { Embers = 2 };
+        var a = Hero(A, HeroClass.Mampostero, 4, 5);
+        var b = Hero(B, HeroClass.Errata, 4, 4, seat: 1);
 
-        var (next, events) = Resolve(State([a, b]), (A, Sabotage(Direction.North)), BBusy);
-
-        Assert.Equal(5, next.H(B).Hp);
-        Assert.Equal(2, next.H(B).Embers);
-        var betrayal = Assert.Single(next.Betrayals);
-        Assert.Equal(BetrayalKind.Sabotage, betrayal.Kind);
-        Assert.Equal(0, betrayal.Room);
-        Assert.Equal(Direction.West, next.H(A).Facing);
-        Assert.Null(events.OfType<EntityDamaged>().Single().Source);
-    }
-
-    [Fact]
-    public void Nothing_in_what_others_receive_reveals_the_author()
-    {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0);
-        var b = Hero(B, HeroClass.Mampostero, 4, 2, seat: 1);
-        var escucha = Hero(C, HeroClass.Escucha, 4, 1, seat: 2);
-
-        var (next, events) = Resolve(State([a, b, escucha]), (A, Sabotage(Direction.North)), BBusy);
-
-        foreach (var viewer in new[] { B, C })
-        {
-            var seen = events.SeenBy(next, viewer);
-            Assert.DoesNotContain(seen, e => e is BetrayalRecorded);
-            Assert.DoesNotContain(seen, e => e is EntityDamaged { Source: not null });
-            Assert.DoesNotContain(A.Value, Json.Of(seen));
-        }
-
-        Assert.Contains(events.SeenBy(next, A), e => e is BetrayalRecorded { Kind: BetrayalKind.Sabotage });
-        Assert.DoesNotContain(A, next.NoisyHeroes);
-        Assert.Empty(PlayerViewProjector.For(next, B).Outcome?.Betrayals ?? []);
-    }
-
-    [Fact]
-    public void Sabotage_is_once_per_room_and_is_not_spent_without_a_target()
-    {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0);
-        var b = Hero(B, HeroClass.Mampostero, 0, 8, seat: 1);
-
-        var (unspent, _) = Resolve(State([a, b]), (A, Sabotage(Direction.North)));
-        Assert.Null(OrderValidator.Validate(unspent, A, unspent.Round, Sabotage(Direction.North)));
-
-        var near = b with { Position = At(4, 3) };
-        var (spent, _) = Resolve(State([a, near]), (A, Sabotage(Direction.North)), BBusy);
-        Assert.Equal(ErrorCode.InvalidOrder, OrderValidator.Validate(spent, A, spent.Round, Sabotage(Direction.North))!.Kind);
-    }
-
-    [Fact]
-    public void A_wall_cuts_the_line_and_an_enemy_does_not()
-    {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0);
-        var b = Hero(B, HeroClass.Mampostero, 4, 2, seat: 1);
-
-        var blocked = EmptyRoom().WithTerrain(At(4, 3), Terrain.Wall);
-        var (afterWall, _) = Resolve(State([a, b], room: blocked), (A, Sabotage(Direction.North)), BBusy);
-        Assert.Empty(afterWall.Betrayals);
-
-        var (afterEnemy, _) = Resolve(State([a, b], [Enemy(1, EnemyKind.Totem, 4, 3)]), (A, Sabotage(Direction.North)), BBusy);
-        Assert.Single(afterEnemy.Betrayals);
-    }
-
-    [Fact]
-    public void A_guard_cancels_it_spends_it_and_it_is_not_a_betrayal()
-    {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0);
-        var b = Hero(B, HeroClass.Mampostero, 4, 3, seat: 1);
-
-        var (next, _) = Resolve(State([a, b]), (A, Sabotage(Direction.North)), (B, Order.DefaultGuard));
-
-        Assert.Equal(6, next.H(B).Hp);
-        Assert.Empty(next.Betrayals);
-        Assert.False(next.H(A).CanSabotage(next.RoomIndex));
-    }
-
-    [Fact]
-    public void A_shield_absorbing_it_is_still_a_betrayal()
-    {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0);
-        var b = Hero(B, HeroClass.Mampostero, 4, 3, seat: 1) with { Shield = 1 };
-
-        var (next, _) = Resolve(State([a, b]), (A, Sabotage(Direction.North)), BBusy);
-
-        Assert.Equal(6, next.H(B).Hp);
-        Assert.Single(next.Betrayals);
-    }
-
-    [Fact]
-    public void It_drops_a_coin_from_the_miser_without_stealing()
-    {
-        var a = Hero(A, HeroClass.Errata, 4, 4, seat: 0);
-        var b = Hero(B, HeroClass.Avaro, 4, 3, seat: 1);
-
-        var (next, _) = Resolve(State([a, b]), (A, Sabotage(Direction.North)), BBusy);
-
-        Assert.Equal(2, next.H(B).Embers);
-        Assert.Equal(0, next.H(A).Embers);
-        Assert.Equal(1, Assert.Single(next.CurrentRoom.Ground).Amount);
+        Assert.Equal(ErrorCode.InvalidOrder, OrderValidator.Validate(State([a, b]), A, 1, Sabotage(Direction.North))!.Kind);
     }
 
     [Fact]
@@ -127,19 +31,6 @@ public class SabotageAndPushTests
 
         Assert.Equal(ErrorCode.InvalidOrder, OrderValidator.Validate(state, A, 1, Sabotage(Direction.North))!.Kind);
         Assert.Equal(ErrorCode.InvalidOrder, OrderValidator.Validate(state, A, 1, Push(Direction.North))!.Kind);
-    }
-
-    [Fact]
-    public void Hilvan_can_sabotage_from_the_second_body_in_mirror()
-    {
-        var hilvan = Hero(A, HeroClass.Hilvan, 2, 4, seat: 0) with { SecondBody = At(6, 4) };
-        var b = Hero(B, HeroClass.Mampostero, 8, 4, seat: 1);
-
-        // Al oeste desde el principal no hay nadie; en espejo, al este desde el segundo, está B.
-        var (next, _) = Resolve(State([hilvan, b]), (A, Sabotage(Direction.West)), BBusy);
-
-        Assert.Single(next.Betrayals);
-        Assert.Equal(5, next.H(B).Hp);
     }
 
     // ───── Empujón

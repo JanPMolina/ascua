@@ -23,7 +23,7 @@ public enum PactKind
     /// <summary>Hacer el mayor daño al Celador.</summary>
     MostWardenDamage,
 
-    /// <summary>2 traiciones anónimas sin que te condenen nunca.</summary>
+    /// <summary>Obsoleta desde la versión 4 (ya no hay sabotaje ni condenas): nunca se ofrece ni se cumple.</summary>
     BetrayTwiceUnconvicted,
 
     /// <summary>Que un jugador concreto (secreto) termine con menos oro que tú.</summary>
@@ -32,7 +32,7 @@ public enum PactKind
     /// <summary>Empujar a 2 enemigos a pinchos, fuego o grietas.</summary>
     PushTwoIntoHazard,
 
-    /// <summary>Acusar a alguien que resulta condenado y culpable.</summary>
+    /// <summary>Obsoleta desde la versión 4 (ya no hay El Juicio): nunca se ofrece ni se cumple.</summary>
     CorrectConviction,
 }
 
@@ -50,17 +50,10 @@ public sealed record PactProgress
     /// <summary>Traiciones anónimas cometidas.</summary>
     public int Betrayals { get; init; }
 
-    /// <summary>Veces que lo condenaron en El Juicio.</summary>
-    public int Convictions { get; init; }
-
-    /// <summary>Acusaciones suyas que acabaron en condena de un culpable.</summary>
-    public int CorrectAccusations { get; init; }
-
     public int HazardPushes { get; init; }
     public int Pushes { get; init; }
     public int Kills { get; init; }
     public int WardenDamage { get; init; }
-    public int TrialGoldLost { get; init; }
 
     /// <summary>El mayor oro con el que murió.</summary>
     public int GoldAtDeath { get; init; }
@@ -77,10 +70,8 @@ public static class PactRules
         PactKind.MostWardenDamage,
         PactKind.OpenThreeChests,
         PactKind.ReviveTwoAllies,
-        PactKind.BetrayTwiceUnconvicted,
         PactKind.OutgoldTarget,
         PactKind.PushTwoIntoHazard,
-        PactKind.CorrectConviction,
     ];
 
     public static bool IsFulfilled(Hero hero, IReadOnlyCollection<Hero> heroes)
@@ -93,11 +84,9 @@ public static class PactRules
             PactKind.MostWardenDamage => progress.WardenDamage > 0 && progress.WardenDamage >= heroes.Max(h => h.Progress.WardenDamage),
             PactKind.OpenThreeChests => progress.ChestsOpened >= 3,
             PactKind.ReviveTwoAllies => progress.Revives >= 2,
-            PactKind.BetrayTwiceUnconvicted => progress.Betrayals >= 2 && progress.Convictions == 0,
             PactKind.OutgoldTarget => heroes.FirstOrDefault(h => h.Player == hero.PactTarget) is { } target
                 && Outcomes.FinalEmbers(hero) > Outcomes.FinalEmbers(target),
             PactKind.PushTwoIntoHazard => progress.HazardPushes >= 2,
-            PactKind.CorrectConviction => progress.CorrectAccusations >= 1,
             _ => false,
         };
     }

@@ -69,7 +69,7 @@ public static class HeroCatalog
         HeroClass.Errata => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 6, SkillCooldown: 3),
         HeroClass.Anteayer => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 5, SkillCooldown: 5),
         HeroClass.Hilvan => new(MaxHp: 8, Range: 1, Damage: 1, Initiative: 3, SkillCooldown: 3),
-        HeroClass.Polizon => new(MaxHp: 6, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
+        HeroClass.Polizon => new(MaxHp: 7, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
         HeroClass.Escucha => new(MaxHp: 5, Range: 4, Damage: 1, Initiative: 2, SkillCooldown: 4),
         HeroClass.Usurera => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 2),
 
@@ -118,10 +118,10 @@ public static class HeroRules
     public const int LoanHeal = 3;
     public const int LoanReviveHp = 3;
     public const int LoanDebt = 1;
-    public const int InterestEvery = 7;
+    public const int InterestEvery = 10;
     public const int DebtCap = 3;
 
-    public const int MiserStartEmbers = 4;
+    public const int MiserStartEmbers = 5;
     public const int MiserReviveEmbers = 2;
     public const int MiserRekindleEmbers = 1;
 
@@ -134,11 +134,6 @@ public static class HeroRules
 
     /// <summary>Daño de Corrimiento a la criatura que sale por un borde y entra por el otro.</summary>
     public const int WrapDamage = 2;
-
-    /// <summary>Alcance del sabotaje, en línea.</summary>
-    public const int SabotageReach = 2;
-
-    public const int SabotageDamage = 1;
 
     /// <summary>Espera del empujón (usado en la ronda N, disponible en N+3).</summary>
     public const int PushCooldown = 3;
@@ -179,9 +174,6 @@ public sealed record Hero
     public ImmutableList<PactOffer> PactOptions { get; init; } = [];
 
     public PactProgress Progress { get; init; } = new();
-
-    /// <summary>Sala en la que ya saboteó (-1 = ninguna). Es una vez por sala.</summary>
-    public int SabotagedRoom { get; init; } = -1;
 
     /// <summary>Rondas que faltan para poder volver a empujar.</summary>
     public int PushCooldown { get; init; }
@@ -269,8 +261,6 @@ public sealed record Hero
 
     /// <summary>Último aliento ya gastado: si vuelve a caer, nadie puede levantarlo.</summary>
     public bool CanBeRevived => !(Has(Blessing.LastBreath) && LastBreathUsed);
-
-    public bool CanSabotage(int roomIndex) => IsActive && !IsInHost && SabotagedRoom != roomIndex;
 
     /// <summary>Empujan los héroes activos y los Renegados presentes, salvo dentro de un huésped.</summary>
     public bool CanPush => (IsActive || IsPresentRenegade) && !IsInHost;

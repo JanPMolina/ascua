@@ -98,7 +98,7 @@ public sealed class MatchHistoryTests(AscuaApiFactory factory)
     [Fact]
     public async Task Finished_match_replays_deterministically_with_the_requesters_view_only()
     {
-        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:MaxRounds"] = "3" });
+        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:TestRoundLimit"] = "3" });
         var (a, b, matchId) = await PlayFullMatchAsync(host);
 
         using var http = Client(a, host);
@@ -132,7 +132,7 @@ public sealed class MatchHistoryTests(AscuaApiFactory factory)
             var view = round.View!;
             Assert.Equal(expected.Enemies.Select(e => e.Id).Order(), view.Enemies.Select(e => e.EnemyId).Order());
             Assert.Equal(expected.Tiles.Count, view.Tiles.Count);
-            Assert.True(view.Tiles.Count < Room.Size * Room.Size, "La niebla oculta casillas.");
+            Assert.True(view.Tiles.Count < Room.DefaultSize * Room.DefaultSize, "La niebla oculta casillas.");
             Assert.Equal(truth.FindHero(playerA)!.Blessings.Distinct().Select(RealtimeMapper.BlessingId), view.Me.Blessings);
             Assert.Equal(RealtimeMapper.PactId(truth.FindHero(playerA)!.Pact), view.Me.Pact?.PactId);
         }
@@ -194,7 +194,7 @@ public sealed class MatchHistoryTests(AscuaApiFactory factory)
     [Fact]
     public async Task Admin_can_request_the_full_view_and_a_player_cannot()
     {
-        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:MaxRounds"] = "2" });
+        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:TestRoundLimit"] = "2" });
         var (a, b, matchId) = await PlayFullMatchAsync(host);
         var admin = await RegisterAdminAsync(host);
         var path = $"/api/v1/matches/{matchId}/replay";
@@ -237,7 +237,7 @@ public sealed class MatchHistoryTests(AscuaApiFactory factory)
     [Fact]
     public async Task Finished_match_rows_cannot_be_rewritten()
     {
-        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:MaxRounds"] = "1" });
+        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:TestRoundLimit"] = "1" });
         var (_, _, matchId) = await PlayFullMatchAsync(host);
 
         await using var scope = host.Services.CreateAsyncScope();

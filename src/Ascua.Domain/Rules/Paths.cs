@@ -73,7 +73,7 @@ internal static class Paths
     public static void Drift(RoundContext ctx, Hero ember, Direction direction)
     {
         var target = ember.Position;
-        for (var i = 0; i < PathRules.DriftDistance && Room.IsInside(target.Step(direction)); i++)
+        for (var i = 0; i < PathRules.DriftDistance && ctx.Room.IsInside(target.Step(direction)); i++)
         {
             target = target.Step(direction);
         }
@@ -291,7 +291,7 @@ internal static class Paths
     private static Position? FarthestFreeTile(RoundContext ctx)
     {
         var heroes = ctx.Heroes.Where(h => h.Status is HeroStatus.Active or HeroStatus.Down).SelectMany(h => h.Bodies).ToList();
-        var candidates = Room.AllPositions()
+        var candidates = ctx.Room.AllPositions()
             .Where(p => ctx.IsFreeFor(p, flies: false) && ctx.Room.TerrainAt(p) != Terrain.Stairs)
             .Select(p => (Position: p, Distance: heroes.Count == 0 ? int.MaxValue : heroes.Min(h => h.DistanceTo(p))))
             .OrderByDescending(c => c.Distance)

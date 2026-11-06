@@ -27,7 +27,7 @@ public sealed class MatchFactoryTests
         Assert.DoesNotContain(state.Rooms[4].Features, f => f.Terrain == Terrain.Stairs);
         var warden = Assert.Single(state.Rooms[4].InitialEnemies);
         Assert.Equal(EnemyKind.Warden, warden.Kind);
-        Assert.Equal(EnemyCatalog.WardenHpPerPlayer * 3, warden.Hp);
+        Assert.Equal(Difficulty.WardenHpPerPlayer(3) * 3, warden.Hp);
         Assert.Equal(state.Rooms[0].InitialEnemies, state.Enemies);
     }
 
@@ -51,8 +51,10 @@ public sealed class MatchFactoryTests
         var (duo, _) = MatchFactory.Create([new(A, HeroClass.Mampostero), new(B, HeroClass.Usurera)], new SeededRandom(42));
         var (trio, _) = MatchFactory.Create(ThreePlayers, new SeededRandom(42));
 
-        Assert.All(duo.Rooms.Take(4), room => Assert.Equal(2, room.InitialEnemies.Count));
+        // La primera sala es normal: el tipo al azar de las demás suma o quita monstruos (07-version-4.md §6).
+        Assert.Equal(2, duo.Rooms[0].InitialEnemies.Count);
         Assert.Equal(3, trio.Rooms[0].InitialEnemies.Count);
+        Assert.Equal(2, Difficulty.Monsters(1, 2).Count());
     }
 
     [Fact]
@@ -90,7 +92,7 @@ public sealed class MatchFactoryTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(5)]
+    [InlineData(6)]
     public void Rejects_invalid_player_counts(int count)
     {
         var players = Enumerable.Range(0, count).Select(i => new PlayerSetup(new PlayerId($"p{i}"), HeroClass.Mampostero)).ToList();

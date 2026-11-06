@@ -17,6 +17,7 @@ internal static class Cleanup
         TriggerSpikes(ctx);
         BurnFires(ctx);
         Flood(ctx);
+        Chill(ctx);
         TickBurns(ctx);
         TickDownedHeroes(ctx, downAtStart);
         HeroSkills.DrainHosts(ctx);
@@ -182,7 +183,10 @@ internal static class Cleanup
         }
     }
 
-    /// <summary>Con la sala sin enemigos, un héroe activo en la escalera abre el interludio antes de la sala siguiente.</summary>
+    /// <summary>
+    /// Con la sala sin enemigos, un héroe activo en la escalera lleva a todos a la sala siguiente (07-version-4.md §6). Su
+    /// tipo se sorteó al crear la partida y se anuncia ahora, al entrar.
+    /// </summary>
     private static void TryAdvanceRoom(RoundContext ctx)
     {
         if (ctx.Enemies.Count > 0 || ctx.RoomIndex >= ctx.Rooms.Count - 1)
@@ -197,11 +201,32 @@ internal static class Cleanup
             return;
         }
 
-        Interludes.Open(ctx);
+        var next = ctx.RoomIndex + 1;
+        ctx.Rooms[next] = ctx.Rooms[next] with { EnteredRound = ctx.Round + 1 };
+        EnterNextRoom(ctx);
     }
 
     /// <summary>
-    /// Al cerrarse el interludio, todos pasan a la sala siguiente: las Brasas renacen en la entrada, cada Renegado quita un
+    /// El frío: desde la ronda 70, daño creciente sin autor a cada héroe activo y a cada Traidor presente (el frío no
+    /// distingue bandos; si no, alargar la partida bastaría para que ganen los Traidores). Ni Defender ni el escudo lo paran.
+    /// </summary>
+    private static void Chill(RoundContext ctx)
+    {
+        var damage = GameState.ChillDamage(ctx.Round);
+        if (damage == 0)
+        {
+            return;
+        }
+
+        ctx.Emit(new Chilled(damage));
+        foreach (var hero in ctx.Heroes.Where(h => h.IsVulnerable).OrderBy(h => h.Seat).ToList())
+        {
+            Combat.HitHero(ctx, hero.Player, damage, Attacker.None, piercing: true);
+        }
+    }
+
+    /// <summary>
+    /// Al pisar la escalera, todos pasan a la sala siguiente: las Brasas renacen en la entrada, cada Renegado quita un
     /// monstruo de la sala (mínimo 1) y aparece lejos del grupo.
     /// </summary>
     internal static void EnterNextRoom(RoundContext ctx)

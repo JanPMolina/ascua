@@ -356,11 +356,5 @@ public sealed record Pushed(PlayerId Pusher, EntityRef Target, Position From, Po
 /// <summary>El agua subió: ya hay tantas filas inundadas desde el norte.</summary>
 public sealed record RoomFlooded(int Rows) : DomainEvent;
 
-/// <summary>Se activó la escalera: abre El Juicio y, si toca, la votación de puertas.</summary>
-public sealed record InterludeOpened(int EndedRoom, ImmutableList<RoomType> Doors) : DomainEvent;
-
-/// <summary>Su voto (privado: nadie más sabe qué votó).</summary>
-public sealed record VoteCast(PlayerId Voter, PlayerId? Accused, int? Door) : DomainEvent;
-
-/// <summary>Se cerró el interludio: el recuento público.</summary>
-public sealed record InterludeClosed(InterludeVerdict Verdict) : DomainEvent;
+/// <summary>El frío (07-version-4.md §7): daño sin autor a cada héroe activo, desde la ronda 70.</summary>
+public sealed record Chilled(int Damage) : DomainEvent;

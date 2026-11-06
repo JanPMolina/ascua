@@ -36,7 +36,7 @@ internal static class RoomShift
                 return p;
             }
 
-            var moved = ((horizontal ? p.X : p.Y) + step + Room.Size) % Room.Size;
+            var moved = ((horizontal ? p.X : p.Y) + step + ctx.Room.Size) % ctx.Room.Size;
             return horizontal ? p with { X = moved } : p with { Y = moved };
         }
 

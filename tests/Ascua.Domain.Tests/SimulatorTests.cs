@@ -29,13 +29,13 @@ public sealed class SimulatorTests
         var others = Enum.GetValues<HeroClass>().Where(h => h != hero).ToList();
         for (var game = 0; game < 12; game++)
         {
-            var players = 2 + (game % 3);
+            var players = 2 + (game % 4);
             var heroes = new List<HeroClass> { hero };
             heroes.AddRange(Enumerable.Range(0, players - 1).Select(i => others[(game + i) % others.Count]));
 
             var record = MatchSimulator.Play(heroes, (ulong)((int)hero * 1000) + (ulong)game, Options);
 
-            Assert.InRange(record.Rounds, 1, GameState.DefaultMaxRounds);
+            Assert.InRange(record.Rounds, 1, MatchSimulator.MaxRounds);
             Assert.Equal(players, record.Stats.Count);
         }
     }

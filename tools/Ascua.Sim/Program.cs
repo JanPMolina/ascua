@@ -3,16 +3,16 @@ using System.Globalization;
 using Ascua.Sim;
 
 // Simulador de balance (planteamiento/05-heroes.md §14): juega partidas completas directo contra el motor, con bots que
-// deciden solo con su vista, sobre todas las combinaciones de 2, 3 y 4 jugadores. Reproducible con semilla fija.
+// deciden solo con su vista, sobre todas las combinaciones de 2 a 5 jugadores. Reproducible con semilla fija.
 // Uso: dotnet run -c Release --project tools/Ascua.Sim -- [--games 200] [--seed 20261102] [--betrayal 10]
-//      [--vengeance 30] [--bell-miss 20] [--sizes 2,3,4] [--title "Corrida"] [--out archivo.md]
+//      [--vengeance 30] [--bell-miss 20] [--sizes 2,3,4,5] [--title "Corrida"] [--out archivo.md]
 var games = 200;
 var seed = 20261102UL;
 var betrayal = 10;
 var vengeance = 30;
 var bellMiss = 20;
 var startRoom = 0;
-var sizes = new[] { 2, 3, 4 };
+var sizes = new[] { 2, 3, 4, 5 };
 var title = "Corrida";
 string? output = null;
 string? traceHeroes = null;

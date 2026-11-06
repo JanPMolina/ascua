@@ -29,7 +29,7 @@ public sealed class CreateRoomRequest
     public RoomVisibility Visibility { get; init; } = RoomVisibility.Public;
 
     [Range(Room.MinPlayers, Room.MaxPlayers)]
-    [Description("Capacidad de la sala (2 a 4).")]
+    [Description("Capacidad de la sala (2 a 5). Con 5 la sala del juego mide 11 × 11.")]
     public int MaxPlayers { get; init; } = Room.MaxPlayers;
 
     [MaxLength(4)]

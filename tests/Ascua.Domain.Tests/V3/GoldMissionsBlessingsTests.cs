@@ -213,10 +213,8 @@ public class GoldMissionsBlessingsTests
         { PactKind.OpenThreeChests, new PactProgress { ChestsOpened = 3 }, true },
         { PactKind.OpenThreeChests, new PactProgress { ChestsOpened = 2 }, false },
         { PactKind.ReviveTwoAllies, new PactProgress { Revives = 2 }, true },
-        { PactKind.BetrayTwiceUnconvicted, new PactProgress { Betrayals = 2 }, true },
-        { PactKind.BetrayTwiceUnconvicted, new PactProgress { Betrayals = 2, Convictions = 1 }, false },
+        { PactKind.BetrayTwiceUnconvicted, new PactProgress { Betrayals = 2 }, false },
         { PactKind.PushTwoIntoHazard, new PactProgress { HazardPushes = 2 }, true },
-        { PactKind.CorrectConviction, new PactProgress { CorrectAccusations = 1 }, true },
         { PactKind.CorrectConviction, new PactProgress(), false },
         { PactKind.MostWardenDamage, new PactProgress(), false },
         { PactKind.SlayWarden, new PactProgress { KilledWarden = true }, false },
@@ -475,14 +473,14 @@ public class GoldMissionsBlessingsTests
     public void Awards_are_only_for_someone_who_earned_them_and_ties_share_them()
     {
         var a = Hero(A, HeroClass.Mampostero, 1, 1) with { Progress = new PactProgress { Betrayals = 2, ChestsOpened = 1 } };
-        var b = Hero(B, HeroClass.Errata, 2, 1, seat: 1) with { Progress = new PactProgress { Betrayals = 2, WardenDamage = 3, GoldAtDeath = 4, TrialGoldLost = 3 } };
+        var b = Hero(B, HeroClass.Errata, 2, 1, seat: 1) with { Progress = new PactProgress { Betrayals = 2, WardenDamage = 3, GoldAtDeath = 4 } };
 
         var awards = Awards.Compute([a, b]);
 
         Assert.Equal(2, awards.Count(x => x.Kind == AwardKind.MostBetrayals));
         Assert.Contains(awards, x => x is { Kind: AwardKind.MostWardenDamage, Value: 3 } && x.Player == B);
         Assert.Contains(awards, x => x is { Kind: AwardKind.RichestDeath, Value: 4 } && x.Player == B);
-        Assert.Contains(awards, x => x is { Kind: AwardKind.MostTrialGoldLost, Value: 3 } && x.Player == B);
+        Assert.DoesNotContain(awards, x => x.Kind == AwardKind.MostTrialGoldLost);
         Assert.DoesNotContain(awards, x => x.Kind == AwardKind.MostRevives);
         Assert.DoesNotContain(awards, x => x.Kind == AwardKind.MostPushes);
     }

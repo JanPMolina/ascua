@@ -254,7 +254,7 @@ public sealed class ErrataTests
     }
 
     [Fact]
-    public void Two_anonymous_betrayals_fulfil_the_betrayal_pact()
+    public void Two_anonymous_betrayals_are_recorded_but_the_old_betrayal_pact_is_never_fulfilled()
     {
         var errata = Hero(A, HeroClass.Errata, 4, 5, seat: 0) with { Pact = PactKind.BetrayUnseen };
         var ally = Hero(B, HeroClass.Mampostero, 4, 4, seat: 1);
@@ -263,6 +263,6 @@ public sealed class ErrataTests
         var (next, _) = Resolve(state, (A, Skill(Direction.South)), (B, Interact(Direction.East)));
 
         Assert.Equal(2, next.H(A).Progress.Betrayals);
-        Assert.True(PactRules.IsFulfilled(next.H(A) with { Pact = PactKind.BetrayTwiceUnconvicted }, next.Heroes));
+        Assert.False(PactRules.IsFulfilled(next.H(A) with { Pact = PactKind.BetrayTwiceUnconvicted }, next.Heroes));
     }
 }

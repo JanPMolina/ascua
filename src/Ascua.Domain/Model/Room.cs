@@ -48,7 +48,7 @@ public sealed record Fire(Position Position, int Rounds, int Damage);
 /// <summary>Ascuas tiradas en una casilla (del Avaro o de un enemigo sobornado). Las recoge el primero que la pise.</summary>
 public sealed record GroundEmbers(Position Position, int Amount);
 
-/// <summary>Salas con reglas propias, elegidas por votación entre 2 puertas (06-version-3.md §4).</summary>
+/// <summary>Salas con reglas propias; el tipo sale al azar al entrar (07-version-4.md §6).</summary>
 public enum RoomType
 {
     /// <summary>Sin regla propia: la primera sala y la del Celador.</summary>
@@ -72,8 +72,8 @@ public enum RoomType
 
 public static class RoomTypes
 {
-    /// <summary>Tipos que pueden salir en una puerta.</summary>
-    public static IReadOnlyList<RoomType> Doors { get; } = [RoomType.Treasure, RoomType.Arena, RoomType.Sanctuary, RoomType.Dark, RoomType.Flooded];
+    /// <summary>Tipos que pueden salir al azar en las salas intermedias.</summary>
+    public static IReadOnlyList<RoomType> Random { get; } = [RoomType.Treasure, RoomType.Arena, RoomType.Sanctuary, RoomType.Dark, RoomType.Flooded];
 
     public const int FloodEvery = 6;
     public const int FloodDamage = 1;
@@ -82,9 +82,19 @@ public static class RoomTypes
 
 public sealed record Room
 {
-    public const int Size = 9;
+    /// <summary>Lado de la sala con 2 a 4 jugadores.</summary>
+    public const int DefaultSize = 9;
+
+    /// <summary>Lado de la sala con 5 jugadores.</summary>
+    public const int LargeSize = 11;
 
     public required int Index { get; init; }
+
+    /// <summary>Lado de la sala (cuadrada): 9 con 2 a 4 jugadores, 11 con 5 (07-version-4.md §2).</summary>
+    public int Size { get; init; } = DefaultSize;
+
+    /// <summary>Columna (y fila de referencia) del centro.</summary>
+    public int Center => Size / 2;
 
     public RoomType Type { get; init; } = RoomType.Normal;
 
@@ -103,9 +113,12 @@ public sealed record Room
     /// <summary>Casillas de entrada de los héroes, por asiento.</summary>
     public ImmutableList<Position> SpawnPoints { get; init; } = [];
 
-    public static bool IsInside(Position position) => position.IsInside(Size, Size);
+    /// <summary>Lado de la sala para una partida de tantos jugadores.</summary>
+    public static int SizeFor(int playerCount) => playerCount >= 5 ? LargeSize : DefaultSize;
 
-    public static IEnumerable<Position> AllPositions()
+    public bool IsInside(Position position) => position.IsInside(Size, Size);
+
+    public IEnumerable<Position> AllPositions()
     {
         for (var y = 0; y < Size; y++)
         {

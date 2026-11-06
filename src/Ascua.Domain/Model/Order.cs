@@ -8,7 +8,7 @@ public enum OrderType
     Skill,
     Interact,
 
-    /// <summary>Sabotaje: 1 de daño anónimo al primer aliado en línea, una vez por sala (06-version-3.md §2).</summary>
+    /// <summary>Sabotaje: quitado en la versión 4. Se conserva el valor para leer partidas viejas; siempre se rechaza.</summary>
     Sabotage,
 
     /// <summary>Empujón: mueve 1 casilla a lo que esté adyacente en esa dirección (06-version-3.md §7).</summary>

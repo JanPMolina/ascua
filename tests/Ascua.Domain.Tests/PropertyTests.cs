@@ -255,7 +255,7 @@ public sealed class PropertyTests
         Assert.Equal(Enumerable.Range(1, events.Count).Select(i => before.LastSeq + i), events.Select(e => e.Seq));
         Assert.All(events, e => Assert.Equal(before.Round, e.Round));
         Assert.Equal(after.Phase == MatchPhase.Finished ? before.Round : before.Round + 1, after.Round);
-        Assert.InRange(after.Round, 1, after.MaxRounds);
+        Assert.InRange(after.Round, 1, Ascua.Sim.MatchSimulator.MaxRounds);
 
         foreach (var hero in after.Heroes)
         {
@@ -267,8 +267,8 @@ public sealed class PropertyTests
             Assert.True(hero.SavedEmbers >= 0 && hero.Echoes >= 0);
             Assert.InRange(hero.EmberShieldBy.Count, 0, Math.Min(PathRules.MaxEmberShield, hero.Shield));
             Assert.Equal(hero.Status == HeroStatus.Extinct, hero.PathOfferPending);
-            Assert.True(Room.IsInside(hero.Position));
-            Assert.True(hero.SecondBody is null || (hero.Class == HeroClass.Hilvan && Room.IsInside(hero.SecondBody.Value)));
+            Assert.True(after.CurrentRoom.IsInside(hero.Position));
+            Assert.True(hero.SecondBody is null || (hero.Class == HeroClass.Hilvan && after.CurrentRoom.IsInside(hero.SecondBody.Value)));
             Assert.True(hero.Debt >= 0);
             Assert.Equal(hero.Debt > 0, hero.DebtTo is not null);
             Assert.True(!hero.IsMiser || hero.PeakEmbers >= hero.Embers);
@@ -287,7 +287,7 @@ public sealed class PropertyTests
         foreach (var enemy in after.Enemies)
         {
             Assert.InRange(enemy.Hp, 1, enemy.MaxHp);
-            Assert.True(Room.IsInside(enemy.Position));
+            Assert.True(after.CurrentRoom.IsInside(enemy.Position));
         }
 
         var occupied = after.Heroes.Where(h => h.HasBody).SelectMany(h => h.Bodies)

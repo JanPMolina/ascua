@@ -48,7 +48,7 @@ public static class EnemyCatalog
     public static int WardenHp(int playerCount, IReadOnlyCollection<Curse> curses)
     {
         ArgumentNullException.ThrowIfNull(curses);
-        var hp = WardenHpPerPlayer * playerCount;
+        var hp = Rules.Difficulty.WardenHpPerPlayer(playerCount) * playerCount;
         return curses.Contains(Curse.WardenPlus) ? ((hp * 3) + 1) / 2 : hp;
     }
 

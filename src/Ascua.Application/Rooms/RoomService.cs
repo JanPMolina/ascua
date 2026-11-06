@@ -21,7 +21,7 @@ public sealed partial class RoomService(
     IClock clock,
     ILogger<RoomService> logger)
 {
-    /// <summary>Con 2-4 plazas y un ganador por ronda, 10 intentos sobran incluso con decenas de uniones simultáneas.</summary>
+    /// <summary>Con 2-5 plazas y un ganador por ronda, 10 intentos sobran incluso con decenas de uniones simultáneas.</summary>
     internal const int MaxAttempts = 10;
     private const int MaxInviteCodeAttempts = 5;
     private const string RematchRoomName = "Revancha";

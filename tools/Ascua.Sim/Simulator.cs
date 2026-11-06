@@ -22,21 +22,20 @@ public sealed record GameRecord(
     IReadOnlyList<int> RoundsByRoom,
     IReadOnlyList<int> RoundsToClear)
 {
-    /// <summary>Lo nuevo de la versión 3: sabotajes, empujones, juicios y puertas de la partida.</summary>
+    /// <summary>Lo que se mide aparte: empujones, tipos de sala, misiones y el frío.</summary>
     public V3Stats V3 { get; init; } = new();
 }
 
 /// <summary>Cuánto se usó lo nuevo en una partida.</summary>
 public sealed class V3Stats
 {
-    public int Sabotages { get; set; }
     public int Pushes { get; set; }
-    public int Interludes { get; set; }
-    public int Accusations { get; set; }
-    public int GuiltyConvictions { get; set; }
-    public int InnocentConvictions { get; set; }
+    public int Betrayals { get; set; }
     public Dictionary<RoomType, int> Rooms { get; } = [];
     public int PactsFulfilled { get; set; }
+
+    /// <summary>Rondas en que golpeó el frío (07-version-4.md §7).</summary>
+    public int Chills { get; set; }
 }
 
 /// <summary>Lo que hizo un héroe en una partida: sirve para ver si está roto o si no hace nada.</summary>
@@ -45,6 +44,9 @@ public sealed record HeroGameStats(int SkillUses, int Kills, int Embers, bool Fe
 /// <summary>Una partida completa jugada por bots contra el motor. Mismas semillas, misma partida.</summary>
 public static class MatchSimulator
 {
+    /// <summary>Ninguna partida debería llegar aquí: el frío las termina mucho antes.</summary>
+    public const int MaxRounds = 1000;
+
     public static GameRecord Play(IReadOnlyList<HeroClass> heroes, ulong seed, BotOptions options, Action<GameState, IReadOnlyDictionary<PlayerId, Order>>? trace = null)
     {
         ArgumentNullException.ThrowIfNull(heroes);
@@ -68,9 +70,9 @@ public static class MatchSimulator
         var guard = 0;
         while (state.Phase == MatchPhase.InProgress)
         {
-            if (++guard > state.MaxRounds + 1)
+            if (++guard > MaxRounds)
             {
-                throw new InvalidOperationException($"La partida con semilla {seed} no terminó en {state.MaxRounds} rondas.");
+                throw new InvalidOperationException($"La partida con semilla {seed} no terminó en {MaxRounds} rondas: el frío debería haberla cerrado.");
             }
 
             state = PickDrafts(state, bots);
@@ -86,13 +88,18 @@ public static class MatchSimulator
             roundsByRoom[state.RoomIndex]++;
             var (next, events) = Resolver.Resolve(state, orders, engineRng);
             Tally(events, stats, fallen, v3);
-            Witness(next, events, bots);
             if (next.RoomIndex == state.RoomIndex && next.Enemies.IsEmpty && roundsToClear[state.RoomIndex] == 0)
             {
                 roundsToClear[state.RoomIndex] = roundsByRoom[state.RoomIndex];
             }
 
-            state = next.Phase == MatchPhase.Interlude ? RunInterlude(next, bots, engineRng, v3) : next;
+            if (next.RoomIndex != state.RoomIndex && next.Phase == MatchPhase.InProgress)
+            {
+                var type = next.CurrentRoom.Type;
+                v3.Rooms[type] = v3.Rooms.GetValueOrDefault(type) + 1;
+            }
+
+            state = next;
         }
 
         var outcome = state.Outcome!;
@@ -121,42 +128,6 @@ public static class MatchSimulator
         {
             V3 = v3,
         };
-    }
-
-    /// <summary>Solo se le pasa a cada bot lo que vería: un golpe sin autor en la fase de acciones se puede notar.</summary>
-    private static void Witness(GameState next, IReadOnlyList<DomainEvent> events, Dictionary<PlayerId, HeroBot> bots)
-    {
-        if (!events.Any(e => e is BetrayalRecorded or EntityDamaged { Source: null, Phase: RoundPhase.Actions }))
-        {
-            return;
-        }
-
-        foreach (var (player, bot) in bots)
-        {
-            bot.Witness(PlayerViewProjector.For(next, player), PlayerViewProjector.VisibleEvents(next, events, player));
-        }
-    }
-
-    private static GameState RunInterlude(GameState state, Dictionary<PlayerId, HeroBot> bots, SeededRandom rng, V3Stats v3)
-    {
-        foreach (var voter in Interludes.Voters(state).ToList())
-        {
-            var (accused, door) = bots[voter.Player].Vote(PlayerViewProjector.For(state, voter.Player));
-            state = MatchRules.CastInterludeVote(state, voter.Player, accused, door).State;
-            v3.Accusations += accused is null ? 0 : 1;
-        }
-
-        var closed = MatchRules.CloseInterlude(state, new HashSet<PlayerId>(), rng).State;
-        v3.Interludes++;
-        var verdict = closed.LastVerdict!;
-        v3.GuiltyConvictions += verdict.Accusations.Count(a => a is { Convicted: true, Guilty: true });
-        v3.InnocentConvictions += verdict.Accusations.Count(a => a is { Convicted: true, Guilty: false });
-        if (verdict.ChosenDoor is { } door1)
-        {
-            v3.Rooms[door1] = v3.Rooms.GetValueOrDefault(door1) + 1;
-        }
-
-        return closed;
     }
 
     private static GameState PickDrafts(GameState state, Dictionary<PlayerId, HeroBot> bots)
@@ -230,10 +201,13 @@ public static class MatchSimulator
                     break;
                 case BetrayalRecorded betrayal:
                     stats[betrayal.Traitor].DamageToAllies += betrayal.Damage;
-                    v3.Sabotages += betrayal.Kind == BetrayalKind.Sabotage ? 1 : 0;
+                    v3.Betrayals++;
                     break;
                 case Pushed:
                     v3.Pushes++;
+                    break;
+                case Chilled:
+                    v3.Chills++;
                     break;
                 case EntityDamaged { Source.Hero: { } source, Target.Hero: { } target } when source != target:
                     stats[source].DamageToAllies += domainEvent is EntityDamaged d ? d.Amount : 0;
@@ -348,10 +322,30 @@ public sealed class BalanceReport
     public int RenegadeGames => _games.Count(g => g.HadRenegade);
 
     /// <summary>Tasa de victoria en 4 jugadores: partes de victoria sobre partidas con ganador (azar = 25%).</summary>
-    public double WinRate(HeroClass hero)
+    public double WinRate(HeroClass hero) => WinRate(hero, 4);
+
+    /// <summary>Tasa de victoria con tantos jugadores (azar = 1 / jugadores).</summary>
+    public double WinRate(HeroClass hero, int players)
     {
-        var decided = _games.Where(g => g.Heroes.Count == 4 && g.Heroes.Contains(hero) && g.Winners.Count > 0).ToList();
+        var decided = _games.Where(g => g.Heroes.Count == players && g.Heroes.Contains(hero) && g.Winners.Count > 0).ToList();
         return decided.Count == 0 ? 0 : decided.Sum(g => g.Winners.Contains(hero) ? 1.0 / g.Winners.Count : 0) / decided.Count;
+    }
+
+    /// <summary>Partidas que llegaron a la ronda del frío.</summary>
+    public double ChillRate(int? players = null) => Rate(Of(players), g => g.Rounds >= GameState.ChillStartRound);
+
+    public double FallenRate(int players)
+    {
+        var games = Of(players);
+        return games.Count == 0 ? 0 : (double)games.Sum(g => g.Fallen.Count) / games.Sum(g => g.Heroes.Count);
+    }
+
+    public int MaxRounds() => _games.Count == 0 ? 0 : _games.Max(g => g.Rounds);
+
+    private string BySize(Func<int?, double> metric, string format)
+    {
+        var sizes = _games.Select(g => g.Heroes.Count).Distinct().Order();
+        return string.Join("; ", sizes.Select(s => $"{s} jug.: {metric(s).ToString(format, CultureInfo.InvariantCulture)}"));
     }
 
     /// <summary>Con este héroe en el cuarteto, ¿cuánto cae el Celador comparado con el total?</summary>
@@ -411,15 +405,15 @@ public sealed class BalanceReport
         text.AppendLine();
         text.AppendLine("| Métrica | Meta | Resultado |");
         text.AppendLine("|---|---|---|");
-        text.AppendLine(culture, $"| Partidas en que cae el Celador | 35%–65% | **{WardenFallRate():P1}** (2 jug.: {WardenFallRate(2):P1}; 3: {WardenFallRate(3):P1}; 4: {WardenFallRate(4):P1}) |");
+        text.AppendLine(culture, $"| Partidas en que cae el Celador | 35%–65% | **{WardenFallRate():P1}** ({BySize(p => WardenFallRate(p), "P1")}) |");
         var heroes = Enum.GetValues<HeroClass>();
         text.AppendLine(culture, $"| Tasa de victoria por héroe (4 jug.; azar = 25%) | 18%–32% | **{heroes.Min(WinRate):P1}**–**{heroes.Max(WinRate):P1}** |");
         var duos = Duos();
         var worst = duos.OrderByDescending(d => d.WinRatio).First();
         var worstFall = duos.OrderByDescending(d => d.WardenFallRatio).First();
         text.AppendLine(culture, $"| Ningún dúo por encima de 1,5× lo esperado | <1,5× | victoria: **{worst.WinRatio:F2}×** ({worst.A}+{worst.B}); caída del Celador: **{worstFall.WardenFallRatio:F2}×** ({worstFall.A}+{worstFall.B}) |");
-        text.AppendLine(culture, $"| Rondas por partida | 25–55 de 60 | **{AverageRounds():F1}** (2 jug.: {AverageRounds(2):F1}; 3: {AverageRounds(3):F1}; 4: {AverageRounds(4):F1}) |");
-        text.AppendLine(culture, $"| Héroes caídos o extintos al menos una vez | 30%–70% | **{FallenRate():P1}** |");
+        text.AppendLine(culture, $"| Rondas por partida (informativa) | 25–55 | **{AverageRounds():F1}** ({BySize(p => AverageRounds(p), "F1")}); la más larga: {MaxRounds()} |");
+        text.AppendLine(culture, $"| Héroes caídos o extintos al menos una vez | 30%–70% | **{FallenRate():P1}** ({BySize(p => FallenRate(p!.Value), "P1")}) |");
         text.AppendLine(culture, $"| Partidas con Renegado en que gana «El Umbral reclama» | <25% | **{ThresholdRate():P1}** (de {RenegadeGames} partidas con Renegado) |");
         text.AppendLine();
         text.AppendLine("| Héroe | Victoria | Celador cae con él | Cae o se extingue | Habilidad/partida | Golpes finales | Ascuas | Daño a aliados |");
@@ -430,7 +424,14 @@ public sealed class BalanceReport
         }
 
         text.AppendLine();
-        var outcomes = _games.GroupBy(g => g.Reason == DefeatReason.RoundLimit ? "ROUND_LIMIT" : g.Outcome.ToString()).OrderBy(g => g.Key);
+        var fives = heroes.Select(h => WinRate(h, 5)).Where(r => r > 0).ToList();
+        if (fives.Count > 0)
+        {
+            text.AppendLine(culture, $"Victoria por héroe con 5 jugadores (azar = 20%): {fives.Min():P1}–{fives.Max():P1}.");
+            text.AppendLine();
+        }
+
+        var outcomes = _games.GroupBy(g => g.Outcome.ToString()).OrderBy(g => g.Key);
         text.AppendLine(culture, $"Resultados: {string.Join(", ", outcomes.Select(g => $"{g.Key} {(double)g.Count() / _games.Count:P1}"))}. Salas alcanzadas (media): {_games.Average(g => (double)g.Rooms):F1}.");
         var rooms = _games.Max(g => g.RoundsByRoom.Count);
         var perRoom = Enumerable.Range(0, rooms).Select(i =>
@@ -444,9 +445,10 @@ public sealed class BalanceReport
             return cleared.Count == 0 ? "-" : $"{cleared.Average(g => (double)g.RoundsToClear[i]):F1}";
         });
         text.AppendLine(culture, $"Rondas por sala (si se llega): {string.Join(" / ", perRoom)}; hasta despejarla: {string.Join(" / ", toClear)}.");
-        text.AppendLine(culture, $"Por partida: {_games.Average(g => g.V3.Sabotages):F2} sabotajes, {_games.Average(g => g.V3.Pushes):F2} empujones, {_games.Average(g => g.V3.Interludes):F2} interludios, {_games.Average(g => g.V3.Accusations):F2} acusaciones, {_games.Average(g => g.V3.GuiltyConvictions):F2} condenas de culpables, {_games.Average(g => g.V3.InnocentConvictions):F2} de inocentes, {_games.Average(g => g.V3.PactsFulfilled):F2} misiones cumplidas.");
+        text.AppendLine(culture, $"Por partida: {_games.Average(g => g.V3.Pushes):F2} empujones, {_games.Average(g => g.V3.Betrayals):F2} traiciones anónimas, {_games.Average(g => g.V3.PactsFulfilled):F2} misiones cumplidas.");
+        text.AppendLine(culture, $"Llegan al frío (ronda {GameState.ChillStartRound}): {ChillRate():P1} ({BySize(p => ChillRate(p), "P1")}).");
         var doors = _games.SelectMany(g => g.V3.Rooms).GroupBy(r => r.Key).OrderBy(r => r.Key);
-        text.AppendLine(culture, $"Puertas elegidas: {string.Join(", ", doors.Select(d => $"{d.Key} {d.Sum(r => r.Value)}"))}.");
+        text.AppendLine(culture, $"Tipos de sala al entrar: {string.Join(", ", doors.Select(d => $"{d.Key} {d.Sum(r => r.Value)}"))}.");
         return text.ToString();
     }
 

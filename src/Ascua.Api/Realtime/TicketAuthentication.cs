@@ -66,7 +66,7 @@ public sealed partial class TicketAuthentication(
 /// <summary>Reglas del upgrade WebSocket que no son autenticación: versión de protocolo y conexiones por usuario.</summary>
 public static class RealtimeHandshake
 {
-    public const string SupportedProtocolVersion = "3";
+    public const string SupportedProtocolVersion = "4";
 
     /// <summary>Orígenes WS en lista blanca (los mismos de CORS); un cliente que no es navegador no envía Origin.</summary>
     public static WebSocketOptions WebSocketOptions(IConfiguration configuration)
@@ -81,7 +81,7 @@ public static class RealtimeHandshake
         return options;
     }
 
-    /// <summary>Antes de autenticar (para no gastar el ticket): <c>protocolVersion=3</c> o 400.</summary>
+    /// <summary>Antes de autenticar (para no gastar el ticket): <c>protocolVersion=4</c> o 400.</summary>
     public static IApplicationBuilder UseRealtimeProtocolVersion(this IApplicationBuilder app) =>
         app.Use(async (context, next) =>
         {

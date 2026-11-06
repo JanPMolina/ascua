@@ -36,6 +36,9 @@ internal sealed class RoundContext
     }
 
     public GameState Start { get; }
+
+    /// <summary>Solo pruebas de integración: termina la partida en esta ronda (en el juego no hay límite).</summary>
+    public int? TestRoundLimit { get; init; }
     public IRandom Rng { get; }
     public int Round => Start.Round;
     public List<Hero> Heroes { get; }
@@ -45,8 +48,6 @@ internal sealed class RoundContext
     public int NextEnemyId { get; set; }
     public int NextChestId { get; set; }
 
-    /// <summary>Se activó la escalera esta ronda: al terminar se abre este interludio.</summary>
-    public InterludeState? OpeningInterlude { get; set; }
 
     /// <summary>Quién intentó dar un paso esta ronda (aunque rebotara).</summary>
     public HashSet<PlayerId> Stepped { get; } = [];
@@ -183,7 +184,7 @@ internal sealed class RoundContext
 
     /// <summary>Casillas libres ordenadas por cercanía (y luego fila y columna) para invocaciones.</summary>
     public List<Position> FreeTilesNear(Position origin) =>
-        [.. Model.Room.AllPositions()
+        [.. Room.AllPositions()
             .Where(p => IsFreeFor(p, flies: false))
             .OrderBy(p => p.DistanceTo(origin))
             .ThenBy(p => p.Y)

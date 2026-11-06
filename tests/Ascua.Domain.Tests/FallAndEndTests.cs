@@ -166,15 +166,15 @@ public sealed class FallAndEndTests
     }
 
     [Fact]
-    public void Running_out_of_rounds_is_a_collective_defeat()
+    public void There_is_no_round_limit()
     {
-        var state = State([Hero(A, HeroClass.Mampostero, 4, 4)], round: GameState.DefaultMaxRounds);
+        var state = State([Hero(A, HeroClass.Mampostero, 4, 4)], round: 61);
 
         var (next, _) = Resolve(state, FixedRandom.Never);
 
-        Assert.Equal(DefeatReason.RoundLimit, next.Outcome!.Reason);
-        Assert.Equal(GameState.DefaultMaxRounds, next.Round);
-        Assert.Throws<InvalidOperationException>(() => Resolve(next, FixedRandom.Never));
+        Assert.Null(next.Outcome);
+        Assert.Equal(MatchPhase.InProgress, next.Phase);
+        Assert.Equal(62, next.Round);
     }
 
     [Fact]

@@ -269,7 +269,7 @@ public sealed class HeroRealtimeTests(AscuaApiFactory factory)
         Assert.Null(seenByEscucha.Allies.Single(a => a.Hero == "HILVAN").DebtToYou);
 
         // La Escucha: todo el terreno, y ve las ascuas que tiene debajo.
-        Assert.Equal(Room.Size * Room.Size, seenByEscucha.Tiles.Count);
+        Assert.Equal(Room.DefaultSize * Room.DefaultSize, seenByEscucha.Tiles.Count);
         Assert.Single(seenByEscucha.GroundEmbers);
         Assert.DoesNotContain(seenByEscucha.Enemies, e => e.EnemyId == hostEnemy);
     }
@@ -313,7 +313,7 @@ public sealed class HeroRealtimeTests(AscuaApiFactory factory)
         var host = factory.WithSettings(new Dictionary<string, string?>
         {
             ["Ascua:Realtime:RoundDuration"] = "00:00:20",
-            ["Ascua:Realtime:MaxRounds"] = "8",
+            ["Ascua:Realtime:TestRoundLimit"] = "8",
         });
         var match = await StartAsync(host, HeroClass.Polizon, HeroClass.Avaro, HeroClass.Mampostero, HeroClass.Anteayer);
         await using var _ = match;

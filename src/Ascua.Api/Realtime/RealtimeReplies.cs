@@ -92,7 +92,7 @@ public static partial class RealtimeValidation
 
         if (request.Order is null || RealtimeMapper.ParseOrderType(request.Order.Type) is not { } type)
         {
-            return Invalid("order.type", "order.type debe ser MOVE, ATTACK, ABILITY, INTERACT, SABOTAGE, PUSH o GUARD.");
+            return Invalid("order.type", "order.type debe ser MOVE, ATTACK, ABILITY, INTERACT, PUSH o GUARD.");
         }
 
         Direction? step = null;
@@ -156,46 +156,6 @@ public static partial class RealtimeValidation
         return null;
     }
 
-    public static MatchError? CastInterludeVote(CastInterludeVoteRequest? request, out Guid matchId, out Guid offerId, out PlayerId? accused, out int? door)
-    {
-        offerId = Guid.Empty;
-        accused = null;
-        door = null;
-        if (request is null)
-        {
-            matchId = Guid.Empty;
-            return Invalid("payload", "Falta el cuerpo del mensaje.");
-        }
-
-        var error = Uuid(request.MatchId, "matchId", out matchId) ?? Uuid(request.OfferId, "offerId", out offerId);
-        if (error is not null)
-        {
-            return error;
-        }
-
-        if (request.AccusedId is not null)
-        {
-            if (Uuid(request.AccusedId, "accusedId", out var accusedId) is { } invalidAccused)
-            {
-                return invalidAccused;
-            }
-
-            accused = PlayerIds.Of(accusedId);
-        }
-
-        if (request.Door is { } chosen)
-        {
-            if (chosen is < 0 or > 1)
-            {
-                return Invalid("door", "door debe ser 0 o 1.");
-            }
-
-            door = chosen;
-        }
-
-        return null;
-    }
-
     public static MatchError? SendSignal(SendSignalRequest? request, out Guid matchId, out QuickSignal? signal)
     {
         signal = null;
@@ -220,9 +180,9 @@ public static partial class RealtimeValidation
         if (request.Position is { } position)
         {
             tile = new Position(position.X, position.Y);
-            if (!Room.IsInside(tile.Value))
+            if (!tile.Value.IsInside(Room.LargeSize, Room.LargeSize))
             {
-                return Invalid("position", "position debe estar dentro de la sala (0-8).");
+                return Invalid("position", "position debe estar dentro de la sala (0-10).");
             }
         }
 

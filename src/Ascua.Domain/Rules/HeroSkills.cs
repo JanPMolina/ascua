@@ -332,7 +332,7 @@ internal static class HeroSkills
         ctx.MakeNoise(host);
 
         var position = host.Position;
-        var range = host.Kind == EnemyKind.Crossbowman ? Room.Size : 1;
+        var range = host.Kind == EnemyKind.Crossbowman ? ctx.Room.Size : 1;
         for (var i = 0; i < range; i++)
         {
             position = position.Step(direction);

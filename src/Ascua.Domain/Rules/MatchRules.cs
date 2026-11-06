@@ -104,14 +104,6 @@ public static class MatchRules
         return CommandResult.Ok(state, events);
     }
 
-    /// <summary>Voto secreto del interludio: a quién acusa (o a nadie) y qué puerta prefiere.</summary>
-    public static CommandResult CastInterludeVote(GameState state, PlayerId player, PlayerId? accused, int? door) =>
-        Interludes.CastVote(state, player, accused, door);
-
-    /// <summary>Cierra el interludio y pasa a la sala siguiente. <paramref name="absent"/>: desconectados (no se les espera).</summary>
-    public static CommandResult CloseInterlude(GameState state, IReadOnlySet<PlayerId> absent, Domain.Abstractions.IRandom rng) =>
-        Interludes.Close(state, absent, rng);
-
     /// <summary>
     /// Elige camino tras extinguirse (planteamiento/04-caminos-tras-morir.md). La elección es privada: se guarda
     /// en el héroe y se revela al resolver la ronda. Vale la primera; no se puede cambiar dentro de la misma oferta.
@@ -203,10 +195,6 @@ public static class MatchRules
         }
 
         var next = state with { Heroes = heroes };
-        if (next.Interlude is { } interlude)
-        {
-            next = next with { Interlude = interlude with { Ballots = interlude.Ballots.RemoveAll(b => b.Voter == player) } };
-        }
 
         if (next.BellRinger == player)
         {
@@ -220,7 +208,7 @@ public static class MatchRules
                 Betrayals = Outcomes.Summarize(next.Betrayals),
                 Awards = Awards.Compute(heroes),
             };
-            next = next with { Phase = MatchPhase.Finished, Outcome = outcome, Interlude = null };
+            next = next with { Phase = MatchPhase.Finished, Outcome = outcome };
             log.Emit(new MatchEnded(outcome));
         }
         else
@@ -240,7 +228,7 @@ public static class MatchRules
             return CommandResult.Fail(state, ErrorCode.NotAParticipant, "El jugador no participa en esta partida.");
         }
 
-        if (state.Phase is not (MatchPhase.InProgress or MatchPhase.Interlude))
+        if (state.Phase != MatchPhase.InProgress)
         {
             return CommandResult.Fail(state, ErrorCode.MatchNotInProgress, "La partida no está en curso.");
         }

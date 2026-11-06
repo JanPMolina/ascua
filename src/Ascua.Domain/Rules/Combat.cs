@@ -44,9 +44,10 @@ internal static class Combat
     /// <summary>
     /// Golpea a un héroe. Orden: fuego amigo (½, redondeo arriba) → GUARDAR (½, redondeo abajo) → Codicia (+1) → escudo
     /// → vida (o ascuas, si es el Avaro). Devuelve el daño que conectó (0 si no conectó). <paramref name="tile"/>: la
-    /// casilla del cuerpo golpeado, si no es la principal.
+    /// casilla del cuerpo golpeado, si no es la principal. <paramref name="piercing"/>: ni Defender ni el escudo lo
+    /// reducen (el frío).
     /// </summary>
-    public static int HitHero(RoundContext ctx, PlayerId targetId, int baseDamage, Attacker attacker, Position? tile = null)
+    public static int HitHero(RoundContext ctx, PlayerId targetId, int baseDamage, Attacker attacker, Position? tile = null, bool piercing = false)
     {
         var target = ctx.Hero(targetId);
         if (!target.IsVulnerable || baseDamage <= 0)
@@ -80,7 +81,7 @@ internal static class Combat
             damage = Math.Min(damage, PathRules.RenegadeMaxDamage);
         }
 
-        if (ctx.Guarding.Contains(targetId))
+        if (ctx.Guarding.Contains(targetId) && !piercing)
         {
             damage /= 2;
         }
@@ -96,7 +97,7 @@ internal static class Combat
             return 0;
         }
 
-        var absorbed = Math.Min(target.Has(Blessing.BrokenMirror) ? 0 : target.Shield, damage);
+        var absorbed = Math.Min(target.Has(Blessing.BrokenMirror) || piercing ? 0 : target.Shield, damage);
         var kindled = target.EmberShieldBy.Take(Math.Min(absorbed, target.EmberShieldBy.Count)).ToList();
         var remaining = damage - absorbed;
         target = target with { Shield = target.Shield - absorbed, EmberShieldBy = target.EmberShieldBy.RemoveRange(0, kindled.Count) };
@@ -104,7 +105,7 @@ internal static class Combat
         var stolen = 0;
         if (target.IsMiser)
         {
-            (target, stolen) = HitMiser(ctx, target, remaining, friendly || renegadeStrike, tile ?? target.Position);
+            (target, stolen) = HitMiser(ctx, target, remaining, friendly || renegadeStrike, tile ?? target.Position, vanish: piercing);
         }
         else
         {
@@ -156,9 +157,9 @@ internal static class Combat
 
     /// <summary>
     /// Todo lo que tengo: cada punto tira 1 ascua a su casilla; con 0 ascuas y otro golpe, cae. Fuego amigo y Renegados
-    /// le roban 1; el resto cae al suelo. Devuelve lo robado para dárselo al atacante.
+    /// le roban 1; el resto cae al suelo (salvo el del frío, que se pierde). Devuelve lo robado para dárselo al atacante.
     /// </summary>
-    private static (Hero Target, int Stolen) HitMiser(RoundContext ctx, Hero target, int points, bool theft, Position tile)
+    private static (Hero Target, int Stolen) HitMiser(RoundContext ctx, Hero target, int points, bool theft, Position tile, bool vanish = false)
     {
         if (points <= 0)
         {
@@ -174,7 +175,12 @@ internal static class Combat
             ctx.Emit(new EmbersChanged(target.Player, -lost, EmberReason.MiserHit, target.Embers) { Audience = Audience.Only(target.Player) });
         }
 
-        DropEmbers(ctx, tile, lost - stolen);
+        // El oro que se lleva el frío no cae al suelo: si cayera, el Avaro lo recogería y nunca se apagaría.
+        if (!vanish)
+        {
+            DropEmbers(ctx, tile, lost - stolen);
+        }
+
         return (target, stolen);
     }
 

@@ -16,7 +16,6 @@ public class StepAndActionTests
     [InlineData(OrderType.Attack)]
     [InlineData(OrderType.Skill)]
     [InlineData(OrderType.Interact)]
-    [InlineData(OrderType.Sabotage)]
     [InlineData(OrderType.Push)]
     public void Actions_accept_a_step(OrderType type)
     {

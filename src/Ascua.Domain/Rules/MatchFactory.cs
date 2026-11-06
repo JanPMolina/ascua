@@ -9,32 +9,42 @@ public sealed record PlayerSetup(PlayerId Player, HeroClass Class);
 
 /// <summary>
 /// Genera una partida nueva con el azar inyectado: 4 salas + la del Celador, pactos secretos
-/// y el draft inicial. Con un <see cref="SeededRandom"/> la partida es reproducible.
+/// y el draft inicial. Con un <see cref="SeededRandom"/> la partida es reproducible. El lado de las salas depende de
+/// los jugadores (07-version-4.md §2): 9 con 2 a 4 y 11 con 5.
 /// </summary>
 public static class MatchFactory
 {
     public const int MinPlayers = 2;
-    public const int MaxPlayers = 4;
+    public const int MaxPlayers = 5;
     public const int RoomCount = 5;
     private const int MaxLayoutAttempts = 50;
 
-    public static readonly ImmutableList<Position> SpawnPoints = [new(3, 7), new(5, 7), new(2, 7), new(6, 7)];
-    public static readonly Position StairsPosition = new(4, 3);
-    public static readonly Position WardenPosition = new(4, 3);
+    /// <summary>Entradas de una sala de 9 (2 a 4 jugadores).</summary>
+    public static readonly ImmutableList<Position> SpawnPoints = SpawnPointsFor(Room.DefaultSize);
 
-    private static readonly EnemyKind[][] RoomEnemies =
-    [
-        [EnemyKind.Scavenger, EnemyKind.Scavenger, EnemyKind.Moth],
-        [EnemyKind.Slime, EnemyKind.Hopper, EnemyKind.Scavenger],
-        [EnemyKind.Crossbowman, EnemyKind.Slime, EnemyKind.Moth],
-        [EnemyKind.Totem, EnemyKind.Crossbowman],
-        [EnemyKind.Warden],
-    ];
+    /// <summary>Escalera de una sala de 9.</summary>
+    public static readonly Position StairsPosition = StairsFor(Room.DefaultSize);
+
+    /// <summary>Celador en una sala de 9.</summary>
+    public static readonly Position WardenPosition = StairsFor(Room.DefaultSize);
+
+    /// <summary>Entradas por asiento: fila <c>lado − 2</c>, columnas c−1, c+1, c−2, c+2 y c.</summary>
+    public static ImmutableList<Position> SpawnPointsFor(int size)
+    {
+        var c = size / 2;
+        var row = size - 2;
+        return [new(c - 1, row), new(c + 1, row), new(c - 2, row), new(c + 2, row), new(c, row)];
+    }
+
+    /// <summary>Escalera (y Celador) en <c>(c, c − 1)</c>.</summary>
+    public static Position StairsFor(int size) => new(size / 2, (size / 2) - 1);
+
+    /// <summary>Celador al empezar su sala: donde estaría la escalera.</summary>
+    public static Position WardenFor(int size) => StairsFor(size);
 
     public static (GameState State, IReadOnlyList<DomainEvent> Events) Create(
         IReadOnlyList<PlayerSetup> players,
         IRandom rng,
-        int maxRounds = GameState.DefaultMaxRounds,
         IReadOnlyCollection<Curse>? curses = null)
     {
         ArgumentNullException.ThrowIfNull(players);
@@ -53,10 +63,23 @@ public static class MatchFactory
         var nextEnemyId = 1;
         var nextChestId = 1;
         var rooms = ImmutableList.CreateBuilder<Room>();
+        var previous = RoomType.Normal;
         for (var index = 0; index < RoomCount; index++)
         {
-            rooms.Add(GenerateRoom(index, RoomType.Normal, players.Count, chosenCurses, rng, ref nextEnemyId, ref nextChestId));
+            // La primera es normal y la última la del Celador; las demás, de un tipo al azar distinto del de la anterior
+            // (07-version-4.md §6). Nadie lo sabe hasta entrar: la vista solo muestra la sala actual.
+            var type = RoomType.Normal;
+            if (index > 0 && index < RoomCount - 1)
+            {
+                var options = RoomTypes.Random.Where(t => t != previous).ToList();
+                type = options[rng.Next(options.Count)];
+            }
+
+            rooms.Add(GenerateRoom(index, type, players.Count, chosenCurses, rng, ref nextEnemyId, ref nextChestId));
+            previous = type;
         }
+
+        var spawns = rooms[0].SpawnPoints;
 
         // Las 2 opciones de cada uno salen seguidas de un mazo barajado: nadie ve la misma misión dos veces.
         var deck = Shuffle(PactRules.Offered.ToList(), rng);
@@ -73,13 +96,13 @@ public static class MatchFactory
                 pactOptions.Add(new PactOffer(kind, kind == PactKind.OutgoldTarget ? others[rng.Next(others.Count)].Player : null));
             }
 
-            heroes.Add(Hero.Create(setup.Player, seat, setup.Class, SpawnPoints[seat]) with
+            heroes.Add(Hero.Create(setup.Player, seat, setup.Class, spawns[seat]) with
             {
                 Pact = pactOptions[0].Kind,
                 PactTarget = pactOptions[0].Target,
                 PactOptions = pactOptions.ToImmutable(),
                 DraftOptions = [.. options],
-                SecondBody = setup.Class == HeroClass.Hilvan ? SecondBodyAt(seat, players.Count) : null,
+                SecondBody = setup.Class == HeroClass.Hilvan ? SecondBodyAt(rooms[0], seat, players.Count) : null,
             });
         }
 
@@ -94,7 +117,6 @@ public static class MatchFactory
         var state = new GameState
         {
             Round = 1,
-            MaxRounds = maxRounds,
             Phase = MatchPhase.Drafting,
             Heroes = heroes.ToImmutable(),
             Rooms = rooms.ToImmutable(),
@@ -109,29 +131,31 @@ public static class MatchFactory
     }
 
     /// <summary>Hilván empieza con sus cuerpos en la misma fila, a 2 casillas, sin pisar la entrada de otro asiento.</summary>
-    private static Position SecondBodyAt(int seat, int playerCount)
+    private static Position SecondBodyAt(Room room, int seat, int playerCount)
     {
-        var east = SpawnPoints[seat].Step(Direction.East, HeroRules.BodySpacing);
-        return Room.IsInside(east) && !SpawnPoints.Take(playerCount).Contains(east)
+        var spawns = room.SpawnPoints;
+        var east = spawns[seat].Step(Direction.East, HeroRules.BodySpacing);
+        return room.IsInside(east) && !spawns.Take(playerCount).Contains(east)
             ? east
-            : SpawnPoints[seat].Step(Direction.West, HeroRules.BodySpacing);
+            : spawns[seat].Step(Direction.West, HeroRules.BodySpacing);
     }
 
-    /// <summary>Genera una sala del tipo elegido. La sala siguiente se regenera al elegirse su puerta.</summary>
+    /// <summary>Genera una sala del tipo dado.</summary>
     internal static Room GenerateRoom(
         int index, RoomType type, int playerCount, IReadOnlyCollection<Curse> curses, IRandom rng, ref int nextEnemyId, ref int nextChestId)
     {
         var isBossRoom = index == RoomCount - 1;
+        var size = Room.SizeFor(playerCount);
         for (var attempt = 0; attempt < MaxLayoutAttempts; attempt++)
         {
-            var room = TryLayout(index, type, isBossRoom, rng, simple: false);
+            var room = TryLayout(index, type, isBossRoom, size, rng, simple: false);
             if (RoomValidator.IsValid(room))
             {
                 return Populate(room, index, playerCount, curses, rng, ref nextEnemyId, ref nextChestId);
             }
         }
 
-        return Populate(TryLayout(index, type, isBossRoom, rng, simple: true), index, playerCount, curses, rng, ref nextEnemyId, ref nextChestId);
+        return Populate(TryLayout(index, type, isBossRoom, size, rng, simple: true), index, playerCount, curses, rng, ref nextEnemyId, ref nextChestId);
     }
 
     /// <summary>Cuántos cofres trae una sala según su tipo.</summary>
@@ -144,25 +168,30 @@ public static class MatchFactory
         _ => 2,
     };
 
-    private static Room TryLayout(int index, RoomType type, bool isBossRoom, IRandom rng, bool simple)
+    private static Room TryLayout(int index, RoomType type, bool isBossRoom, int size, IRandom rng, bool simple)
     {
-        var room = new Room { Index = index, Type = type, SpawnPoints = SpawnPoints };
-        var reserved = new HashSet<Position>(SpawnPoints.SelectMany(p => new[] { p, p.Step(Direction.North) }))
+        var spawns = SpawnPointsFor(size);
+        var stairs = StairsFor(size);
+        var large = size > Room.DefaultSize;
+        var room = new Room { Index = index, Type = type, Size = size, SpawnPoints = spawns };
+        var reserved = new HashSet<Position>(spawns.SelectMany(p => new[] { p, p.Step(Direction.North) }))
         {
-            StairsPosition,
-            StairsPosition.Step(Direction.South),
-            WardenPosition,
+            stairs,
+            stairs.Step(Direction.South),
+            WardenFor(size),
         };
 
         if (!isBossRoom)
         {
-            room = room.WithTerrain(StairsPosition, Terrain.Stairs);
+            room = room.WithTerrain(stairs, Terrain.Stairs);
         }
+
+        var lastRow = size - 3;
 
         if (simple)
         {
             // Sin obstáculos, pero el santuario sigue trayendo su altar y los cofres su cantidad.
-            var open = Room.AllPositions().Where(p => p.Y is >= 1 and <= 6 && !reserved.Contains(p)).ToList();
+            var open = room.AllPositions().Where(p => p.Y >= 1 && p.Y <= lastRow && !reserved.Contains(p)).ToList();
             if (type == RoomType.Sanctuary)
             {
                 room = room.WithTerrain(open[0], Terrain.Altar);
@@ -174,7 +203,7 @@ public static class MatchFactory
                 : room with { Chests = [.. open.Take(ChestsIn(type)).Select(p => new Chest(-1, p, ChestLoot.Nothing, HasSilverKey: false))] };
         }
 
-        var free = Room.AllPositions().Where(p => p.Y is >= 1 and <= 6 && !reserved.Contains(p)).ToList();
+        var free = room.AllPositions().Where(p => p.Y >= 1 && p.Y <= lastRow && !reserved.Contains(p)).ToList();
         Position Take()
         {
             var i = rng.Next(free.Count);
@@ -183,13 +212,19 @@ public static class MatchFactory
             return position;
         }
 
-        var walls = isBossRoom ? 4 : 6;
+        var walls = (isBossRoom ? 4 : 6) + (large ? 3 : 0);
         for (var i = 0; i < walls; i++)
         {
             room = room.WithTerrain(Take(), Terrain.Wall);
         }
 
-        for (var i = 0; i < (isBossRoom ? 2 : type == RoomType.Sanctuary ? 6 : 3); i++)
+        var spikes = isBossRoom ? 2 : type == RoomType.Sanctuary ? 6 : 3;
+        if (large && !isBossRoom)
+        {
+            spikes += type == RoomType.Sanctuary ? 2 : 1;
+        }
+
+        for (var i = 0; i < spikes; i++)
         {
             room = room.WithTerrain(Take(), Terrain.Spikes);
         }
@@ -223,14 +258,15 @@ public static class MatchFactory
         return room;
     }
 
-    /// <summary>Los monstruos nacen a esta distancia o menos de la escalera: a la vista del grupo y sin rincones que recorrer.</summary>
+    /// <summary>Los monstruos nacen a esta distancia o menos de la escalera (sala de 9): a la vista del grupo y sin rincones que recorrer.</summary>
     public const int MonsterSpread = 4;
+
+    /// <summary>Distancia máxima a la escalera para nacer: 4 con 9 de lado, 5 con 11.</summary>
+    public static int MonsterSpreadFor(int size) => size / 2;
 
     private static IEnumerable<EnemyKind> MonstersFor(Room room, int index, int playerCount, IRandom rng)
     {
-        // Con 2 jugadores la sala trae un monstruo menos: los mismos enemigos tardarían el doble en caer.
-        var kinds = RoomEnemies[index];
-        var list = (playerCount == MinPlayers ? kinds.Take(2) : kinds).ToList();
+        var list = Difficulty.Monsters(index, playerCount).ToList();
         switch (room.Type)
         {
             case RoomType.Treasure:
@@ -266,12 +302,14 @@ public static class MatchFactory
         {
             if (kind == EnemyKind.Warden)
             {
-                enemies.Add(Enemy.Create(nextEnemyId++, kind, WardenPosition, EnemyCatalog.WardenHp(playerCount, curses)));
+                enemies.Add(Enemy.Create(nextEnemyId++, kind, WardenFor(room.Size), EnemyCatalog.WardenHp(playerCount, curses)));
                 continue;
             }
 
-            var candidates = Room.AllPositions()
-                .Where(p => p.Y <= 5 && p.DistanceTo(StairsPosition) <= MonsterSpread
+            var stairs = StairsFor(room.Size);
+            var spread = MonsterSpreadFor(room.Size);
+            var candidates = room.AllPositions()
+                .Where(p => p.Y <= room.Size - 4 && p.DistanceTo(stairs) <= spread
                     && room.TerrainAt(p) is Terrain.Floor or Terrain.Spikes
                     && !occupied.Contains(p))
                 .ToList();
@@ -282,7 +320,7 @@ public static class MatchFactory
 
             var position = candidates[rng.Next(candidates.Count)];
             occupied.Add(position);
-            enemies.Add(Enemy.Create(nextEnemyId++, kind, position, EnemyCatalog.HpOf(kind, EnemyCatalog.For(kind).MaxHp, curses)));
+            enemies.Add(Enemy.Create(nextEnemyId++, kind, position, EnemyCatalog.HpOf(kind, Difficulty.MonsterHp(kind, playerCount), curses)));
         }
 
         return room with { InitialEnemies = enemies.ToImmutable() };
@@ -328,7 +366,7 @@ public static class RoomValidator
             }
         }
 
-        var allFloorReachable = Room.AllPositions().Where(p => IsSafeFloor(room, p)).All(reachable.Contains);
+        var allFloorReachable = room.AllPositions().Where(p => IsSafeFloor(room, p)).All(reachable.Contains);
         var objects = room.Chests.Select(c => c.Position)
             .Concat(room.PositionsOf(Terrain.Altar))
             .Concat(room.PositionsOf(Terrain.Brazier));
@@ -337,7 +375,7 @@ public static class RoomValidator
     }
 
     internal static bool IsSafeFloor(Room room, Position position) =>
-        Room.IsInside(position)
+        room.IsInside(position)
         && room.TerrainAt(position) is Terrain.Floor or Terrain.Spikes or Terrain.Stairs
         && room.ChestAt(position) is null;
 }

@@ -14,7 +14,7 @@ public enum Curse
     /// <summary>Visión −1 para todos.</summary>
     Dim,
 
-    /// <summary>Rondas de 12 s.</summary>
+    /// <summary>Rondas de 7 s.</summary>
     Haste,
 }
 
@@ -23,14 +23,15 @@ public sealed record CatalogEntry(string Name, string Effect);
 
 public static class CurseRules
 {
-    public static readonly TimeSpan HasteRoundDuration = TimeSpan.FromSeconds(12);
+    /// <summary>12 s × 11 / 20, hacia arriba (07-version-4.md §8).</summary>
+    public static readonly TimeSpan HasteRoundDuration = TimeSpan.FromSeconds(7);
 
     public static CatalogEntry Describe(Curse curse) => curse switch
     {
         Curse.Fierce => new("Fieros", "Los monstruos tienen 1 de vida más."),
         Curse.WardenPlus => new("Celador imponente", "El Celador tiene 50 % más de vida."),
         Curse.Dim => new("Penumbra", "Todos ven 1 casilla menos."),
-        _ => new("Prisa", "Las rondas duran 12 segundos."),
+        _ => new("Prisa", "Las rondas duran 7 segundos."),
     };
 
     public static CatalogEntry Describe(RoomType type) => type switch
@@ -44,40 +45,12 @@ public static class CurseRules
     };
 }
 
-/// <summary>Voto secreto de un jugador: a quién acusa (<c>null</c> = a nadie) y qué puerta prefiere.</summary>
-public sealed record InterludeBallot(PlayerId Voter, PlayerId? Accused, int? Door);
-
-/// <summary>Interludio abierto. <see cref="Ballots"/> es secreto; las puertas son públicas.</summary>
-public sealed record InterludeState(int EndedRoom, ImmutableList<RoomType> Doors)
-{
-    public ImmutableList<InterludeBallot> Ballots { get; init; } = [];
-}
-
-/// <summary>Recuento de un acusado. <see cref="Guilty"/> solo se sabe si hubo condena.</summary>
-public sealed record AccusationTally(PlayerId Accused, int Votes, int OtherVoters, bool Convicted, bool? Guilty, int GoldLost)
-{
-    /// <summary>Lo que se revela de un culpable: sus traiciones de esa sala.</summary>
-    public ImmutableList<Betrayal> Exposed { get; init; } = [];
-
-    /// <summary>Oro que pierde cada acusador si era inocente.</summary>
-    public int AccuserFine { get; init; }
-}
-
-public sealed record DoorTally(RoomType Type, int Votes);
-
-/// <summary>Recuento público al cerrar un interludio. Nunca dice quién votó qué.</summary>
-public sealed record InterludeVerdict(
-    int EndedRoom,
-    ImmutableList<AccusationTally> Accusations,
-    int NoAccusation,
-    ImmutableList<DoorTally> Doors,
-    RoomType? ChosenDoor);
-
 public enum AwardKind
 {
     MostBetrayals,
     MostWardenDamage,
     MostRevives,
+    /// <summary>Obsoleto desde la versión 4 (no hay El Juicio): solo en partidas viejas.</summary>
     MostTrialGoldLost,
     RichestDeath,
     MostKills,
@@ -85,9 +58,3 @@ public enum AwardKind
     MostPushes,
 }
 
-public static class TrialRules
-{
-    public const int GuiltyPenalty = 3;
-    public const int WrongAccusationPenalty = 1;
-    public const int MiserFloor = 1;
-}

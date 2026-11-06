@@ -35,7 +35,7 @@ public sealed record RoomMember(Guid UserId, string Username, HeroClass? Hero, b
 public sealed record Room
 {
     public const int MinPlayers = 2;
-    public const int MaxPlayers = 4;
+    public const int MaxPlayers = 5;
 
     public required Guid Id { get; init; }
 

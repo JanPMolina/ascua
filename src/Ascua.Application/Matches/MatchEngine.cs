@@ -54,7 +54,7 @@ public sealed class MatchEngine(
             .ToList();
 
         // El azar sale del CSPRNG del servidor (SecureRandom); la semilla nunca existe fuera de él.
-        var (state, events) = MatchFactory.Create([.. participants.Select(p => new PlayerSetup(p.PlayerId, p.Hero))], rng, options.MaxRounds, request.Curses);
+        var (state, events) = MatchFactory.Create([.. participants.Select(p => new PlayerSetup(p.PlayerId, p.Hero))], rng, request.Curses);
         var now = clock.UtcNow;
         var snapshot = new MatchSnapshot
         {
@@ -223,7 +223,7 @@ public sealed class MatchEngine(
             case SubmitStatus.AlreadySubmitted:
                 return new MatchError(RealtimeErrors.OrderAlreadySubmitted, "Ya enviaste una orden en esta ronda; vale la primera.");
             case SubmitStatus.RoundClosed:
-                return new MatchError(RealtimeErrors.StaleRound, $"La ronda {round} ya se cerró.") { CurrentRound = Math.Min(round + 1, options.MaxRounds) };
+                return new MatchError(RealtimeErrors.StaleRound, $"La ronda {round} ya se cerró.") { CurrentRound = round + 1 };
         }
 
         metrics.OrderAccepted();
@@ -257,7 +257,7 @@ public sealed class MatchEngine(
             deadlineExpired ? TimeSpan.Zero : CommandLockWait,
             async current =>
             {
-                if (current.Status != MatchStatus.InProgress || current.IsInInterlude || current.State.Round != round)
+                if (current.Status != MatchStatus.InProgress || current.State.Round != round)
                 {
                     return null;
                 }
@@ -284,7 +284,7 @@ public sealed class MatchEngine(
                     }
                 }
 
-                var (next, events) = Domain(() => Resolver.Resolve(current.State, orders, rng));
+                var (next, events) = Domain(() => Resolver.Resolve(current.State, orders, rng, options.TestRoundLimit));
                 return Advance(current, next, events, now, roundResolved: true, defaults);
             },
             cancellationToken);
@@ -303,20 +303,6 @@ public sealed class MatchEngine(
         }
 
         var now = clock.UtcNow;
-        if (snapshot.IsInInterlude)
-        {
-            if (snapshot.Deadline > now)
-            {
-                await hot.SaveAsync(snapshot, cancellationToken);
-            }
-            else
-            {
-                await TryCloseInterludeAsync(matchId, deadlineExpired: true, cancellationToken);
-            }
-
-            return;
-        }
-
         if (snapshot.PathDeadline is { } pathDeadline && pathDeadline <= now && snapshot.Deadline > now)
         {
             await ExpirePathChoicesAsync(matchId, now, cancellationToken);
@@ -517,6 +503,11 @@ public sealed class MatchEngine(
             return new MatchError(RealtimeErrors.PlayerDown, "El héroe ya no está en la partida.");
         }
 
+        if (signal.Tile is { } tile && !snapshot.State.CurrentRoom.IsInside(tile))
+        {
+            return new MatchError(RealtimeErrors.InvalidPayload, "La casilla está fuera de la sala.") { Field = "position" };
+        }
+
         if (!await hot.TryTakeSignalSlotAsync(matchId, userId, options.SignalInterval, cancellationToken))
         {
             return new MatchError(RealtimeErrors.RateLimited, "Demasiadas señales: espera unos segundos.");
@@ -600,131 +591,6 @@ public sealed class MatchEngine(
 
         return MatchResult<PactAck>.Ok(new PactAck(matchId, offerId, pact, now, false));
     }
-
-    /// <summary>
-    /// Voto secreto del interludio. Se guarda en la partida, así que sobrevive a un reinicio. Vale el primero: repetirlo
-    /// igual devuelve ACK y cambiarlo da <c>VOTE_CLOSED</c>. Si ya votaron todos los conectados, se cierra.
-    /// </summary>
-    public async Task<MatchResult<VoteAck>> CastVoteAsync(
-        Guid matchId, Guid userId, Guid offerId, PlayerId? accused, int? door, CancellationToken cancellationToken)
-    {
-        var found = await GetForPlayerAsync(matchId, userId, cancellationToken);
-        if (found.Error is { } notFound)
-        {
-            return notFound;
-        }
-
-        var (snapshot, participant) = found.Value;
-        if (!snapshot.Status.IsActive())
-        {
-            return new MatchError(RealtimeErrors.MatchNotActive, "La partida ya no está en curso.") { Status = snapshot.Status };
-        }
-
-        MatchError? error = null;
-        var duplicate = false;
-        var now = clock.UtcNow;
-        var mutation = await MutateAsync(
-            matchId,
-            CommandLockWait,
-            current =>
-            {
-                if (current.InterludeOfferId != offerId)
-                {
-                    error = new MatchError(RealtimeErrors.VoteClosed, "El interludio ya se cerró o no es este.");
-                    return Task.FromResult<MatchChange?>(null);
-                }
-
-                var previous = current.State.Interlude!.Ballots.Find(b => b.Voter == participant.PlayerId);
-                if (previous is not null)
-                {
-                    duplicate = previous.Accused == accused && previous.Door == door;
-                    error = duplicate ? null : new MatchError(RealtimeErrors.VoteClosed, "Ya votaste; vale el primero.");
-                    return Task.FromResult<MatchChange?>(null);
-                }
-
-                var result = Domain(() => MatchRules.CastInterludeVote(current.State, participant.PlayerId, accused, door));
-                if (result.Error is { } domainError)
-                {
-                    error = Map(domainError, current.State.Round);
-                    return Task.FromResult<MatchChange?>(null);
-                }
-
-                return Task.FromResult<MatchChange?>(Advance(current, result.State, result.Events, now, roundResolved: false, NoDefaults));
-            },
-            cancellationToken);
-
-        if (error is not null)
-        {
-            return error;
-        }
-
-        if (duplicate)
-        {
-            return MatchResult<VoteAck>.Ok(new VoteAck(matchId, offerId, now, true));
-        }
-
-        if (mutation.Status != MutationStatus.Changed)
-        {
-            return MutationFailure(mutation);
-        }
-
-        ScheduleInterludeClose(matchId);
-        return MatchResult<VoteAck>.Ok(new VoteAck(matchId, offerId, now, false));
-    }
-
-    /// <summary>
-    /// Cierra el interludio: por plazo, o antes si ya votaron todos los votantes conectados (y al menos uno). Quien está
-    /// desconectado y no votó no cuenta como votante.
-    /// </summary>
-    public async Task<bool> TryCloseInterludeAsync(Guid matchId, bool deadlineExpired, CancellationToken cancellationToken)
-    {
-        var mutation = await MutateAsync(
-            matchId,
-            deadlineExpired ? TimeSpan.Zero : CommandLockWait,
-            async current =>
-            {
-                if (!current.IsInInterlude)
-                {
-                    return null;
-                }
-
-                var now = clock.UtcNow;
-                var connected = await hot.ConnectedUsersAsync(matchId, cancellationToken);
-                if (deadlineExpired ? current.Deadline > now : !AllVoted(current, connected))
-                {
-                    return null;
-                }
-
-                var absent = current.Participants.Where(p => !connected.Contains(p.UserId)).Select(p => p.PlayerId).ToHashSet();
-                var result = Domain(() => MatchRules.CloseInterlude(current.State, absent, rng));
-                return Advance(current, result.State, result.Events, now, roundResolved: false, NoDefaults);
-            },
-            cancellationToken);
-
-        return mutation.Status == MutationStatus.Changed;
-    }
-
-    private static bool AllVoted(MatchSnapshot snapshot, IReadOnlySet<Guid> connected)
-    {
-        // Sin nadie conectado no hay a quién esperar ni prisa: decide el plazo.
-        var ballots = snapshot.State.Interlude!.Ballots;
-        var present = Interludes.Voters(snapshot.State).Where(v => connected.Contains(PlayerIds.ToUserId(v.Player))).ToList();
-        return !ballots.IsEmpty && present.Count > 0 && present.TrueForAll(v => ballots.Exists(b => b.Voter == v.Player));
-    }
-
-    private void ScheduleInterludeClose(Guid matchId) =>
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await TryCloseInterludeAsync(matchId, deadlineExpired: false, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                // El temporizador lo cerrará al vencer el plazo; aquí solo se registra.
-                logger.LogWarning(ex, "No se pudo cerrar el interludio de la partida {MatchId}", matchId);
-            }
-        });
 
     /// <summary>Lo que oye este jugador si es el Campanero y la pasiva aplica; para el reenvío al (re)conectar.</summary>
     public async Task<LastWordHeard?> LastWordForAsync(MatchSnapshot snapshot, PlayerId player, CancellationToken cancellationToken)
@@ -885,13 +751,6 @@ public sealed class MatchEngine(
     public static Guid PactOfferIdFor(Guid matchId, PlayerId player)
     {
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{matchId:N}|{player}|pact"));
-        return new Guid(hash.AsSpan(0, 16));
-    }
-
-    /// <summary>Id estable de la oferta de interludio de una sala que termina.</summary>
-    public static Guid InterludeOfferIdFor(Guid matchId, int endedRoom)
-    {
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes($"{matchId:N}|interlude|{endedRoom}"));
         return new Guid(hash.AsSpan(0, 16));
     }
 
@@ -1062,7 +921,6 @@ public sealed class MatchEngine(
             try
             {
                 await TryCloseRoundAsync(matchId, round, deadlineExpired: false, CancellationToken.None);
-                await TryCloseInterludeAsync(matchId, deadlineExpired: false, CancellationToken.None);
             }
             catch (Exception ex)
             {
@@ -1131,10 +989,6 @@ public sealed class MatchEngine(
         {
             MatchStatus.Drafting => current.Deadline,
 
-            // El interludio tiene su propio plazo; al cerrarlo abre la ronda siguiente, sin contar ronda.
-            MatchStatus.InProgress when next.Phase == MatchPhase.Interlude && current.State.Phase == MatchPhase.Interlude => current.Deadline,
-            MatchStatus.InProgress when next.Phase == MatchPhase.Interlude => now + options.InterludeDuration,
-            MatchStatus.InProgress when current.State.Phase == MatchPhase.Interlude => now + current.RoundDuration,
             MatchStatus.InProgress when current.Status != MatchStatus.InProgress || current.State.Round != next.Round => now + current.RoundDuration,
             MatchStatus.InProgress => current.Deadline,
             _ => (DateTimeOffset?)null,
@@ -1311,8 +1165,6 @@ public sealed class MatchEngine(
         ErrorCode.InvalidDraftChoice => new MatchError(RealtimeErrors.InvalidPick, error.Message),
         ErrorCode.NoPathOffer => new MatchError(RealtimeErrors.PathClosed, error.Message),
         ErrorCode.NoPactOffer => new MatchError(RealtimeErrors.PactClosed, error.Message),
-        ErrorCode.VoteClosed => new MatchError(RealtimeErrors.VoteClosed, error.Message),
-        ErrorCode.InvalidVote => new MatchError(RealtimeErrors.InvalidVote, error.Message),
         ErrorCode.InvalidPathChoice => new MatchError(RealtimeErrors.InvalidPayload, error.Message) { Field = "path" },
         _ => new MatchError(RealtimeErrors.InvalidOrder, error.Message) { Field = "order.type" },
     };

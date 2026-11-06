@@ -9,7 +9,9 @@ public static class Outcomes
 {
     internal static GameOutcome? Evaluate(RoundContext ctx)
     {
-        var ended = ctx.WardenSlain || !ctx.Heroes.Any(h => h.IsActive) || ctx.Round >= ctx.Start.MaxRounds;
+        // Sin límite de rondas (07-version-4.md §7): termina cuando gana un bando. El frío garantiza que llegue.
+        var limited = ctx.TestRoundLimit is { } limit && ctx.Round >= limit;
+        var ended = ctx.WardenSlain || !ctx.Heroes.Any(h => h.IsActive) || limited;
         if (!ended)
         {
             return null;
@@ -30,6 +32,7 @@ public static class Outcomes
         }
         else
         {
+            // Solo con el límite de pruebas: derrota de todos, como la antigua ronda 60.
             outcome = Defeat(ctx.Heroes, DefeatReason.RoundLimit);
         }
 

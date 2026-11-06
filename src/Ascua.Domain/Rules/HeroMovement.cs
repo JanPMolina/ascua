@@ -172,7 +172,7 @@ internal static class HeroMovement
 
     /// <summary>Terreno transitable para un héroe (las grietas se pueden pisar... y matan).</summary>
     private static bool CanEnter(RoundContext ctx, Position target) =>
-        Room.IsInside(target) && ctx.IsWalkable(target, flies: false, avoidCracks: false);
+        ctx.Room.IsInside(target) && ctx.IsWalkable(target, flies: false, avoidCracks: false);
 
     private static bool IsBlocked(RoundContext ctx, Dictionary<Mover, Intent> intents, HashSet<Mover> moving, Intent intent)
     {

@@ -8,9 +8,6 @@ public enum MatchPhase
     Drafting,
     InProgress,
     Finished,
-
-    /// <summary>Interludio tras la escalera: El Juicio y la elección de puerta (06-version-3.md §3). No corren rondas.</summary>
-    Interlude,
 }
 
 public enum OutcomeKind
@@ -21,7 +18,7 @@ public enum OutcomeKind
     /// <summary>El Celador cayó y varios empatan en el máximo de ascuas.</summary>
     Draw,
 
-    /// <summary>"El Umbral se apagó": todos caídos o extintos, o se agotaron las rondas.</summary>
+    /// <summary>"El Umbral se apagó": todos caídos o extintos.</summary>
     CollectiveDefeat,
 
     /// <summary>No queda ningún humano activo.</summary>
@@ -35,6 +32,8 @@ public enum DefeatReason
 {
     None,
     AllFallen,
+
+    /// <summary>Obsoleto desde la versión 4 (no hay límite de rondas): solo aparece en partidas viejas.</summary>
     RoundLimit,
 }
 
@@ -48,13 +47,12 @@ public enum BetrayalKind
     /// <summary>Un golpe dado desde un huésped por Polizón.</summary>
     FromHost,
 
-    /// <summary>Un sabotaje.</summary>
+    /// <summary>Un sabotaje (obsoleto desde la versión 4: solo en partidas viejas).</summary>
     Sabotage,
 }
 
 /// <summary>
-/// Daño anónimo a un aliado. El registro no muestra al autor; esto se guarda en secreto, se puede juzgar en el
-/// interludio de la sala en que ocurrió y se revela en la pantalla final.
+/// Daño anónimo a un aliado. El registro no muestra al autor; esto se guarda en secreto y se revela en la pantalla final.
 /// </summary>
 public sealed record Betrayal(PlayerId Traitor, PlayerId Victim, int Damage)
 {
@@ -62,9 +60,6 @@ public sealed record Betrayal(PlayerId Traitor, PlayerId Victim, int Damage)
 
     /// <summary>Sala en la que ocurrió.</summary>
     public int Room { get; init; }
-
-    /// <summary>Ya se juzgó y condenó: no cuenta como oculta.</summary>
-    public bool Judged { get; init; }
 }
 
 /// <summary>Título de la pantalla final, calculado con datos reales.</summary>
@@ -90,10 +85,16 @@ public sealed record GameOutcome(
 /// </summary>
 public sealed record GameState
 {
-    public const int DefaultMaxRounds = 60;
+    /// <summary>Desde esta ronda llega el frío (07-version-4.md §7). No hay límite de rondas.</summary>
+    public const int ChillStartRound = 80;
+
+    /// <summary>El frío golpea en las rondas múltiplo de esto.</summary>
+    public const int ChillEvery = 3;
+
+    /// <summary>El daño del frío sube 1 cada tantas rondas pasadas de <see cref="ChillStartRound"/>.</summary>
+    public const int ChillGrowth = 15;
 
     public int Round { get; init; } = 1;
-    public int MaxRounds { get; init; } = DefaultMaxRounds;
     public MatchPhase Phase { get; init; } = MatchPhase.Drafting;
 
     /// <summary>Héroes ordenados por asiento.</summary>
@@ -111,12 +112,6 @@ public sealed record GameState
 
     /// <summary>Maldiciones de la partida: públicas y fijas desde que se crea.</summary>
     public ImmutableList<Curse> Curses { get; init; } = [];
-
-    /// <summary>Interludio abierto: votos secretos y puertas. Solo existe en <see cref="MatchPhase.Interlude"/>.</summary>
-    public InterludeState? Interlude { get; init; }
-
-    /// <summary>Recuento público del último interludio cerrado.</summary>
-    public InterludeVerdict? LastVerdict { get; init; }
 
     /// <summary>Número de secuencia del último evento emitido.</summary>
     public long LastSeq { get; init; }
@@ -157,6 +152,10 @@ public sealed record GameState
         var penalty = (CurrentRoom.Type == RoomType.Dark ? 1 : 0) + (HasCurse(Curse.Dim) ? 1 : 0);
         return Math.Max(1, hero.VisionRadius - penalty);
     }
+
+    /// <summary>Daño del frío en esa ronda (0 si no toca).</summary>
+    public static int ChillDamage(int round) =>
+        round >= ChillStartRound && round % ChillEvery == 0 ? 1 + ((round - ChillStartRound) / ChillGrowth) : 0;
 
     /// <summary>¿Suena el Repique en la ronda abierta?</summary>
     public bool IsBellRound => BellRinger is not null && BellRound == Round;

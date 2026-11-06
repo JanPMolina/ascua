@@ -3,59 +3,9 @@ using Ascua.Domain.Model;
 
 namespace Ascua.Domain.Rules;
 
-/// <summary>Sabotaje y Empujón (06-version-3.md §2 y §7). Se resuelven en la fase de acciones, por iniciativa.</summary>
+/// <summary>Empujón (06-version-3.md §7). Se resuelve en la fase de acciones, por iniciativa. El sabotaje se quitó en la versión 4.</summary>
 internal static class Treachery
 {
-    /// <summary>
-    /// Sabotaje: 1 de daño anónimo al primer aliado activo en línea a ≤2. Sin aliado no se gasta. No hace ruido ni gira al
-    /// héroe: nada en la vista de los demás lo delata. Si un Defender lo anula, se gasta y no cuenta como traición.
-    /// </summary>
-    public static void Sabotage(RoundContext ctx, Hero hero, Direction direction)
-    {
-        if (!hero.CanSabotage(ctx.RoomIndex))
-        {
-            return;
-        }
-
-        var (victim, tile) = FirstAlly(ctx, hero, hero.Position, direction);
-        if (victim is null && hero.SecondBody is { } second)
-        {
-            (victim, tile) = FirstAlly(ctx, hero, second, direction.Mirrored());
-        }
-
-        if (victim is null)
-        {
-            return;
-        }
-
-        ctx.Update(hero with { SabotagedRoom = ctx.RoomIndex });
-        var dealt = Combat.HitHero(ctx, victim.Player, HeroRules.SabotageDamage, Attacker.None, tile);
-        if (dealt > 0)
-        {
-            Combat.RecordBetrayal(ctx, hero.Player, victim.Player, dealt, BetrayalKind.Sabotage);
-        }
-    }
-
-    private static (Hero? Victim, Position Tile) FirstAlly(RoundContext ctx, Hero hero, Position origin, Direction direction)
-    {
-        var position = origin;
-        for (var i = 0; i < HeroRules.SabotageReach; i++)
-        {
-            position = position.Step(direction);
-            if (ctx.Room.TerrainAt(position) is Terrain.Wall or Terrain.Brazier)
-            {
-                break;
-            }
-
-            if (ctx.HeroAt(position) is { IsActive: true } ally && ally.Player != hero.Player)
-            {
-                return (ally, position);
-            }
-        }
-
-        return (null, position);
-    }
-
     /// <summary>
     /// Empujón: mueve 1 casilla a lo que esté adyacente en esa dirección, si la llegada se puede pisar y está libre. Es
     /// visible y con autor. Sin efecto no se gasta. Hilván empuja desde sus dos cuerpos con un solo uso.
@@ -93,7 +43,7 @@ internal static class Treachery
     {
         var from = origin.Step(direction);
         var to = from.Step(direction);
-        if (!Room.IsInside(to) || !ctx.IsWalkable(to, flies: false, avoidCracks: false) || ctx.IsOccupied(to))
+        if (!ctx.Room.IsInside(to) || !ctx.IsWalkable(to, flies: false, avoidCracks: false) || ctx.IsOccupied(to))
         {
             return false;
         }

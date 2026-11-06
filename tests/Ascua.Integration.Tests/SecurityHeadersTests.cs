@@ -182,7 +182,7 @@ public sealed partial class SecurityHeadersTests(AscuaApiFactory factory) : IDis
     private static async Task<ClientWebSocket> OpenWebSocketAsync(WebApplicationFactory<Program> host, string ticket, string? origin)
     {
         using var http = host.CreateClient();
-        var uri = new UriBuilder(new Uri(http.BaseAddress!, $"realtime/match?protocolVersion=3&access_token={ticket}")) { Scheme = "ws" }.Uri;
+        var uri = new UriBuilder(new Uri(http.BaseAddress!, $"realtime/match?protocolVersion=4&access_token={ticket}")) { Scheme = "ws" }.Uri;
         var socket = new ClientWebSocket();
         socket.Options.CollectHttpResponseDetails = true;
         if (origin is not null)

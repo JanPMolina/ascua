@@ -6,19 +6,16 @@ public sealed class RealtimeOptions
     public const string SectionName = "Ascua:Realtime";
 
     /// <summary>Planificación de cada ronda (20 s según las reglas).</summary>
-    public TimeSpan RoundDuration { get; set; } = TimeSpan.FromSeconds(20);
+    public TimeSpan RoundDuration { get; set; } = TimeSpan.FromSeconds(11);
 
     /// <summary>Plazo del draft inicial; al vencer se elige la primera opción.</summary>
     public TimeSpan DraftDuration { get; set; } = TimeSpan.FromSeconds(30);
-
-    /// <summary>Plazo del interludio (El Juicio y la puerta). Al vencer, el voto ausente es «nadie» (06-version-3.md §3).</summary>
-    public TimeSpan InterludeDuration { get; set; } = TimeSpan.FromSeconds(20);
 
     /// <summary>Plazo para elegir camino tras extinguirse; al vencer se toma Amistad (04-caminos-tras-morir.md).</summary>
     public TimeSpan PathChoiceDuration { get; set; } = TimeSpan.FromSeconds(15);
 
     /// <summary>Repique del Campanero: en esa ronda los demás solo tienen este tiempo para decidir (05-heroes.md §12).</summary>
-    public TimeSpan BellDuration { get; set; } = TimeSpan.FromSeconds(8);
+    public TimeSpan BellDuration { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>Señales rápidas: como mucho 1 por jugador cada este tiempo (además del límite del hub).</summary>
     public TimeSpan SignalInterval { get; set; } = TimeSpan.FromSeconds(3);
@@ -67,10 +64,14 @@ public sealed class RealtimeOptions
     /// <summary>Espera entre <c>ServerDraining</c> y el cierre de la réplica.</summary>
     public TimeSpan DrainDelay { get; set; } = TimeSpan.FromSeconds(2);
 
-    public int MaxRounds { get; set; } = 60;
-
     /// <summary>Habilita <c>POST /api/v1/dev/matches</c> (solo local/dev; arranca una partida sin sala).</summary>
     public bool EnableDevEndpoints { get; set; }
+
+    /// <summary>
+    /// Solo para pruebas de integración: la partida termina en derrota al resolver esta ronda. Por defecto no hay límite
+    /// (07-version-4.md §7); no se configura en ningún entorno real.
+    /// </summary>
+    public int? TestRoundLimit { get; set; }
 }
 
 /// <summary>Códigos de error del contrato (contracts/asyncapi.yaml, sección 3).</summary>
@@ -90,8 +91,6 @@ public static class RealtimeErrors
     public const string InvalidPick = "INVALID_PICK";
     public const string PathClosed = "PATH_CLOSED";
     public const string PactClosed = "PACT_CLOSED";
-    public const string VoteClosed = "VOTE_CLOSED";
-    public const string InvalidVote = "INVALID_VOTE";
     public const string RateLimited = "RATE_LIMITED";
     public const string InternalError = "INTERNAL_ERROR";
 }

@@ -23,7 +23,7 @@ public sealed class EscuchaTests
         var far = Enemy(2, EnemyKind.Totem, 5, 5);
         var view = PlayerViewProjector.For(State([Escucha(0, 0)], [near, far], room), A);
 
-        Assert.Equal(Room.Size * Room.Size, view.Tiles.Count);
+        Assert.Equal(Room.DefaultSize * Room.DefaultSize, view.Tiles.Count);
         Assert.Contains(view.Tiles, t => t is { Position: { X: 8, Y: 8 }, Terrain: Terrain.Spikes });
         Assert.Equal(1, Assert.Single(view.Enemies).Id);
         Assert.Equal(1, Assert.Single(view.Chests).Id);
@@ -245,7 +245,7 @@ public sealed class EscuchaTests
 
         Assert.Equal(PathRules.EmberVisionRadius, view.Self.VisionRadius);
         Assert.Single(view.Enemies);
-        Assert.NotEqual(Room.Size * Room.Size, view.Tiles.Count);
+        Assert.NotEqual(Room.DefaultSize * Room.DefaultSize, view.Tiles.Count);
     }
 
     [Fact]

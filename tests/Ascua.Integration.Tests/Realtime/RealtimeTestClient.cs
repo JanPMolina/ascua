@@ -64,7 +64,7 @@ public static class RealtimeSetup
         return (await response.Content.ReadFromJsonAsync<RealtimeTicketResponse>())!.Ticket;
     }
 
-    public static Uri HubUri(WebApplicationFactory<Program> host, string ticket, string protocolVersion = "3") =>
+    public static Uri HubUri(WebApplicationFactory<Program> host, string ticket, string protocolVersion = "4") =>
         new(host.Server.BaseAddress, $"realtime/match?protocolVersion={protocolVersion}&access_token={ticket}");
 
     public static async Task<RealtimeTestClient> ConnectAsync(WebApplicationFactory<Program> host, TestPlayer player, Guid matchId)
@@ -122,8 +122,6 @@ public sealed class RealtimeTestClient : IAsyncDisposable
         client.Listen<DraftOfferMessage>("DraftOffer");
         client.Listen<PathOfferMessage>("PathOffer");
         client.Listen<PactOfferMessage>("PactOffer");
-        client.Listen<InterludeOfferMessage>("InterludeOffer");
-        client.Listen<InterludeResolvedMessage>("InterludeResolved");
         client.Listen<LastWordMessage>("LastWord");
         client.Listen<SignalReceivedMessage>("SignalReceived");
         client.Listen<PlayerConnectionChangedMessage>("PlayerConnectionChanged");
@@ -184,9 +182,6 @@ public sealed class RealtimeTestClient : IAsyncDisposable
 
     public Task<ChoosePathReply> ChoosePactAsync(Guid matchId, string offerId, string pactId) =>
         Connection.InvokeAsync<ChoosePathReply>("ChoosePact", new ChoosePactRequest { MatchId = matchId.ToString("D"), OfferId = offerId, PactId = pactId });
-
-    public Task<ChoosePathReply> VoteAsync(Guid matchId, string offerId, string? accusedId, int? door) =>
-        Connection.InvokeAsync<ChoosePathReply>("CastInterludeVote", new CastInterludeVoteRequest { MatchId = matchId.ToString("D"), OfferId = offerId, AccusedId = accusedId, Door = door });
 
     public Task<DraftReply> DraftPickAsync(Guid matchId, string offerId, string blessingId) =>
         Connection.InvokeAsync<DraftReply>("DraftPick", new DraftPickRequest { MatchId = matchId.ToString("D"), OfferId = offerId, BlessingId = blessingId });

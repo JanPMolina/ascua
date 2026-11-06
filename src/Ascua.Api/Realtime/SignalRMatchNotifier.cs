@@ -26,8 +26,8 @@ public sealed class SignalRMatchNotifier(
                 MatchId = RealtimeMapper.Id(snapshot.MatchId),
                 Round = snapshot.State.Round,
                 PlayerId = RealtimeMapper.Id(userId),
-                DecidedCount = Math.Clamp(decidedCount, 1, 4),
-                ExpectedPlayers = Math.Clamp(expectedPlayers, 1, 4),
+                DecidedCount = Math.Clamp(decidedCount, 1, 5),
+                ExpectedPlayers = Math.Clamp(expectedPlayers, 1, 5),
             },
             cancellationToken);
     }
@@ -65,16 +65,6 @@ public sealed class SignalRMatchNotifier(
             {
                 sends.Add(user.SendAsync("PathOffer", pathOffer, cancellationToken));
             }
-
-            if (!before.IsInInterlude && RealtimeMapper.InterludeOffer(after, participant) is { } interludeOffer)
-            {
-                sends.Add(user.SendAsync("InterludeOffer", interludeOffer, cancellationToken));
-            }
-
-            if (before.IsInInterlude && !after.IsInInterlude && after.State.LastVerdict is not null)
-            {
-                sends.Add(user.SendAsync("InterludeResolved", RealtimeMapper.InterludeResolved(after, change.Events, participant), cancellationToken));
-            }
         }
 
         await Task.WhenAll(sends);
@@ -91,7 +81,7 @@ public sealed class SignalRMatchNotifier(
                     Round = after.State.Round,
                     Deadline = RealtimeMapper.Timestamp(deadline),
                     DurationMs = (int)Math.Clamp(after.RoundDuration.TotalMilliseconds, 1000, 60000),
-                    ExpectedPlayers = Math.Clamp(after.ActivePlayers().Count, 1, 4),
+                    ExpectedPlayers = Math.Clamp(after.ActivePlayers().Count, 1, 5),
                     BellDeadline = after.BellDeadline is { } bell ? RealtimeMapper.Timestamp(bell) : null,
                     BellRingerId = after.BellDeadline is not null ? after.State.BellRinger?.Value : null,
                 },

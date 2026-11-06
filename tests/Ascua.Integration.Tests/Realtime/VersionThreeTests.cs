@@ -12,8 +12,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Ascua.Integration.Tests.Realtime;
 
 /// <summary>
-/// Versión 3 por el hub y el REST (contrato 3.0.0): paso y acción, misión, interludio con temporizador y reinicio,
-/// revancha concurrente, maldiciones, títulos y lo que cada uno no debe ver.
+/// Versiones 3 y 4 por el hub y el REST (contrato 4.0.0): paso y acción, misión, escalera directa, 5 jugadores en una sala
+/// de 11, revancha concurrente, maldiciones, títulos y lo que cada uno no debe ver.
 /// </summary>
 [Collection(ApiCollection.Name)]
 public sealed class VersionThreeTests(AscuaApiFactory factory)
@@ -102,208 +102,70 @@ public sealed class VersionThreeTests(AscuaApiFactory factory)
         await ca.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 1);
     }
 
-    // ───────────── Interludio ─────────────
-
-    private static GameState AtTheStairs(GameState s) => s with
-    {
-        Enemies = [],
-        Heroes = s.Heroes.SetItem(0, s.Heroes[0] with { Position = MatchFactory.StairsPosition }),
-    };
-
-    private static async Task ToInterludeAsync(StartedMatch match)
-    {
-        foreach (var client in match.Clients)
-        {
-            Assert.Equal("ACCEPTED", (await client.SubmitAsync(match.Id, 1, "INTERACT", "N")).Result);
-        }
-
-        foreach (var client in match.Clients)
-        {
-            await client.WaitForAsync<InterludeOfferMessage>("InterludeOffer");
-        }
-    }
+    // ───────────── Versión 4: escalera directa, sin sabotaje, sala de 11 ─────────────
 
     [Fact]
-    public async Task The_stairs_open_the_trial_votes_are_secret_and_closing_early_shows_the_tally()
+    public async Task The_stairs_lead_straight_to_the_next_room_and_announce_its_type()
     {
-        var host = factory.WithSettings(new Dictionary<string, string?>
-        {
-            ["Ascua:Realtime:RoundDuration"] = "00:02:00",
-            ["Ascua:Realtime:InterludeDuration"] = "00:02:00",
-        });
+        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:RoundDuration"] = "00:02:00" });
         await using var match = await StartAsync(host, HeroClass.Mampostero, HeroClass.Errata, HeroClass.Avaro);
-        var (a, b, c) = (match.Clients[0], match.Clients[1], match.Clients[2]);
-        await InjectAsync(host, match.Id, AtTheStairs);
-        await ToInterludeAsync(match);
-
-        var offer = a.All<InterludeOfferMessage>("InterludeOffer").Single();
-        Assert.True(offer.CanVote);
-        Assert.Equal(2, offer.Doors.Count);
-        Assert.NotEqual(offer.Doors[0].Type, offer.Doors[1].Type);
-        Assert.Equal(2, offer.Candidates.Count);
-        Assert.DoesNotContain(a.Player.Id.ToString("D"), offer.Candidates);
-        Assert.Equal("INTERLUDE", (await a.GetSnapshotAsync(match.Id)).View!.Status);
-
-        // Las órdenes se rechazan: no hay ronda abierta.
-        Assert.NotNull((await a.SubmitAsync(match.Id, 2, "GUARD")).Error);
-
-        // Validación y autorización como los demás mensajes.
-        Assert.Equal("INVALID_PAYLOAD", (await a.VoteAsync(match.Id, "no-es-uuid", null, null)).Error?.Code);
-        Assert.Equal("INVALID_PAYLOAD", (await a.VoteAsync(match.Id, offer.OfferId, null, 5)).Error?.Code);
-        Assert.Equal("VOTE_CLOSED", (await a.VoteAsync(match.Id, Guid.NewGuid().ToString("D"), null, 0)).Error?.Code);
-        Assert.Equal("INVALID_VOTE", (await a.VoteAsync(match.Id, offer.OfferId, a.Player.Id.ToString("D"), 0)).Error?.Code);
-
-        var bId = b.Player.Id.ToString("D");
-        Assert.Equal("ACCEPTED", (await a.VoteAsync(match.Id, offer.OfferId, bId, 1)).Result);
-        Assert.Equal("DUPLICATE_ACTION", (await a.VoteAsync(match.Id, offer.OfferId, bId, 1)).Result);
-        Assert.Equal("VOTE_CLOSED", (await a.VoteAsync(match.Id, offer.OfferId, null, 0)).Error?.Code);
-
-        // Nadie más sabe qué votó: solo que votó.
-        var seenByC = (await c.GetSnapshotAsync(match.Id)).View!.Interlude!;
-        Assert.Null(seenByC.MyVote);
-        Assert.Contains(a.Player.Id.ToString("D"), seenByC.Voted);
-        Assert.Equal(bId, (await a.GetSnapshotAsync(match.Id)).View!.Interlude!.MyVote!.AccusedId);
-        Assert.DoesNotContain("\"accusedId\":\"" + bId, c.Dump(), StringComparison.Ordinal);
-
-        Assert.Equal("ACCEPTED", (await b.VoteAsync(match.Id, offer.OfferId, null, 1)).Result);
-        Assert.Equal("ACCEPTED", (await c.VoteAsync(match.Id, offer.OfferId, bId, 0)).Result);
-
-        var resolved = await c.WaitForAsync<InterludeResolvedMessage>("InterludeResolved");
-        var accusation = Assert.Single(resolved.Verdict.Accusations);
-        Assert.Equal(bId, accusation.AccusedId);
-        Assert.Equal(2, accusation.Votes);
-        Assert.True(accusation.Convicted);
-        Assert.False(accusation.Guilty);
-        Assert.Equal(offer.Doors[1].Type, resolved.Verdict.ChosenDoor);
-        Assert.Contains(resolved.Events, e => (string)e["type"] == "FLOOR_ENTERED");
-
-        var opened = await a.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 2);
-        Assert.Equal(2, opened.Round);
-        var view = (await a.GetSnapshotAsync(match.Id)).View!;
-        Assert.Equal(2, view.Floor);
-        Assert.Equal(offer.Doors[1].Type, view.Room.Type);
-        Assert.Equal(offer.Doors[1].Type, view.LastVerdict!.ChosenDoor);
-    }
-
-    [Fact]
-    public async Task At_the_deadline_absent_votes_are_nobody_and_a_door_is_picked_anyway()
-    {
-        var host = factory.WithSettings(new Dictionary<string, string?>
+        await InjectAsync(host, match.Id, s => s with
         {
-            ["Ascua:Realtime:RoundDuration"] = "00:02:00",
-            ["Ascua:Realtime:InterludeDuration"] = "00:00:01",
+            Enemies = [],
+            Rooms = s.Rooms.SetItem(1, s.Rooms[1] with { Type = RoomType.Flooded }),
+            Heroes = s.Heroes.SetItem(0, s.Heroes[0] with { Position = MatchFactory.StairsPosition }),
         });
-        await using var match = await StartAsync(host, HeroClass.Mampostero, HeroClass.Errata);
-        await InjectAsync(host, match.Id, AtTheStairs);
-        await ToInterludeAsync(match);
-
-        var resolved = await match.Clients[1].WaitForAsync<InterludeResolvedMessage>("InterludeResolved", null, TimeSpan.FromSeconds(15));
-
-        Assert.Empty(resolved.Verdict.Accusations);
-        Assert.Equal(2, resolved.Verdict.NoAccusation);
-        Assert.NotNull(resolved.Verdict.ChosenDoor);
-        await match.Clients[0].WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 2);
-    }
-
-    [Fact]
-    public async Task A_vote_and_the_deadline_survive_restarting_the_instance_in_the_middle()
-    {
-        // Otra fábrica sobre la misma base: al desecharla, el plazo sigue guardado en Postgres y Redis.
-        var settings = new Dictionary<string, string?>
-        {
-            ["Ascua:Realtime:RoundDuration"] = "00:02:00",
-            ["Ascua:Realtime:InterludeDuration"] = "00:00:03",
-        };
-        var first = factory.WithSettings(settings);
-        var match = await StartAsync(first, HeroClass.Mampostero, HeroClass.Errata);
-        await InjectAsync(first, match.Id, AtTheStairs);
-        await ToInterludeAsync(match);
-        var offer = match.Clients[0].All<InterludeOfferMessage>("InterludeOffer").Single();
-        Assert.Equal("ACCEPTED", (await match.Clients[0].VoteAsync(match.Id, offer.OfferId, null, 0)).Result);
-        var players = match.Clients.Select(c => c.Player).ToList();
-        await match.DisposeAsync();
-        await first.DisposeAsync();
-
-        await using var second = factory.WithSettings(settings);
-        var store = second.Services.GetRequiredService<IMatchStore>();
-        var snapshot = await store.LoadAsync(match.Id, CancellationToken.None);
-        Assert.Single(snapshot!.State.Interlude?.Ballots ?? [new InterludeBallot(new PlayerId("ya-cerrado"), null, 0)]);
-
-        var deadline = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(30);
-        while (DateTimeOffset.UtcNow < deadline)
-        {
-            snapshot = await store.LoadAsync(match.Id, CancellationToken.None);
-            if (snapshot!.State.Phase == MatchPhase.InProgress)
-            {
-                break;
-            }
-
-            await Task.Delay(250);
-        }
-
-        Assert.Equal(MatchPhase.InProgress, snapshot!.State.Phase);
-        Assert.Equal(1, snapshot.State.RoomIndex);
-        Assert.Equal(offer.Doors[0].Type, RealtimeMapper.RoomTypeCode(snapshot.State.CurrentRoom.Type));
-        Assert.True(snapshot.Deadline > DateTimeOffset.UtcNow);
-
-        // Y se retoma: el jugador vuelve con un ticket nuevo a la sala nueva.
-        var (back, _) = await RealtimeSetup.JoinAsync(second, await RealtimeSetup.LoginAsync(second, players[0]), match.Id);
-        await using var _ = back;
-        Assert.Equal(2, (await back.GetSnapshotAsync(match.Id)).View!.Floor);
-    }
-
-    [Fact]
-    public async Task Before_the_warden_there_are_no_doors()
-    {
-        var host = factory.WithSettings(new Dictionary<string, string?>
-        {
-            ["Ascua:Realtime:RoundDuration"] = "00:02:00",
-            ["Ascua:Realtime:InterludeDuration"] = "00:02:00",
-        });
-        await using var match = await StartAsync(host, HeroClass.Mampostero, HeroClass.Errata);
-        await InjectAsync(host, match.Id, s => AtTheStairs(s) with { RoomIndex = s.Rooms.Count - 2 });
-        await ToInterludeAsync(match);
-
-        var offer = match.Clients[0].All<InterludeOfferMessage>("InterludeOffer").Single();
-        Assert.Empty(offer.Doors);
         foreach (var client in match.Clients)
         {
-            Assert.Equal("ACCEPTED", (await client.VoteAsync(match.Id, offer.OfferId, null, null)).Result);
+            Assert.Equal("ACCEPTED", (await client.SubmitAsync(match.Id, 1, "GUARD")).Result);
         }
 
-        var resolved = await match.Clients[0].WaitForAsync<InterludeResolvedMessage>("InterludeResolved");
-        Assert.Null(resolved.Verdict.ChosenDoor);
-        await match.Clients[0].WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 2);
-        var view = (await match.Clients[0].GetSnapshotAsync(match.Id)).View!;
-        Assert.Equal("NORMAL", view.Room.Type);
+        foreach (var client in match.Clients)
+        {
+            var resolved = await client.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1);
+            Assert.Equal("IN_PROGRESS", resolved.Delta.Status);
+            Assert.Equal(2, resolved.Delta.FloorChanged);
+            Assert.Contains(resolved.Delta.Events, e => (string)e["type"] == "FLOOR_ENTERED" && (string)e["detail"] == "FLOODED");
+            await client.WaitForAsync<RoundOpenedMessage>("RoundOpened", m => m.Round == 2);
+        }
+
+        var view = (await match.Clients[1].GetSnapshotAsync(match.Id)).View!;
+        Assert.Equal("FLOODED", view.Room.Type);
+        Assert.Equal(9, view.Room.Size);
+        Assert.Equal(GameState.ChillStartRound, view.ChillRound);
     }
 
-    // ───────────── Sabotaje por el hub ─────────────
-
     [Fact]
-    public async Task The_author_of_a_sabotage_never_reaches_the_others()
+    public async Task Sabotage_and_votes_no_longer_exist()
     {
         var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:RoundDuration"] = "00:02:00" });
         await using var match = await StartAsync(host, HeroClass.Mampostero, HeroClass.Errata);
-        var (a, b) = (match.Clients[0], match.Clients[1]);
-        await InjectAsync(host, match.Id, s => s with
+        var a = match.Clients[0];
+
+        Assert.Equal("INVALID_PAYLOAD", (await a.SubmitAsync(match.Id, 1, "SABOTAGE", "N")).Error?.Code);
+        await Assert.ThrowsAnyAsync<Exception>(() => Microsoft.AspNetCore.SignalR.Client.HubConnectionExtensions.InvokeAsync<object>(a.Connection, "CastInterludeVote", new { matchId = match.Id }));
+        Assert.DoesNotContain("canSabotage", a.Dump(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Five_players_play_in_an_11_room()
+    {
+        var host = factory.WithSettings(new Dictionary<string, string?> { ["Ascua:Realtime:RoundDuration"] = "00:02:00" });
+        await using var match = await StartAsync(host, HeroClass.Mampostero, HeroClass.Errata, HeroClass.Avaro, HeroClass.Hilvan, HeroClass.Escucha);
+
+        var view = (await match.Clients[4].GetSnapshotAsync(match.Id)).View!;
+        Assert.Equal(11, view.Room.Size);
+        Assert.Equal(4, view.Allies.Count);
+        Assert.Equal(121, view.Tiles.Count);
+        Assert.Equal(9, view.Me.Position.Y);
+
+        foreach (var client in match.Clients)
         {
-            Rooms = s.Rooms.SetItem(0, s.Rooms[0] with { Features = [], Chests = [] }),
-            Enemies = [Enemy.Create(900, EnemyKind.Totem, new Position(8, 0), 9)],
-            Heroes = s.Heroes.SetItem(0, s.Heroes[0] with { Position = new Position(4, 5), Blessings = [] }).SetItem(1, s.Heroes[1] with { Position = new Position(4, 4), Blessings = [] }),
-        });
+            Assert.Equal("ACCEPTED", (await client.SubmitAsync(match.Id, 1, "GUARD")).Result);
+        }
 
-        Assert.Equal("ACCEPTED", (await a.SubmitAsync(match.Id, 1, "SABOTAGE", "N")).Result);
-        Assert.Equal("ACCEPTED", (await b.SubmitAsync(match.Id, 1, "INTERACT", "N")).Result);
-
-        var seenByB = await b.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1);
-        var damaged = Assert.Single(seenByB.Delta.Events, e => (string)e["type"] == "DAMAGED");
-        Assert.False(damaged.ContainsKey("actorId"));
-        Assert.DoesNotContain(seenByB.Delta.Events, e => (string)e["type"] == "BETRAYAL_RECORDED");
-        var seenByA = await a.WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1);
-        Assert.Contains(seenByA.Delta.Events, e => (string)e["type"] == "BETRAYAL_RECORDED" && (string)e["detail"] == "SABOTAGE");
-        Assert.False(seenByA.Delta.Me!.CanSabotage);
-        Assert.Equal("INVALID_ORDER", (await a.SubmitAsync(match.Id, 2, "SABOTAGE", "N")).Error?.Code);
+        var resolved = await match.Clients[0].WaitForAsync<RoundResolvedMessage>("RoundResolved", m => m.Round == 1);
+        Assert.Equal(1, resolved.Round);
     }
 
     // ───────────── Maldiciones, títulos y catálogo ─────────────

@@ -59,9 +59,6 @@ internal static class HeroActions
                 case OrderType.Interact when !hero.IsRenegade:
                     Interact(ctx, hero, direction);
                     break;
-                case OrderType.Sabotage:
-                    Treachery.Sabotage(ctx, hero, direction);
-                    break;
                 case OrderType.Push:
                     Treachery.Push(ctx, hero, direction);
                     break;

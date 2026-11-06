@@ -62,24 +62,6 @@ public sealed class ChoosePactRequest
 }
 
 [MessagePackObject]
-public sealed class CastInterludeVoteRequest
-{
-    [Key("matchId")]
-    public string? MatchId { get; set; }
-
-    [Key("offerId")]
-    public string? OfferId { get; set; }
-
-    /// <summary>A quién acusa; <c>null</c> = a nadie.</summary>
-    [Key("accusedId")]
-    public string? AccusedId { get; set; }
-
-    /// <summary>Puerta que prefiere (0 o 1); <c>null</c> = ninguna o no hay puertas.</summary>
-    [Key("door")]
-    public int? Door { get; set; }
-}
-
-[MessagePackObject]
 public sealed class ChoosePactAck
 {
     [Key("matchId")]
@@ -90,22 +72,6 @@ public sealed class ChoosePactAck
 
     [Key("pactId")]
     public string PactId { get; set; } = "";
-
-    [Key("result")]
-    public string Result { get; set; } = "";
-
-    [Key("acceptedAt")]
-    public string AcceptedAt { get; set; } = "";
-}
-
-[MessagePackObject]
-public sealed class CastInterludeVoteAck
-{
-    [Key("matchId")]
-    public string MatchId { get; set; } = "";
-
-    [Key("offerId")]
-    public string OfferId { get; set; } = "";
 
     [Key("result")]
     public string Result { get; set; } = "";
@@ -145,146 +111,7 @@ public sealed class PactOfferMessage
     public string Deadline { get; set; } = "";
 }
 
-/// <summary>Una puerta: su tipo y qué hace. Pública.</summary>
-[MessagePackObject]
-public sealed class DoorDto
-{
-    [Key("type")]
-    public string Type { get; set; } = "";
-
-    [Key("name")]
-    public string Name { get; set; } = "";
-
-    [Key("effect")]
-    public string Effect { get; set; } = "";
-}
-
-/// <summary>Oferta del interludio: lo mismo para todos, salvo <c>canVote</c>, <c>candidates</c> y <c>myVote</c>.</summary>
-[MessagePackObject]
-public sealed class InterludeOfferMessage
-{
-    [Key("matchId")]
-    public string MatchId { get; set; } = "";
-
-    [Key("offerId")]
-    public string OfferId { get; set; } = "";
-
-    [Key("endedFloor")]
-    public int EndedFloor { get; set; }
-
-    [Key("deadline")]
-    public string Deadline { get; set; } = "";
-
-    /// <summary>2 puertas, o ninguna si la sala siguiente es la del Celador.</summary>
-    [Key("doors")]
-    public IReadOnlyList<DoorDto> Doors { get; set; } = [];
-
-    [Key("candidates")]
-    public IReadOnlyList<string> Candidates { get; set; } = [];
-
-    [Key("voters")]
-    public IReadOnlyList<string> Voters { get; set; } = [];
-
-    /// <summary>Quién ya votó (no qué).</summary>
-    [Key("voted")]
-    public IReadOnlyList<string> Voted { get; set; } = [];
-
-    [Key("canVote")]
-    public bool CanVote { get; set; }
-
-    [Key("myVote")]
-    public InterludeBallotDto? MyVote { get; set; }
-}
-
-[MessagePackObject]
-public sealed class InterludeBallotDto
-{
-    [Key("accusedId")]
-    public string? AccusedId { get; set; }
-
-    [Key("door")]
-    public int? Door { get; set; }
-}
-
-[MessagePackObject]
-public sealed class AccusationDto
-{
-    [Key("accusedId")]
-    public string AccusedId { get; set; } = "";
-
-    [Key("votes")]
-    public int Votes { get; set; }
-
-    [Key("otherVoters")]
-    public int OtherVoters { get; set; }
-
-    [Key("convicted")]
-    public bool Convicted { get; set; }
-
-    /// <summary>Solo si hubo condena.</summary>
-    [Key("guilty")]
-    public bool? Guilty { get; set; }
-
-    [Key("goldLost")]
-    public int GoldLost { get; set; }
-
-    /// <summary>Oro que pierde cada acusador si era inocente. No se dice quiénes.</summary>
-    [Key("accuserFine")]
-    public int AccuserFine { get; set; }
-
-    /// <summary>Traiciones de esa sala que quedan expuestas con su autoría.</summary>
-    [Key("exposed")]
-    public IReadOnlyList<BetrayalDto> Exposed { get; set; } = [];
-}
-
-[MessagePackObject]
-public sealed class DoorTallyDto
-{
-    [Key("type")]
-    public string Type { get; set; } = "";
-
-    [Key("votes")]
-    public int Votes { get; set; }
-}
-
-/// <summary>Recuento público al cerrar un interludio: nunca dice quién votó qué.</summary>
-[MessagePackObject]
-public sealed class InterludeVerdictDto
-{
-    [Key("endedFloor")]
-    public int EndedFloor { get; set; }
-
-    [Key("accusations")]
-    public IReadOnlyList<AccusationDto> Accusations { get; set; } = [];
-
-    [Key("noAccusation")]
-    public int NoAccusation { get; set; }
-
-    [Key("doors")]
-    public IReadOnlyList<DoorTallyDto> Doors { get; set; } = [];
-
-    [Key("chosenDoor")]
-    public string? ChosenDoor { get; set; }
-}
-
-[MessagePackObject]
-public sealed class InterludeResolvedMessage
-{
-    [Key("matchId")]
-    public string MatchId { get; set; } = "";
-
-    [Key("seq")]
-    public long Seq { get; set; }
-
-    [Key("verdict")]
-    public InterludeVerdictDto Verdict { get; set; } = new();
-
-    /// <summary>Lo que pasó al cerrar y entrar a la sala nueva, ya filtrado para este jugador.</summary>
-    [Key("events")]
-    public IReadOnlyList<IDictionary<string, object>> Events { get; set; } = [];
-}
-
-/// <summary>Sala actual: su tipo y hasta dónde subió el agua. Público.</summary>
+/// <summary>Sala actual: su tipo, su lado y hasta dónde subió el agua. Público.</summary>
 [MessagePackObject]
 public sealed class RoomInfoDto
 {
@@ -299,6 +126,10 @@ public sealed class RoomInfoDto
 
     [Key("floodedRows")]
     public int FloodedRows { get; set; }
+
+    /// <summary>Lado de la sala: 9 con 2 a 4 jugadores, 11 con 5 (contrato 4.0.0).</summary>
+    [Key("size")]
+    public int Size { get; set; } = 9;
 }
 
 /// <summary>Un título de la pantalla final, con su motivo.</summary>
@@ -569,10 +400,6 @@ public sealed class SelfHeroDto
     [Key("pushCooldown")]
     public int PushCooldown { get; set; }
 
-    /// <summary>¿Puede sabotear en esta sala?</summary>
-    [Key("canSabotage")]
-    public bool CanSabotage { get; set; }
-
     /// <summary>Radio de visión real: la sala Oscura, DIM y Ojo de búho lo bajan.</summary>
     [Key("visionRadius")]
     public int VisionRadius { get; set; }
@@ -615,10 +442,6 @@ public sealed class SelfPathDto
 [MessagePackObject]
 public sealed class OtherHeroDto
 {
-    /// <summary>Veces que lo condenaron en El Juicio: es público.</summary>
-    [Key("convictions")]
-    public int Convictions { get; set; }
-
     [Key("playerId")]
     public string PlayerId { get; set; } = "";
 
@@ -799,13 +622,9 @@ public sealed class PlayerViewDto
     [Key("curses")]
     public IReadOnlyList<string> Curses { get; set; } = [];
 
-    /// <summary>Oferta vigente del interludio; <c>null</c> fuera de él.</summary>
-    [Key("interlude")]
-    public InterludeOfferMessage? Interlude { get; set; }
-
-    /// <summary>Recuento del último interludio cerrado.</summary>
-    [Key("lastVerdict")]
-    public InterludeVerdictDto? LastVerdict { get; set; }
+    /// <summary>Ronda desde la que llega el frío (contrato 4.0.0). No hay límite de rondas.</summary>
+    [Key("chillRound")]
+    public int ChillRound { get; set; }
 }
 
 [MessagePackObject]

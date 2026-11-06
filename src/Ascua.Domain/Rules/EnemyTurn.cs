@@ -179,7 +179,7 @@ internal static class EnemyTurn
         }
 
         totem = totem with { Summoned = totem.Summoned + 1 };
-        if (totem.Summoned >= EnemyCatalog.TotemMaxSummons)
+        if (totem.Summoned >= Difficulty.TotemMaxSummons(ctx.Heroes.Count))
         {
             ctx.Enemies.RemoveAll(e => e.Id == totem.Id);
             ctx.Emit(new TotemExtinguished(totem.Id) { Audience = Audience.At(totem.Position) });
@@ -238,7 +238,7 @@ internal static class EnemyTurn
     }
 
     private static ImmutableList<Position> Cross(RoundContext ctx, Position origin) =>
-        [.. Room.AllPositions().Where(p =>
+        [.. ctx.Room.AllPositions().Where(p =>
             p != origin && (p.X == origin.X || p.Y == origin.Y) && ctx.Room.TerrainAt(p) != Terrain.Wall)];
 
     private static bool IsAligned(Position a, Position b) => a.X == b.X || a.Y == b.Y;

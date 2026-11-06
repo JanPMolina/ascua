@@ -136,16 +136,16 @@ internal static class LobbyScripts
 
     /// <summary>
     /// Agrupador. ARGV: 1 prefijo, 2 ahora ms, 3 espera máxima ms, 4 id de grupo.
-    /// Toma 4 jugadores, o 2-3 si el más antiguo ya esperó la espera máxima. Devuelve el JSON del grupo o nil.
+    /// Toma 5 jugadores, o 2-4 si el más antiguo ya esperó la espera máxima. Devuelve el JSON del grupo o nil.
     /// </summary>
     public const string FormGroup = Busy + """
 
         local now, max_wait, gid = tonumber(ARGV[2]), tonumber(ARGV[3]), ARGV[4]
         local queue, tickets = P .. 'mm:queue', P .. 'mm:tickets'
-        local head = redis.call('ZRANGE', queue, 0, 3, 'WITHSCORES')
+        local head = redis.call('ZRANGE', queue, 0, 4, 'WITHSCORES')
         local n = #head / 2
         if n < 2 then return nil end
-        if n < 4 and now - tonumber(head[2]) < max_wait then return nil end
+        if n < 5 and now - tonumber(head[2]) < max_wait then return nil end
         local players = {}
         for k = 1, n do
           local uid, score = head[2 * k - 1], head[2 * k]

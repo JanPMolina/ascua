@@ -171,7 +171,7 @@ public sealed class MamposteroTests
         // La columna 5 separa la sala y solo tiene un hueco en (5,4), al que se llega por (4,4). Al correr la fila 4,
         // el muro de (3,4) pasa a (4,4) y el aliado de la derecha queda encerrado.
         var room = EmptyRoom().WithTerrain(At(3, 4), Terrain.Wall);
-        for (var y = 0; y < Room.Size; y++)
+        for (var y = 0; y < Room.DefaultSize; y++)
         {
             room = y == 4 ? room : room.WithTerrain(At(5, y), Terrain.Wall);
         }

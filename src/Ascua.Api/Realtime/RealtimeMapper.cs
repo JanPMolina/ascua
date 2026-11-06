@@ -34,7 +34,7 @@ public static class RealtimeMapper
             View = new PlayerViewDto
             {
                 Status = StatusCode(snapshot),
-                Round = Math.Clamp(snapshot.State.Round, 0, 60),
+                Round = Math.Clamp(snapshot.State.Round, 0, MaxRound),
                 Floor = view.RoomIndex + 1,
                 RoundDeadline = RoundDeadline(snapshot, participant.PlayerId),
                 Me = Self(snapshot, participant, view, context),
@@ -48,23 +48,24 @@ public static class RealtimeMapper
                 Bell = Bell(snapshot, view),
                 Room = RoomInfo(view.Room),
                 Curses = [.. view.Curses.Select(CurseCode)],
-                Interlude = InterludeOffer(snapshot, participant),
-                LastVerdict = view.LastVerdict is { } verdict ? Verdict(verdict) : null,
+                ChillRound = view.ChillRound,
             },
         };
     }
 
-    /// <summary>En el interludio la partida sigue viva en la base (IN_PROGRESS), pero el contrato lo dice aparte.</summary>
+    /// <summary>Tope de ronda en el contrato: no hay límite de reglas, pero sí uno de validación (el frío termina antes).</summary>
+    public const int MaxRound = 9999;
+
     public static string StatusCode(MatchSnapshot snapshot)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
-        return snapshot.IsInInterlude ? "INTERLUDE" : snapshot.Status.ToCode();
+        return snapshot.Status.ToCode();
     }
 
     private static RoomInfoDto RoomInfo(RoomInfoView room)
     {
         var entry = CurseRules.Describe(room.Type);
-        return new RoomInfoDto { Type = RoomTypeCode(room.Type), Name = entry.Name, Effect = entry.Effect, FloodedRows = Math.Clamp(room.FloodedRows, 0, Room.Size) };
+        return new RoomInfoDto { Type = RoomTypeCode(room.Type), Name = entry.Name, Effect = entry.Effect, FloodedRows = Math.Clamp(room.FloodedRows, 0, room.Size), Size = room.Size };
     }
 
     /// <summary>Oferta de misión vigente del jugador (privada).</summary>
@@ -86,67 +87,6 @@ public static class RealtimeMapper
             Deadline = Timestamp(deadline),
         };
     }
-
-    /// <summary>Oferta vigente del interludio: pasa por la vista, así que solo trae el voto de este jugador.</summary>
-    public static InterludeOfferMessage? InterludeOffer(MatchSnapshot snapshot, MatchParticipant participant)
-    {
-        ArgumentNullException.ThrowIfNull(snapshot);
-        ArgumentNullException.ThrowIfNull(participant);
-        if (!snapshot.IsInInterlude || snapshot.Deadline is not { } deadline || PlayerViewProjector.For(snapshot.State, participant.PlayerId).Interlude is not { } view)
-        {
-            return null;
-        }
-
-        return new InterludeOfferMessage
-        {
-            MatchId = Id(snapshot.MatchId),
-            OfferId = Id(snapshot.InterludeOfferId!.Value),
-            EndedFloor = view.EndedRoom + 1,
-            Deadline = Timestamp(deadline),
-            Doors = [.. view.Doors.Select(d =>
-            {
-                var entry = CurseRules.Describe(d);
-                return new DoorDto { Type = RoomTypeCode(d), Name = entry.Name, Effect = entry.Effect };
-            })],
-            Candidates = [.. view.Candidates.Select(p => p.Value)],
-            Voters = [.. view.Voters.Select(p => p.Value)],
-            Voted = [.. view.Voted.Select(p => p.Value)],
-            CanVote = view.CanVote,
-            MyVote = view.MyBallot is { } ballot ? new InterludeBallotDto { AccusedId = ballot.Accused?.Value, Door = ballot.Door } : null,
-        };
-    }
-
-    public static InterludeResolvedMessage InterludeResolved(MatchSnapshot after, IReadOnlyList<DomainEvent> events, MatchParticipant participant)
-    {
-        ArgumentNullException.ThrowIfNull(after);
-        ArgumentNullException.ThrowIfNull(participant);
-        return new InterludeResolvedMessage
-        {
-            MatchId = Id(after.MatchId),
-            Seq = after.State.LastSeq,
-            Verdict = Verdict(after.State.LastVerdict!),
-            Events = [.. VisibleEvents(after.State, events, participant.PlayerId).Take(128)],
-        };
-    }
-
-    private static InterludeVerdictDto Verdict(InterludeVerdict verdict) => new()
-    {
-        EndedFloor = verdict.EndedRoom + 1,
-        Accusations = [.. verdict.Accusations.Select(a => new AccusationDto
-        {
-            AccusedId = a.Accused.Value,
-            Votes = a.Votes,
-            OtherVoters = a.OtherVoters,
-            Convicted = a.Convicted,
-            Guilty = a.Guilty,
-            GoldLost = a.GoldLost,
-            AccuserFine = a.AccuserFine,
-            Exposed = [.. a.Exposed.Select(b => new BetrayalDto { TraitorId = b.Traitor.Value, VictimId = b.Victim.Value, Damage = b.Damage })],
-        })],
-        NoAccusation = verdict.NoAccusation,
-        Doors = [.. verdict.Doors.Select(d => new DoorTallyDto { Type = RoomTypeCode(d.Type), Votes = d.Votes })],
-        ChosenDoor = verdict.ChosenDoor is { } door ? RoomTypeCode(door) : null,
-    };
 
     public static RoundResolvedMessage RoundResolved(
         MatchSnapshot before, MatchSnapshot after, IReadOnlyList<DomainEvent> events, bool defaultGuard, MatchParticipant participant, ViewContext context)
@@ -173,7 +113,7 @@ public static class RealtimeMapper
         return new RoundResolvedMessage
         {
             MatchId = Id(after.MatchId),
-            Round = Math.Clamp(before.State.Round, 1, 60),
+            Round = Math.Clamp(before.State.Round, 1, MaxRound),
             PreviousSeq = before.State.LastSeq,
             Seq = after.State.LastSeq,
             Delta = new PlayerViewDeltaDto
@@ -272,7 +212,6 @@ public static class RealtimeMapper
             AwardKind.MostBetrayals => ("MOST_BETRAYALS", "El más traidor", Count(award.Value, "traición", "traiciones")),
             AwardKind.MostWardenDamage => ("MOST_WARDEN_DAMAGE", "Azote del Celador", $"{award.Value} de daño al Celador"),
             AwardKind.MostRevives => ("MOST_REVIVES", "Buen samaritano", $"Levantó a {Count(award.Value, "aliado", "aliados")}"),
-            AwardKind.MostTrialGoldLost => ("MOST_TRIAL_GOLD_LOST", "Carne de juzgado", $"Perdió {award.Value} de oro en juicios"),
             AwardKind.RichestDeath => ("RICHEST_DEATH", "Murió rico", $"Murió con {award.Value} de oro"),
             AwardKind.MostKills => ("MOST_KILLS", "Matamonstruos", Count(award.Value, "golpe final", "golpes finales")),
             AwardKind.MostChests => ("MOST_CHESTS", "Saqueador de cofres", $"Abrió {Count(award.Value, "cofre", "cofres")}"),
@@ -348,7 +287,6 @@ public static class RealtimeMapper
             // Mientras elige no tiene misión; el objetivo solo lo recibe su dueño.
             Pact = self.PactOptions.IsEmpty ? new PactDto { PactId = PactId(self.Pact), Description = PactDescription(self.Pact), TargetId = self.PactTarget?.Value } : null,
             PushCooldown = Math.Clamp(self.PushCooldown, 0, HeroRules.PushCooldown),
-            CanSabotage = self.CanSabotage,
             VisionRadius = Math.Clamp(self.VisionRadius, 1, 9),
             Decided = snapshot.Status == MatchStatus.InProgress && pending is not null,
             PendingOrder = snapshot.Status == MatchStatus.InProgress && pending is not null ? OrderDto(pending) : null,
@@ -429,7 +367,6 @@ public static class RealtimeMapper
             Decided = snapshot.Status == MatchStatus.InProgress && context.Orders.ContainsKey(ally.Player),
             SecondBody = ally.SecondBody is { } second ? Position(second) : null,
             DebtToYou = ally.DebtToMe,
-            Convictions = Math.Clamp(ally.Convictions, 0, 9),
         };
     }
 
@@ -569,12 +506,11 @@ public static class RealtimeMapper
             _ => null,
         }),
         EmbersChanged { Reason: EmberReason.MiserHit or EmberReason.Bribe or EmberReason.DebtSettled } e => Event("EMBERS_LOST", actor: e.Player.Value, amount: e.Delta, detail: EmberLossCode(e.Reason)),
-        EmbersChanged { Reason: EmberReason.TrialPenalty or EmberReason.TrialFine } e => Event("EMBERS_LOST", actor: e.Player.Value, amount: e.Delta, detail: e.Reason == EmberReason.TrialPenalty ? "TRIAL_PENALTY" : "TRIAL_FINE"),
         BlessingChosen e => Event("BLESSING_GAINED", actor: e.Player.Value),
         TrapTriggered e => Event("TRAP_TRIGGERED", position: e.Position),
         FireStarted e => Event("FIRE_STARTED", position: e.Position),
         WardenEnraged e => Event("BOSS_PHASE_CHANGED", target: EnemyRef(e.EnemyId)),
-        RoomEntered e => Event("FLOOR_ENTERED", amount: e.RoomIndex + 1),
+        RoomEntered e => Event("FLOOR_ENTERED", amount: e.RoomIndex + 1, detail: RoomTypeCode(e.Type)),
         PathOffered e => Event("PATH_OFFERED", actor: e.Player.Value, amount: e.SavedEmbers),
         PathSelected e => Event("PATH_SELECTED", actor: e.Player.Value, detail: e.Auto ? Path(e.Path) + "_AUTO" : Path(e.Path)),
         PathChosen e => Event("PATH_CHOSEN", actor: e.Player.Value, detail: Path(e.Path)),
@@ -587,7 +523,6 @@ public static class RealtimeMapper
         AttackCorrected e => Event("ATTACK_CORRECTED", target: e.EnemyId is { } id ? EnemyRef(id) : null, tiles: e.Tiles),
         BetrayalRecorded e => Event("BETRAYAL_RECORDED", actor: e.Traitor.Value, target: e.Victim.Value, amount: e.Damage, detail: e.Kind switch
         {
-            BetrayalKind.Sabotage => "SABOTAGE",
             BetrayalKind.FromHost => "FROM_HOST",
             _ => "DIVERTED",
         }),
@@ -606,8 +541,7 @@ public static class RealtimeMapper
         BellExpired e => Event("BELL_EXPIRED", actor: e.Ringer.Value),
         Pushed e => Event("PUSHED", actor: e.Pusher.Value, target: Ref(e.Target), position: e.To),
         RoomFlooded e => Event("ROOM_FLOODED", amount: e.Rows),
-        InterludeOpened e => Event("INTERLUDE_OPENED", amount: e.EndedRoom + 1),
-        InterludeClosed e => Event("INTERLUDE_CLOSED", amount: e.Verdict.EndedRoom + 1),
+        Chilled e => Event("CHILLED", amount: e.Damage),
         _ => null,
     };
 
@@ -650,7 +584,7 @@ public static class RealtimeMapper
             dto["targetId"] = target;
         }
 
-        if (position is { } p && Room.IsInside(p))
+        if (position is { } p && OnBoard(p))
         {
             dto["position"] = new Dictionary<string, object> { ["x"] = p.X, ["y"] = p.Y };
         }
@@ -667,7 +601,7 @@ public static class RealtimeMapper
 
         if (tiles is not null)
         {
-            dto["tiles"] = tiles.Where(Room.IsInside).Select(t => new Dictionary<string, object> { ["x"] = t.X, ["y"] = t.Y }).ToList();
+            dto["tiles"] = tiles.Where(OnBoard).Select(t => new Dictionary<string, object> { ["x"] = t.X, ["y"] = t.Y }).ToList();
         }
 
         return dto;
@@ -692,13 +626,15 @@ public static class RealtimeMapper
         _ => "W",
     };
 
+    /// <summary>Dentro de la sala más grande (11 de lado): la vista recorta a la sala real.</summary>
+    private static bool OnBoard(Position p) => p.IsInside(Room.LargeSize, Room.LargeSize);
+
     public static string OrderType(OrderType type) => type switch
     {
         Domain.Model.OrderType.Guard => "GUARD",
         Domain.Model.OrderType.Move => "MOVE",
         Domain.Model.OrderType.Attack => "ATTACK",
         Domain.Model.OrderType.Skill => "ABILITY",
-        Domain.Model.OrderType.Sabotage => "SABOTAGE",
         Domain.Model.OrderType.Push => "PUSH",
         _ => "INTERACT",
     };
@@ -775,10 +711,10 @@ public static class RealtimeMapper
         PactKind.OpenThreeChests => "Abrir 3 cofres.",
         PactKind.ReviveTwoAllies => "Levantar a 2 aliados.",
         PactKind.MostWardenDamage => "Hacer el mayor daño al Celador.",
-        PactKind.BetrayTwiceUnconvicted => "Traicionar 2 veces sin que te condenen.",
+        PactKind.BetrayTwiceUnconvicted => "Traicionar 2 veces sin que te condenen (ya no se ofrece).",
         PactKind.OutgoldTarget => "Que tu objetivo termine con menos oro que tú.",
         PactKind.PushTwoIntoHazard => "Empujar a 2 enemigos a trampas o grietas.",
-        PactKind.CorrectConviction => "Acertar una condena en El Juicio.",
+        PactKind.CorrectConviction => "Acertar una condena en El Juicio (ya no se ofrece).",
         _ => "Golpear 2 veces a un aliado por la espalda o con una traición anónima.",
     };
 
@@ -860,7 +796,6 @@ public static class RealtimeMapper
         "ATTACK" => Domain.Model.OrderType.Attack,
         "ABILITY" => Domain.Model.OrderType.Skill,
         "INTERACT" => Domain.Model.OrderType.Interact,
-        "SABOTAGE" => Domain.Model.OrderType.Sabotage,
         "PUSH" => Domain.Model.OrderType.Push,
         _ => null,
     };

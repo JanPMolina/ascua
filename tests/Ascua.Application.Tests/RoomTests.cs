@@ -99,8 +99,8 @@ public sealed class RoomTests
 
     [Theory]
     [InlineData(1)]
-    [InlineData(5)]
-    public void Capacity_must_be_between_two_and_four(int capacity)
+    [InlineData(6)]
+    public void Capacity_must_be_between_two_and_five(int capacity)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => NewRoom(capacity));
     }

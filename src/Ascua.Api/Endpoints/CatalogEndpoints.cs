@@ -31,7 +31,7 @@ public static class CatalogEndpoints
         [.. BlessingCatalog.All.Select(b => new BlessingCatalogItem(RealtimeMapper.BlessingId(b.Blessing), b.Name, b.Effect, b.Cost))],
         [.. BlessingCatalog.Synergies.Select(s => new SynergyCatalogItem(
             s.Synergy.ToString().ToUpperInvariant(), s.Name, RealtimeMapper.BlessingId(s.First), RealtimeMapper.BlessingId(s.Second), s.Effect))],
-        [.. RoomTypes.Doors.Select(t =>
+        [.. RoomTypes.Random.Select(t =>
         {
             var entry = CurseRules.Describe(t);
             return new CatalogEntryItem(RealtimeMapper.RoomTypeCode(t), entry.Name, entry.Effect);

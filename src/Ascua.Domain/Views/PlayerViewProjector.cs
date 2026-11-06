@@ -40,13 +40,12 @@ public static class PlayerViewProjector
                 {
                     SecondBody = h.SecondBody is { } second && IsShown(state, me, h, second) ? second : null,
                     DebtToMe = h.DebtTo == viewer && h.Debt > 0 ? h.Debt : null,
-                    Convictions = h.Progress.Convictions,
                 };
             })
             .ToImmutableList();
 
         // La Escucha conoce el terreno de toda la sala aunque no perciba lo que hay encima.
-        var tiles = Room.AllPositions()
+        var tiles = room.AllPositions()
             .Where(p => me.IsBlind || CanSee(p))
             .Select(p => new TileView(p, room.TerrainAt(p)))
             .ToImmutableList();
@@ -122,7 +121,6 @@ public static class PlayerViewProjector
             PactOptions = me.PactOptions,
             PactTarget = me.PactOptions.IsEmpty ? me.PactTarget : null,
             PushCooldown = me.PushCooldown,
-            CanSabotage = me.CanSabotage(state.RoomIndex),
         };
 
         var outcome = state.Outcome is { } o ? new OutcomeView(o.Kind, o.Reason, o.Winners, o.Scores) { Betrayals = o.Betrayals, Awards = o.Awards } : null;
@@ -130,7 +128,6 @@ public static class PlayerViewProjector
         return new PlayerView(
             viewer,
             state.Round,
-            state.MaxRounds,
             state.Phase,
             state.RoomIndex,
             state.Rooms.Count,
@@ -149,30 +146,9 @@ public static class PlayerViewProjector
             Noise = me.IsBlind ? state.NoiseTiles : [],
             BellRinger = state.IsBellRound ? state.BellRinger : null,
             BellClosed = state.IsBellRound && state.BellClosed,
-            Room = new RoomInfoView(room.Type, room.FloodedRows(state.Round)),
+            Room = new RoomInfoView(room.Type, room.FloodedRows(state.Round)) { Size = room.Size },
             Curses = state.Curses,
-            Interlude = ProjectInterlude(state, viewer),
-            LastVerdict = state.LastVerdict,
         };
-    }
-
-    /// <summary>De los votos, cada jugador solo recibe el suyo; de los demás, si ya votaron.</summary>
-    private static InterludeView? ProjectInterlude(GameState state, PlayerId viewer)
-    {
-        if (state is not { Phase: MatchPhase.Interlude, Interlude: { } interlude })
-        {
-            return null;
-        }
-
-        ImmutableList<PlayerId> voters = [.. Rules.Interludes.Voters(state).Select(h => h.Player)];
-        return new InterludeView(
-            interlude.EndedRoom,
-            interlude.Doors,
-            voters,
-            [.. interlude.Ballots.Select(b => b.Voter)],
-            [.. Rules.Interludes.Candidates(state, viewer).Select(h => h.Player)],
-            voters.Contains(viewer),
-            interlude.Ballots.Find(b => b.Voter == viewer));
     }
 
     /// <summary>
