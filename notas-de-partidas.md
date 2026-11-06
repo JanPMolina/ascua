@@ -2,6 +2,38 @@
 
 Los números los guarda el servidor (`./reporte-partidas.ps1`). Aquí va lo que los números no ven: qué se sintió, qué confundió y qué fue divertido.
 
+## Prueba de la versión 4 (navegadores manejados solo con el ratón)
+
+Jugadores automáticos que deciden con lo que ve cada uno y ordenan **solo con clics**: casilla del paso, botón de la acción, casilla del objetivo resaltado y Listo. Usan las habilidades cuando se da su situación. Sirve para encontrar fallos, **no para medir balance ni diversión**.
+
+| Partida | Jugadores | Sala | Salas (al azar) | Final | Rondas |
+|---|---|---|---|---|---|
+| 1 | Campanero, Mampostero, Errata, Avaro, Usurera | 11 × 11 | Santuario, Oscura, Tesoro | Derrota de todos | 72 |
+| 2 | Mampostero, Campanero | 9 × 9 | Inundada, Arena, Inundada | Derrota de todos | 47 |
+| 3 | Errata, Avaro | 9 × 9 | Arena, Inundada, Oscura | **Victoria: cayó el Celador** | 77 |
+| 4 | Anteayer, Mampostero | 9 × 9 | Oscura, Tesoro, Inundada | Derrota de todos | 40 |
+| 5 | La Escucha, Usurera | 9 × 9 | Arena, Oscura, Tesoro | Derrota de todos | 96 |
+| 6 | Campanero, Errata | 9 × 9 | Santuario, Oscura, Tesoro | Derrota de todos | 48 |
+
+| Comprobado | Resultado |
+|---|---|
+| Fase 1: casillas vecinas resaltadas, clic para el paso o en el héroe para quedarse | Funciona; el paso se ve en el tablero |
+| Fase 2: botón y objetivos resaltados desde la casilla de llegada | Funciona con Atacar, Usar, Defender y las habilidades de los nueve héroes |
+| Resumen del plan | «Te mueves al norte y atacas a la Polilla», «Te quedas donde estás y usas Repique» |
+| Partidas que pasan de la ronda 60 | Siguen hasta que gana un bando (hasta 96 rondas) |
+| Tipo de cada sala | Se anuncia al entrar («Piso 3 · Oscura») y coincide con lo guardado en la base |
+| Desplazamiento de página a 1366 × 768 y 1920 × 1080 | Ninguno |
+| Errores de JavaScript y de CSP en consola | Ninguno en las 6 partidas |
+
+**Corregido tras la prueba**
+- El botón Listo compartía id con el «Marcar listo» de la sala de espera: el clic no enviaba nada.
+- El cliente seguía pidiendo el protocolo 3.
+- El servidor rechazaba órdenes después de la ronda 60, y la pantalla final y la reproducción cortaban en 60.
+- La sala no dejaba elegir 5 plazas.
+- El resumen decía «atacas a al Polilla».
+
+**Sin probar todavía:** partidas entre personas, el tutorial y la demo en el navegador (se revisaron con `node --check`), y una victoria con 5 jugadores: los jugadores automáticos casi no le hacen daño al Celador en la sala de 11.
+
 ## Prueba simulada (4 navegadores con teclas al azar)
 
 Sirve para encontrar fallos, **no para medir balance ni diversión**: nadie decide con intención.

@@ -106,7 +106,7 @@ const STEPS = [
       c.server.round > 0 ? 'Cuando todos están listos (o vence el plazo, 11 s en partidas reales) se resuelve todo a la vez. Ves solo hasta 3 casillas; lo demás queda en niebla.' : 'Espera a que se abra la ronda 1 (mira el reloj arriba del tablero).',
     ],
     focus: ['#phase-steps', '#board', '#btn-plan-ready'],
-    done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'MOVE',
+    done: (c, type) => type === 'RoundResolved' && (c.server.lastOrder?.type === 'MOVE' || Boolean(c.server.lastOrder?.step)),
   },
   {
     title: 'Ataques marcados y Defender',
