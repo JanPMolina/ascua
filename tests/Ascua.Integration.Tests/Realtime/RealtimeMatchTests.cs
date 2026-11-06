@@ -115,7 +115,7 @@ public sealed class RealtimeMatchTests(AscuaApiFactory factory)
         Assert.Equal("STALE_ROUND", stale.Error?.Code);
         Assert.Equal(1, Convert.ToInt32(stale.Error!.Details!["currentRound"], CultureInfo.InvariantCulture));
 
-        Assert.Equal("INVALID_PAYLOAD", (await ca.SubmitAsync(matchId, 61, "GUARD")).Error?.Code);
+        Assert.Equal("INVALID_PAYLOAD", (await ca.SubmitAsync(matchId, 10000, "GUARD")).Error?.Code);
         Assert.Equal("INVALID_PAYLOAD", (await ca.SubmitAsync(matchId, 1, "GUARD", "N")).Error?.Code);
         Assert.Equal("INVALID_PAYLOAD", (await ca.SubmitAsync(matchId, 1, "MOVE", "NE")).Error?.Code);
         Assert.Equal("INVALID_PAYLOAD", (await ca.SubmitAsync(matchId, 1, "TELEPORT", "N")).Error?.Code);

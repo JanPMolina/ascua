@@ -72,7 +72,7 @@ public sealed class MatchHistoryService(IMatchStore matches, IMatchHistoryStore 
 {
     public const int DefaultPageSize = 20;
     public const int MaxPageSize = 100;
-    public const int MaxRound = 60;
+    public const int MaxRound = 9999;
 
     public Task<MatchHistoryPage> ListAsync(Guid userId, int page, int pageSize, CancellationToken cancellationToken) =>
         history.ListForUserAsync(userId, page, pageSize, cancellationToken);

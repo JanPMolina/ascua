@@ -136,7 +136,8 @@ public sealed class PathRealtimeTests(AscuaApiFactory factory)
             Rooms = [FirstRoom(), second, BossRoom()],
             RoomIndex = 0,
             Enemies = [],
-            Heroes = [Extinct(state.Heroes[0], saved: 6), state.Heroes[1] with { Position = Stairs.Step(Direction.South) }],
+            // Sin mejoras: Lámpara o Espejo roto (salen al azar) cambiarían lo que ve y lo que recibe B.
+            Heroes = [Extinct(state.Heroes[0], saved: 6) with { Blessings = [] }, state.Heroes[1] with { Position = Stairs.Step(Direction.South), Blessings = [] }],
         });
 
         await ca.GetSnapshotAsync(matchId);

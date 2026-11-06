@@ -239,6 +239,9 @@ public sealed class HeroRealtimeTests(AscuaApiFactory factory)
             var heroes = s.Heroes
                 .SetItem(0, s.Heroes[0] with { Debt = 2, DebtTo = s.Heroes[2].Player, DebtSinceRound = 1, EchoQueue = [] })
                 .SetItem(1, s.Heroes[1] with { HostEnemyId = hostEnemy, Position = new Position(0, 0) });
+
+            // Sin mejoras: la que sale al azar (Lámpara, Ojo de búho) cambiaría lo que ve cada uno.
+            heroes = [.. heroes.Select(h => h with { Blessings = [] })];
             var room = s.CurrentRoom with { Ground = [new GroundEmbers(s.Heroes[3].Position, 2)] };
             return s with
             {

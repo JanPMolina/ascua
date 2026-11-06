@@ -39,7 +39,7 @@ public static class RealtimeReplies
 
         if (error.CurrentRound is { } round)
         {
-            details["currentRound"] = Math.Clamp(round, 1, 60);
+            details["currentRound"] = Math.Clamp(round, 1, RealtimeMapper.MaxRound);
         }
 
         if (error.Status is { } status)
@@ -85,9 +85,9 @@ public static partial class RealtimeValidation
             return error;
         }
 
-        if (request.Round is < 1 or > 60)
+        if (request.Round < 1 || request.Round > RealtimeMapper.MaxRound)
         {
-            return Invalid("round", "round debe estar entre 1 y 60.");
+            return Invalid("round", $"round debe estar entre 1 y {RealtimeMapper.MaxRound}.");
         }
 
         if (request.Order is null || RealtimeMapper.ParseOrderType(request.Order.Type) is not { } type)

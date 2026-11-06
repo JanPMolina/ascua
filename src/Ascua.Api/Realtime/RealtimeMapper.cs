@@ -192,7 +192,7 @@ public static class RealtimeMapper
                 MatchStatus.Terminated => "TERMINATED",
                 _ => Outcome(outcome?.Kind),
             },
-            Rounds = Math.Clamp(snapshot.State.Round, 0, 60),
+            Rounds = Math.Clamp(snapshot.State.Round, 0, MaxRound),
             Winners = [.. (outcome?.Winners ?? []).Select(w => w.Value)],
             Standings = standings,
             FinishedAt = Timestamp(now),
@@ -315,7 +315,7 @@ public static class RealtimeMapper
             RebirthEmbers = self.Status == HeroStatus.EmberSpirit && hero is not null ? Math.Clamp(PathRules.RebirthEmbers(hero, path.Echoes), 0, 999) : null,
             HinderCooldown = Math.Clamp(path.HinderCooldown, 0, 2),
             AwaitingSpawn = path.AwaitingSpawn ? (path.SpawnRound is null ? "NEXT_FLOOR" : "ROUND") : null,
-            SpawnRound = path.AwaitingSpawn && path.SpawnRound is { } round ? Math.Clamp(round, 1, 60) : null,
+            SpawnRound = path.AwaitingSpawn && path.SpawnRound is { } round ? Math.Clamp(round, 1, MaxRound) : null,
         };
     }
 
@@ -383,7 +383,7 @@ public static class RealtimeMapper
             OwnerId = e.Owner.Value,
             Position = Position(e.Origin),
             Direction = Direction(e.Direction),
-            FireRound = Math.Clamp(e.FireRound, 1, 60),
+            FireRound = Math.Clamp(e.FireRound, 1, MaxRound),
         })];
 
     private static List<GroundEmbersDto> Ground(PlayerView view) =>
@@ -406,7 +406,7 @@ public static class RealtimeMapper
         return new LastWordMessage
         {
             MatchId = Id(matchId),
-            Round = Math.Clamp(heard.Round, 1, 60),
+            Round = Math.Clamp(heard.Round, 1, MaxRound),
             TypesOnly = heard.TypesOnly,
             Orders = [.. heard.Orders.Select(o => new HeardOrderDto
             {

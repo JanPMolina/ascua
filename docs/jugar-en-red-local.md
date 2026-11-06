@@ -27,7 +27,7 @@ El script muestra una dirección como `http://192.168.0.21:8080`. **Todos, tambi
 
 1. Cada uno escribe su nombre; no hace falta cuenta ni contraseña.
 2. Uno crea una sala y comparte el código, o se usa una sala pública.
-3. Cada uno elige un héroe distinto y marca «listo».
+3. Cada uno elige un héroe distinto y marca «listo». Pueden ser de 2 a 5; con 5 la sala es de 11 × 11. Al crear la sala se eligen las plazas.
 4. El anfitrión inicia la partida.
 
 No uses el mismo navegador para dos jugadores salvo en ventanas privadas distintas. El equipo servidor no puede suspenderse durante la partida.

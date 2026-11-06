@@ -41,7 +41,7 @@ public sealed record MatchDetailResponse(
     string ReplayUrl);
 
 public sealed record ReplayRound(
-    [property: Description("0 = draft inicial; 1..60 = rondas.")] int Round,
+    [property: Description("0 = draft inicial; 1 en adelante = rondas (sin límite desde la versión 4).")] int Round,
     [property: Description("Último seq aplicado al final de la ronda.")] long Seq,
     [property: Description("Vista de quien pide al final de la ronda (solo en view=PLAYER).")] PlayerViewDto? View,
     [property: Description("Verdad completa al final de la ronda (solo en view=FULL, administradores).")] FullStateDto? Full,

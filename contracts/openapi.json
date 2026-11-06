@@ -4493,7 +4493,7 @@
               "integer",
               "string"
             ],
-            "description": "0 = draft inicial; 1..60 = rondas.",
+            "description": "0 = draft inicial; 1 en adelante = rondas (sin límite desde la versión 4).",
             "format": "int32"
           },
           "seq": {
