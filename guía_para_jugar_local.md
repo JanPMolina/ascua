@@ -67,7 +67,7 @@ Deja en `partidas/` el resumen con sugerencias de balance, los datos en CSV y un
 2. Abre en el navegador la dirección que te pase, con `http://` y `:8080` incluidos. Usa Chrome, Edge o Firefox, mejor en computadora.
 3. Escribe **tu nombre** (de 3 a 32 letras sin tilde, números o `_`) y pulsa **Entrar**. No hace falta cuenta ni contraseña.
 4. Pídele al host el **código de la sala**, escríbelo en **Unirse con código** y pulsa **Unirse**.
-5. Elige un héroe. No se pueden repetir, así que pónganse de acuerdo.
+5. Elige un héroe. No se pueden repetir, así que pónganse de acuerdo. Pueden jugar de 2 a 5; con 5 la sala es más grande (11 × 11).
 6. Marca **listo** y espera a que el anfitrión inicie.
 
 Si es tu primera vez, puedes practicar antes en el tutorial: la misma dirección con `/?tutorial=1` al final.
@@ -87,32 +87,25 @@ Una sola persona crea la sala, normalmente el host:
 1. Entra con la misma dirección que los demás y escribe tu nombre.
 2. En **Crear sala**, ponle un nombre, déjala privada y pulsa **Crear sala**.
 3. **Dicta el código en voz alta.** El botón de copiar no funciona sin HTTPS.
-4. Cuando los cuatro aparezcan con héroe y marcados como listos, pulsa iniciar.
+4. Cuando todos (de 2 a 5) aparezcan con héroe y marcados como listos, pulsa iniciar.
 
 ---
 
 ## Cómo se juega, en 30 segundos
 
-Todos deciden a la vez y **cada ronda dura 20 segundos**. Si no envías nada, tu héroe defiende. Gana quien tenga **más oro** cuando caiga el Celador, y todos pierden si caen todos o se acaban las 60 rondas.
+Todos deciden a la vez y **cada ronda dura 11 segundos**. Gana quien tenga **más oro** cuando caiga el Celador, y todos pierden si caen todos. No hay límite de rondas, pero desde la ronda 80 llega **el frío**: daño cada 3 rondas que nada para.
 
-| Acción | Teclas |
-|---|---|
-| Marcar un paso | Flecha (se ve en el tablero) |
-| Enviar solo el paso | La misma flecha otra vez, o Enter |
-| Atacar | Shift + flecha |
-| Habilidad | Q + flecha |
-| Usar (cofres, levantar aliados) | E + flecha |
-| Sabotear (sin autor, una vez por sala) | R + flecha |
-| Empujar (con autor, espera 3) | F + flecha |
-| Defender (borra el paso) | Espacio |
-| Quitar lo marcado | Esc |
-| Señales a tu equipo | 1, 2, 3, 4 |
+**Cada ronda se planea con el ratón (o tocando la pantalla), en dos fases:**
 
-**Paso y acción van en la misma orden:** marca un paso y luego elige una acción; primero caminan todos, y cada uno actúa desde donde quedó. Con el ratón o en el celular, las flechas de pantalla hacen lo mismo y aparece un botón para enviar solo el paso.
+1. **Moverte:** haz clic en una casilla vecina resaltada (o en tu héroe para quedarte).
+2. **Actuar:** pulsa un botón grande (**Atacar**, la habilidad de tu héroe con su nombre, **Usar**, **Empujar** o **Defender**) y haz clic en el objetivo resaltado en el tablero.
+3. Pulsa **Listo**. Hasta entonces puedes cambiar el plan. Si se acaba el tiempo, se envía lo que planeaste; si no planeaste nada, defiendes.
 
-Las casillas marcadas muestran dónde golpeará un enemigo **en la ronda siguiente**: apártate o defiende. **Cómo jugar**, en la barra superior, explica a cada héroe.
+El panel muestra «1 Moverte → 2 Actuar → Listo», qué hace tu habilidad y su espera, y un resumen como «Te mueves al norte y atacas al Carroñero». Primero caminan todos y luego cada uno actúa desde donde quedó.
 
-**Al empezar** cada uno elige en secreto una mejora, con su precio, y una misión. **Al despejar una sala y pisar la escalera** viene El Juicio: hasta 20 segundos para acusar a alguien (o a nadie) y votar la puerta de la sala siguiente. Nunca se ve quién votó qué. **Al crear la sala** el anfitrión puede sumar maldiciones. **Al final**, el botón Revancha lleva a una sala nueva con el mismo grupo: cada uno pulsa su botón.
+Las casillas rojas muestran dónde golpeará un enemigo **en la ronda siguiente**: apártate o defiende. **Cómo jugar**, en la barra superior, explica a cada héroe. Hay atajos de teclado opcionales (flechas, A, Q, E, F, Espacio, Enter), pero no hacen falta.
+
+**Al empezar** cada uno elige en secreto una mejora, con su precio, y una misión. **Al despejar una sala y pisar la escalera** pasan todos directo a la siguiente; su tipo (Tesoro, Arena, Santuario, Oscura o Inundada) sale al azar y se anuncia al entrar. **Al crear la sala** el anfitrión puede sumar maldiciones. **Al final**, el botón Revancha lleva a una sala nueva con el mismo grupo: cada uno pulsa su botón.
 
 ---
 

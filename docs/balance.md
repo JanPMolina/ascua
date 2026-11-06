@@ -2,7 +2,89 @@
 
 Resultados del simulador `tools/Ascua.Sim` contra las metas de [05-heroes.md §14](../planteamiento/05-heroes.md). No se movió ninguna meta.
 
-## Versión 3
+## Versión 4
+
+Reglas en [07-version-4.md](../planteamiento/07-version-4.md); valores finales en su §3 y §9. La salida completa de las tres corridas está en [balance-v4-corrida.md](balance-v4-corrida.md).
+
+**En resumen:** sin límite de rondas el Celador caía en el 82 % de las partidas. Con el Celador escalado por jugadores (9, 12, 15 y 15 de vida por jugador), un Carroñero más por sala con 5 jugadores y el frío desde la ronda 80, se cumplen las metas en el total. **Por cantidad de jugadores queda un punto fuera:** con 4 y 5 jugadores el Celador cae en el 66,1 % (meta: hasta 65 %). No se pudo bajar sin sacar de la meta a los héroes caídos: las dos métricas tiran en sentidos opuestos (abajo, «Lo que no se pudo»).
+
+| Métrica | Meta | Traición 10 % | ¿Cumple? | Traición 0 % | Traición 30 % |
+|---|---|---|---|---|---|
+| Partidas en que cae el Celador | 35–65 % | **65,0 %** (2 jug.: 58,1; 3: 64,5; 4: 66,1; 5: 66,1) | En el total sí; con 4 y 5, **1,1 puntos sobre la meta** | 67,7 % | 57,4 % |
+| Victoria por héroe (4 jugadores) | 18–32 % | **19,3–32,0 %** | Sí, justo | 19,3–32,2 % | 18,6–31,4 % |
+| Victoria por héroe (5 jugadores, azar 20 %) | — (informativa) | 13,9–32,6 % | — | 14,4–32,0 % | 13,5–28,8 % |
+| Peor dúo | < 1,5× | **1,18×** en victoria, 1,10× en caída del Celador | Sí | 1,17× | 1,16× |
+| Rondas por partida | informativa | **77,7** (2: 65,8; 3: 72,0; 4: 79,1; 5: 83,5); la más larga, 264 | — | 76,8 | 79,8 |
+| Caídos o extintos | 30–70 % | **68,4 %** (2: 60,4; 3: 65,3; 4: 69,3; 5: 69,7) | Sí, en todos | 65,0 % | **75,9 %** |
+| Umbral | < 25 % | **20,4 %** (de 25 863) | Sí | 19,5 % | 22,1 % |
+
+**Método:** las 372 combinaciones de 2, 3, 4 y 5 jugadores (36 + 84 + 126 + 126), 200 partidas por combinación (74 400 por corrida), semilla `20261102`, venganza 30 % y Repique perdido 20 %. Para reproducirla:
+
+```bash
+dotnet run -c Release --project tools/Ascua.Sim -- --games 200 --seed 20261102 --betrayal 10
+```
+
+`--sizes` elige los tamaños (por defecto `2,3,4,5`). El simulador falla si una partida pasa de 1000 rondas: ninguna de las 223 200 de las tres corridas llegó a 300.
+
+**Sin sabotaje**, la «traición» de los bots es solo fuego amigo y lo que hagan Errata y Polizón: por eso las tres corridas se parecen más que en la versión 3.
+
+### Antes y después
+
+«Antes» es la versión 3 (2 a 4 jugadores, traición 10 %), con su límite de 60 rondas.
+
+| Métrica | Versión 3 | Versión 4 |
+|---|---|---|
+| Celador cae | 49,1 % | 65,0 % |
+| Con 2 / 3 / 4 / 5 jugadores | 44,2 / 47,1 / 51,7 / — | 58,1 / 64,5 / 66,1 / 66,1 |
+| Victoria por héroe (4 jug.) | 19,8–29,3 % | 19,3–32,0 % |
+| Peor dúo | 1,12× | 1,18× |
+| Rondas por partida | 54,8 (tope 60) | 77,7 (sin tope) |
+| Partidas que llegan al límite (v3) o al frío (v4) | 45,9 % | 44,9 % |
+| Rondas por sala | 9,0 / 10,3 / 11,4 / 12,0 / 16,2 | 9,3 / 10,5 / 11,9 / 13,3 / 35,5 |
+| Caídos o extintos | 46,8 % | 68,4 % |
+| Umbral | 8,5 % | 20,4 % |
+| Resultados | — | victoria 60,7 %, empate 4,3 %, derrota 27,9 %, ganan los Traidores 7,1 % |
+
+### Por héroe (4 jugadores, traición 10 %)
+
+| Héroe | Victoria | Celador cae con él | Cae o se extingue | Habilidad/partida | Golpes finales | Oro | Daño a aliados |
+|---|---|---|---|---|---|---|---|
+| Usurera | 32,0 % | 68,1 % | 83,5 % | 4,0 | 3,0 | 10,1 | 0,6 |
+| Campanero | 28,9 % | 62,4 % | 78,7 % | 0,6 | 4,3 | 9,8 | 2,4 |
+| Anteayer | 28,0 % | 66,0 % | 68,7 % | 2,9 | 4,1 | 9,3 | 1,4 |
+| Errata | 27,0 % | 69,9 % | 68,4 % | 7,4 | 5,0 | 9,3 | 6,0 |
+| Escucha | 26,0 % | 63,2 % | 73,9 % | 1,6 | 4,4 | 9,1 | 3,2 |
+| Avaro | 21,9 % | 72,8 % | 36,4 % | 0,8 | 4,0 | 7,0 | 0,7 |
+| Mampostero | 21,8 % | 65,3 % | 64,3 % | 4,5 | 3,9 | 8,6 | 0,8 |
+| Hilván | 20,1 % | 64,7 % | 79,5 % | 0,1 | 4,4 | 8,1 | 1,0 |
+| Polizón | 19,3 % | 63,0 % | 70,6 % | 2,7 | 4,2 | 8,2 | 0,7 |
+
+**Por partida:** 0,17 empujones, 1,39 traiciones anónimas, 0,86 misiones cumplidas. Los cinco tipos de sala salen casi por igual (43 788–44 276 entradas cada uno).
+
+### Qué se cambió y por qué
+
+| Cambio | Antes → ahora | Por qué, con el dato medido |
+|---|---|---|
+| Vida del Celador | 6 por jugador → **9, 12, 15, 15** (2, 3, 4, 5 jugadores) | Sin tope de rondas cae en el 82 %. Con 9 para todos: 72 %, y 4 jugadores mucho más que 2 (78 contra 53 %). Escalarlo empareja las cuatro cantidades |
+| Monstruos con 5 jugadores | — → +1 Carroñero en las salas 1 a 4; el Tótem invoca hasta 4 | Cinco héroes despejan las salas de 4 casi sin daño. Probar con Saltasapos dejaba a los héroes caídos sobre la meta |
+| El frío | — → desde la ronda 80, 1 de daño cada 3 rondas, +1 cada 15 | Que ninguna partida quede sin final. Desde la 70 había que bajar al Celador y los caídos pasaban de 70 % |
+| El frío alcanza a los Traidores | — | Si no, «Ganan los Traidores» subía al 38 % |
+| El oro que el frío le quita al Avaro se pierde | — | El Avaro recogía su propio oro y se encontró una partida de más de 1000 rondas |
+| Usurera, interés | cada 7 rondas → **cada 10** | Con partidas más largas cobraba más: 36,5 %. Baja a 32,0 % |
+| Polizón, vida | 6 → **7** | 17,9 % → 19,3 % |
+| Avaro, oro al empezar | 4 → **5** | El frío le cuesta oro, que es su vida: 18,8 % → 21,9 % |
+| Hilván, vida | 8 → **9** | 17,6 % → 20,1 % |
+
+**Bots.** Ya no sabotean ni votan. Leen el lado de la sala de la vista (`view.room.size`) y la escalera y el Celador con `MatchFactory.StairsFor` y `WardenFor`.
+
+### Lo que no se pudo, y qué mirar
+
+- **Celador con 4 y 5 jugadores: 66,1 %**, 1,1 puntos sobre la meta. Subirle 1 de vida por jugador lo baja a ~62 %, pero los héroes caídos pasan a 71–73 %. Sin tope de rondas, cada derrota termina con todos caídos, así que menos victorias significa más caídos. Se eligió dejar fuera por un punto la métrica del Celador, que es la que más se notará jugando, y en el lado fácil: si el grupo arrasa, las maldiciones `WARDEN_PLUS` y `FIERCE` son lo primero que hay que probar.
+- **La Usurera queda en el borde** (32,0 %): si entre personas domina, el interés cada 12 rondas.
+- **Partidas más largas:** 77,7 rondas de media, unos 14 minutos con rondas de 11 s si todos agotan el reloj (con Listo, mucho menos). La meta de rondas ya es solo informativa.
+- **El riesgo de siempre:** los bots no planean como personas. Con el nuevo panel de fases deberían usarse más las habilidades; eso hace el juego más fácil para el grupo, no más difícil.
+
+## Versión 3 (histórico)
 
 Reglas en [06-version-3.md](../planteamiento/06-version-3.md); valores finales en su §12.
 

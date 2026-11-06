@@ -204,7 +204,7 @@ export function normalizeRoom(raw) {
     hostName: raw.hostUsername ?? members.find((m) => m.isHost)?.username ?? '',
     status: raw.status ?? '',
     matchId: raw.matchId ?? null,
-    capacity: raw.capacity ?? raw.maxPlayers ?? 4,
+    capacity: raw.capacity ?? raw.maxPlayers ?? 5,
     curses: raw.curses ?? [],
     playerCount: raw.players ?? raw.playerCount ?? members.length,
     members: members.map((m, i) => ({
@@ -221,7 +221,7 @@ export function normalizeRoom(raw) {
 const unwrapList = (data) => (Array.isArray(data) ? data : data?.items ?? []);
 
 export const listRooms = async () => unwrapList(await send('GET', `${ROUTES.rooms}?page=1&pageSize=20`)).map(normalizeRoom);
-export const createRoom = async (name, visibility, curses = [], maxPlayers = 4) =>
+export const createRoom = async (name, visibility, curses = [], maxPlayers = 5) =>
   normalizeRoom(await send('POST', ROUTES.rooms, { name, visibility, maxPlayers, curses }));
 export const catalog = () => send('GET', '/api/v1/catalog');
 /** Revancha: la misma sala y el mismo código para todos los que jugaron la partida. */

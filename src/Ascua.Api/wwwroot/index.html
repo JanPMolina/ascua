@@ -111,6 +111,11 @@
             <input name="name" placeholder="Nombre de la sala" required minlength="3" maxlength="32" autocomplete="off" aria-label="Nombre de la sala">
             <div class="row">
               <label class="switch"><input type="checkbox" name="private"><span class="switch-ui" aria-hidden="true"></span> Privada (solo con código)</label>
+              <label class="inline">Plazas
+                <select name="seats" aria-label="Plazas de la sala">
+                  <option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5" selected>5 (sala de 11×11)</option>
+                </select>
+              </label>
               <span class="spacer"></span>
               <button type="submit" class="primary">Crear sala</button>
             </div>

@@ -30,11 +30,12 @@ Regla general: `c = lado / 2`; escalera y Celador en `(c, c − 1)`; entradas en
 
 | Dato | 2 | 3 | 4 | 5 |
 |---|---|---|---|---|
-| Vida del Celador | ver §9 | | | |
-| Monstruos por sala | ver §9 | | | |
-| Invocaciones del Tótem (tope) | ver §9 | | | |
+| Vida del Celador (por jugador) | 9 (18) | 12 (36) | 15 (60) | 15 (75) |
+| Monstruos por sala (antes del tipo de sala) | los 2 primeros | todos | todos | todos **+1 Carroñero** en las salas 1 a 4 |
+| Vida de los monstruos | la del catálogo | igual | igual | igual |
+| Invocaciones de cada Tótem (tope) | 3 | 3 | 3 | **4** |
 
-Los valores salen de la simulación con todas las combinaciones de héroes (§9). Las maldiciones (`FIERCE`, `WARDEN_PLUS`) se aplican encima, como antes.
+Los valores salen de la simulación con todas las combinaciones de héroes (§9). Viven en `Difficulty` (dominio). Las maldiciones (`FIERCE`, `WARDEN_PLUS`) se aplican encima, como antes.
 
 ## 4. La ronda: planear por fases, con el cursor
 
@@ -76,7 +77,7 @@ Se quitan la cruceta de direcciones y los botones de flecha de la interfaz.
 
 **Escalera.** Con la sala sin monstruos, un héroe activo en la escalera lleva a todos **directo** a la sala siguiente, al final de esa ronda. No hay interludio, ni El Juicio, ni puertas.
 
-**Tipo de sala al azar.** Al entrar a una sala que no es la primera ni la del Celador, su tipo sale al azar (CSPRNG del servidor) entre Tesoro, Arena, Santuario, Oscura e Inundada, **distinto del tipo de la sala anterior**. La sala se genera en ese momento. La primera es normal y la última el Celador. El tipo se anuncia al entrar (`ROOM_ENTERED` con `roomType`) y se ve en `view.room`.
+**Tipo de sala al azar.** Las salas 2, 3 y 4 tienen un tipo al azar (CSPRNG del servidor) entre Tesoro, Arena, Santuario, Oscura e Inundada, **distinto del tipo de la sala anterior**. Se sortea al crear la partida y **nadie lo sabe hasta entrar**: la vista solo trae la sala actual. La primera es normal y la última el Celador. El tipo se anuncia al entrar (evento `FLOOR_ENTERED` con `detail` = tipo) y se ve en `view.room`.
 
 **Sabotaje:** desaparece. La orden `SABOTAGE` se rechaza con `INVALID_ORDER`.
 
@@ -97,9 +98,9 @@ Las misiones ofrecidas quedan en 5: `MOST_WARDEN_DAMAGE`, `OPEN_3_CHESTS`, `REVI
 
 La partida termina **solo cuando gana un bando**: cae el Celador, o no queda ningún héroe activo (derrota de todos, o «Ganan los Traidores» si hay un Traidor en pie), o se abandona. La meta de rondas por partida es solo informativa.
 
-**El frío** evita una partida eterna. Desde la **ronda 70**, en la limpieza de cada ronda que sea múltiplo de 3, cada héroe activo recibe daño de frío: **1, más 1 por cada 15 rondas pasadas de la 70** (ronda 70–84: 1; 85–99: 2; …). No lo reduce Defender ni el escudo, no tiene autor y no da oro a nadie. No afecta a Fantasmas, Traidores, derribados ni muertos. Polizón dentro de un huésped lo recibe él. Al Avaro le cuesta oro, como cualquier golpe. Evento `CHILLED` (en pantalla «El frío»), público, con el daño. `view.chillRound` dice desde qué ronda empieza.
+**El frío** evita una partida eterna. Desde la **ronda 80**, en la limpieza de cada ronda que sea múltiplo de 3, cada héroe activo **y cada Traidor presente** recibe daño de frío: **1, más 1 por cada 15 rondas pasadas de la 80** (rondas 81–94: 1; 95–109: 2; …). No lo reduce Defender ni el escudo, no tiene autor y no da oro a nadie. No afecta a Fantasmas, derribados ni muertos. Polizón dentro de un huésped lo recibe él. Al Avaro le cuesta oro, que **se pierde** (no cae al suelo). Evento `CHILLED` (en pantalla «El frío»), público, con el daño. `view.chillRound` dice desde qué ronda empieza.
 
-**Por qué termina siempre.** El daño del frío crece sin tope y la curación por ronda está acotada (pociones, Calidez, drenaje, Hoja hambrienta, Volver), así que tarde o temprano ningún héroe queda activo y la partida acaba en derrota o en «Ganan los Traidores». Además siguen: la expiración por inactividad del servidor (`InactivityTimeout`, 10 min sin órdenes) y el abandono cuando no queda nadie conectado. El simulador falla si una partida pasa de 1000 rondas.
+**Por qué termina siempre.** El daño del frío crece sin tope y lo que se recupera por ronda está acotado (pociones, Calidez, drenaje, Hoja hambrienta, Volver, el oro que gana el Avaro al levantar a alguien), así que tarde o temprano ningún héroe queda activo y la partida acaba en derrota (o en «Ganan los Traidores», si a uno le queda vida). Además siguen: la expiración por inactividad del servidor (`InactivityTimeout`, 10 min sin órdenes) y el abandono cuando no queda nadie conectado. El simulador falla si una partida pasa de 1000 rondas: en 223 200 partidas la más larga duró 288.
 
 ## 8. El reloj
 
@@ -111,7 +112,17 @@ La partida termina **solo cuando gana un bando**: cae el Celador, o no queda nin
 
 ## 9. Números
 
-Salen de la simulación; el detalle está en [docs/balance.md](../docs/balance.md).
+Salen de la simulación (todas las combinaciones de 2 a 5 jugadores, 200 partidas cada una, semilla `20261102`); el detalle está en [docs/balance.md](../docs/balance.md).
+
+| Dato | Versión 3 | Versión 4 |
+|---|---|---|
+| Vida del Celador | 6 × jugadores | **9, 12, 15 y 15 × jugadores** (2, 3, 4 y 5) |
+| Monstruos con 5 jugadores | — | +1 Carroñero por sala; Tótem hasta 4 invocaciones |
+| Hilván, vida | 8 | **9** |
+| Polizón, vida | 6 | **7** |
+| Avaro, oro al empezar | 4 | **5** |
+| Usurera, interés | cada 7 rondas | **cada 10** (tope 3) |
+| Límite de rondas | 60 | **ninguno**; el frío desde la 80 |
 
 ## 10. Contrato
 
@@ -122,7 +133,15 @@ Contrato **4.0.0** y `protocolVersion` **4** (la 3 se rechaza). Detalle en [Para
 Decisiones tomadas donde el encargo no alcanzaba.
 
 - **Tipo de sala distinto del anterior.** Como hacían las puertas; evita dos Inundadas seguidas.
+- **El tipo se sortea al crear la partida**, no al pisar la escalera: es lo más simple (no hay que regenerar salas en mitad de una ronda) y nadie lo ve antes, porque la vista solo trae la sala actual. Vuelve a ser como en la versión 2: todas las salas nacen con la partida.
 - **El frío.** El encargo pide que ninguna partida quede sin final sin poner un límite de rondas. Defender no lo reduce porque quien no envía nada defiende: si lo redujera, un grupo inactivo podría alargar la partida para siempre.
+- **El frío también alcanza a los Traidores.** Sin límite de rondas, las partidas largas terminaban casi siempre con todos los héroes caídos y un Traidor en pie: «Ganan los Traidores» subía al 38 % en la simulación. Con el frío para todos queda en 20 %, bajo la meta.
+- **El oro que el frío le quita al Avaro se pierde.** Si cayera al suelo, el Avaro lo recogía y no se apagaba nunca: fue la primera partida eterna que encontró el simulador.
+- **Empieza en la ronda 80**, no antes: con la 70 había que bajar al Celador y los héroes caídos pasaban de la meta.
+- **Límite de rondas solo para pruebas.** `Ascua:Realtime:TestRoundLimit` termina la partida en derrota al resolver esa ronda. Existe para que las pruebas de integración terminen una partida en pocas rondas; no se configura en ningún entorno y en el juego no hay límite.
+- **Atajos de teclado.** Flechas (paso u objetivo), A, Q, E, F, Espacio, Enter y Esc. Sabotaje (R) ya no existe.
+- **Listo sin plan** envía Defender. Con algo planeado y sin pulsar Listo, el cliente envía el plan 0,9 s antes del cierre.
+- **Empujar** resalta solo la casilla vecina (antes la vista previa marcaba 2).
 - **Repique y Prisa** se redondean hacia arriba para no dejar menos de 5 s a nadie.
 - **Habilidad sin dirección.** El cable sigue pidiendo dirección para `ABILITY`; el cliente envía norte cuando no importa.
 - **`SABOTAGE` y `MatchPhase.Interlude` en el código.** El valor del enum se conserva para leer partidas viejas del historial, pero se rechaza siempre.

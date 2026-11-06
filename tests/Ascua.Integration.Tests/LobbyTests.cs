@@ -79,7 +79,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
     }
 
     [Fact]
-    public async Task Concurrent_joins_to_a_room_of_four_let_exactly_four_in()
+    public async Task Concurrent_joins_to_a_full_size_room_let_exactly_five_in()
     {
         var host = await NewUserAsync();
         var room = await CreateRoomAsync(host, "PUBLIC");
@@ -89,7 +89,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         var responses = await Task.WhenAll(joiners.Select(user => SendAsync(HttpMethod.Post, $"/api/v1/rooms/{id}/join", user)));
         try
         {
-            Assert.Equal(3, responses.Count(r => r.StatusCode == HttpStatusCode.OK));
+            Assert.Equal(4, responses.Count(r => r.StatusCode == HttpStatusCode.OK));
             foreach (var rejected in responses.Where(r => r.StatusCode != HttpStatusCode.OK))
             {
                 await AssertProblemAsync(rejected, HttpStatusCode.Conflict, "room-full");
@@ -104,7 +104,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
         }
 
         using var final = await SendAsync(HttpMethod.Get, $"/api/v1/rooms/{id}", host);
-        Assert.Equal(4, (await ReadAsync(final)).GetProperty("members").GetArrayLength());
+        Assert.Equal(5, (await ReadAsync(final)).GetProperty("members").GetArrayLength());
     }
 
     [Fact]
@@ -327,7 +327,7 @@ public sealed class LobbyTests(AscuaApiFactory factory) : IDisposable
             .ToList();
         var assigned = groups.SelectMany(g => g).ToList();
         Assert.Equal(assigned.Count, assigned.Distinct().Count());
-        Assert.All(groups, g => Assert.InRange(g.Count, 2, 4));
+        Assert.All(groups, g => Assert.InRange(g.Count, 2, 5));
         Assert.True(assigned.Count >= ids.Count - 1, $"Solo {assigned.Count} de {ids.Count} jugadores fueron emparejados.");
 
         var registry = factory.Services.GetRequiredService<IActiveMatchRegistry>();

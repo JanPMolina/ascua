@@ -20,9 +20,9 @@ El juego muestra nombres simples para que nadie tenga que aprender un vocabulari
 | Defender | Guardar | `GUARD` |
 | Usar | Interactuar | `INTERACT` |
 | Paso | Paso | `step` |
-| Sabotaje | Sabotaje | `SABOTAGE` |
 | Empujón | Empujón | `PUSH` |
-| El Juicio y las puertas | Interludio | `INTERLUDE`, `InterludeOffer` |
+| 1 Moverte → 2 Actuar → Listo | Paso y acción de una orden | `step`, `type` + `direction` |
+| El frío | El frío | `CHILLED`, `chillRound` |
 | Tesoro, Arena, Santuario, Oscura, Inundada | Tipos de sala | `TREASURE`, `ARENA`, `SANCTUARY`, `DARK`, `FLOODED` |
 | Fieros, Celador imponente, Penumbra, Prisa | Maldiciones | `FIERCE`, `WARDEN_PLUS`, `DIM`, `HASTE` |
 | Títulos | Títulos | `awards` |

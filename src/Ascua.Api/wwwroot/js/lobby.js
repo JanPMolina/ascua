@@ -270,7 +270,7 @@ export function initLobby({ onEnterMatch }) {
       try {
         const name = form.elements.name.value.trim();
         const curses = [...form.querySelectorAll('input[name="curse"]:checked')].map((c) => c.value);
-        showRoom(await api.createRoom(name, form.elements.private.checked ? 'PRIVATE' : 'PUBLIC', curses));
+        showRoom(await api.createRoom(name, form.elements.private.checked ? 'PRIVATE' : 'PUBLIC', curses, Number(form.elements.seats?.value) || 5));
       } catch (err) {
         toast(`No se pudo crear la sala: ${explain(err)}`, 'bad');
       }

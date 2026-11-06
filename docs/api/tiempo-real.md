@@ -8,14 +8,14 @@ explica cómo lo implementa el servidor y cómo probarlo.
 1. `POST /api/v1/realtime/tickets` con `Authorization: Bearer <JWT>` y cuerpo `{ "matchId": "<uuid>" }`
    → `201 { ticket, expiresAt }`. Partida inexistente o ajena: `404 not-found` (no se distingue).
    Partida terminada: `409 match-not-active`.
-2. WebSocket a `/realtime/match?protocolVersion=3&access_token=<ticket>` con `skipNegotiation` y
+2. WebSocket a `/realtime/match?protocolVersion=4&access_token=<ticket>` con `skipNegotiation` y
    transporte WebSockets. El ticket vale 30 s, sirve una sola vez (`GETDEL`) y solo para esa partida.
 3. `JoinMatch { matchId }` → ACK con asiento y `Snapshot`. Si hay draft pendiente llega también `DraftOffer`,
    y si hay una elección de camino abierta, `PathOffer` (también tras `GetSnapshot`).
 
 | Rechazo del upgrade | HTTP | `code` (Problem Details) |
 |---|---|---|
-| Sin `protocolVersion=3` (se revisa antes de gastar el ticket; las anteriores se rechazan, [ADR-0010](../adr/0010-juego-v3-contrato-3.md)) | 400 | `unsupported-protocol-version` |
+| Sin `protocolVersion=4` (se revisa antes de gastar el ticket; las anteriores se rechazan, [ADR-0011](../adr/0011-juego-v4-contrato-4.md)) | 400 | `unsupported-protocol-version` |
 | Ticket ausente, vencido, ya usado | 401 | `ticket-invalid` |
 | Más de 3 conexiones del usuario | 429 | `connection-limit` |
 
@@ -84,23 +84,20 @@ Las reglas están en [05-heroes.md](../../planteamiento/05-heroes.md); aquí, c�
   - El plazo sobrevive a un reinicio porque vuelve de Postgres.
 - **Traiciones.** El daño a un aliado desviado por Errata o dado desde un huésped se registra en `GameState.Betrayals`. `BETRAYAL_RECORDED` solo lo recibe quien la cometió. `MatchFinished.betrayals` y `BETRAYAL_REVEALED` las revelan al final, sumadas por traidor y víctima.
 
-## Versión 3: interludio, misión y revancha (contrato 3.0.0)
+## Versión 4: sin interludio, hasta 5 jugadores y sin límite de rondas (contrato 4.0.0)
 
-Reglas en [06-version-3.md](../../planteamiento/06-version-3.md), que trae también la guía para el cliente.
+Reglas en [07-version-4.md](../../planteamiento/07-version-4.md) y [ADR-0011](../adr/0011-juego-v4-contrato-4.md).
 
 ```
-Resolver: héroe activo en la escalera sin enemigos ─► Phase = Interlude, InterludeOpened
-Advance: Deadline = ahora + InterludeDuration (en matches: sigue IN_PROGRESS, el contrato dice INTERLUDE)
-InterludeOffer a cada uno ─► CastInterludeVote ─► MatchRules.CastInterludeVote (ballot en GameState, VoteCast privado)
-           ─► Snapshot a todos (view.interlude.voted) ─► si votaron todos los conectados: TryCloseInterlude
-Plazo ─► ProcessDeadline ─► TryCloseInterlude(deadlineExpired)
-MatchRules.CloseInterlude: juicio ─► puerta ─► genera la sala ─► EnterNextRoom ─► InterludeResolved + RoundOpened
+Resolver: héroe activo en la escalera sin enemigos ─► Cleanup.EnterNextRoom en la misma ronda
+RoundResolved: delta.floorChanged + FLOOR_ENTERED (detail = tipo de sala) ─► RoundOpened de la siguiente
+Cleanup: desde la ronda 80, CHILLED cada 3 rondas ─► sin héroes activos, MatchEnded
 ```
 
-- **Durabilidad.** Votos y plazo van en la instantánea de Postgres como cualquier mutación, así que un reinicio no pierde nada. Lo cubre `VersionThreeTests`.
-- **Los votos no salen.** `InterludeState.Ballots` solo lo lee el proyector para devolver el propio; `VoteCast` es privado. El registro de eventos guarda los votos, igual que las órdenes de Último en hablar nunca se guardan: quien lee la base con la vista de administrador los ve, y esa vista queda auditada.
-- **La puerta se genera al cerrar.** La sala de la puerta no elegida nunca existe.
-- **Órdenes con paso.** En Redis van como `Tipo|Dirección|Paso`.
+- **Sin estado nuevo.** El interludio, sus votos, plazos y mensajes se quitaron del dominio, del motor y del hub.
+- **Lado de la sala.** `view.room.size` (9 u 11). Las posiciones del contrato llegan hasta 10; el proyector solo manda las de la sala.
+- **Señales.** `SendSignal` rechaza con `INVALID_PAYLOAD` una casilla fuera de la sala actual.
+- **Órdenes con paso.** En Redis van como `Tipo|Dirección|Paso`. `SABOTAGE` ya no se acepta.
 - **Misión.** `ChoosePact` no guarda ACK en Redis: la elección está en el héroe.
 - **Revancha.** `MatchHistoryEndpoints.RematchAsync` → `RoomService.RematchAsync`, ver [salas](salas.md#revancha).
 
@@ -152,10 +149,9 @@ La concurrencia entre réplicas (dos cerradores, una sola resolución) está en 
 
 | Clave | Por defecto |
 |---|---|
-| `RoundDuration` / `DraftDuration` | 20 s / 30 s |
-| `InterludeDuration` | 20 s (El Juicio y la puerta; al vencer, el voto ausente es «nadie») |
+| `RoundDuration` / `DraftDuration` | 11 s / 30 s (con la maldición Prisa, 7 s) |
 | `PathChoiceDuration` | 15 s (elección de camino; al vencer, Amistad) |
-| `BellDuration` | 8 s (plazo de los demás en una ronda de Repique; se fija al crear la partida) |
+| `BellDuration` | 5 s (plazo de los demás en una ronda de Repique; se fija al crear la partida) |
 | `SignalInterval` | 3 s (una señal rápida por jugador) |
 | `ReconnectGrace` / `JoinTimeout` | 60 s / 120 s |
 | `InactivityTimeout` | 10 min |
@@ -163,6 +159,7 @@ La concurrencia entre réplicas (dos cerradores, una sola resolución) está en 
 | `HubTokenLimit` / `HubTokensPerSecond` / `HubAbuseThreshold` | 20 / 5 / 50 rechazos en 60 s |
 | `PublicBaseUrl` | `http://localhost:8080` (para `replayUrl`) |
 | `EnableDevEndpoints` | `false` (en `docker-compose.yml` es `true`) |
+| `TestRoundLimit` | sin valor: solo pruebas de integración (termina la partida en derrota en esa ronda) |
 
 ## Observabilidad
 

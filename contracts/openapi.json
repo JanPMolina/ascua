@@ -2776,61 +2776,6 @@
   },
   "components": {
     "schemas": {
-      "AccusationDto": {
-        "type": "object",
-        "properties": {
-          "accusedId": {
-            "type": "string"
-          },
-          "votes": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "otherVoters": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "convicted": {
-            "type": "boolean"
-          },
-          "guilty": {
-            "type": [
-              "null",
-              "boolean"
-            ]
-          },
-          "goldLost": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "accuserFine": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "exposed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BetrayalDto"
-            }
-          }
-        }
-      },
       "ActiveMatchResponse": {
         "required": [
           "matchId"
@@ -3129,25 +3074,6 @@
           }
         }
       },
-      "BetrayalDto": {
-        "type": "object",
-        "properties": {
-          "traitorId": {
-            "type": "string"
-          },
-          "victimId": {
-            "type": "string"
-          },
-          "damage": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          }
-        }
-      },
       "BlessingCatalogItem": {
         "required": [
           "id",
@@ -3331,14 +3257,14 @@
             "$ref": "#/components/schemas/RoomVisibility"
           },
           "maxPlayers": {
-            "maximum": 4,
+            "maximum": 5,
             "minimum": 2,
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
               "string"
             ],
-            "description": "Capacidad de la sala (2 a 4).",
+            "description": "Capacidad de la sala (2 a 5). Con 5 la sala del juego mide 11 × 11.",
             "format": "int32"
           },
           "curses": {
@@ -3348,36 +3274,6 @@
               "type": "string"
             },
             "description": "Maldiciones (dificultad opcional): FIERCE, WARDEN_PLUS, DIM, HASTE. Públicas y fijas desde que se crea la sala."
-          }
-        }
-      },
-      "DoorDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "effect": {
-            "type": "string"
-          }
-        }
-      },
-      "DoorTallyDto": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string"
-          },
-          "votes": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
           }
         }
       },
@@ -3807,124 +3703,6 @@
           }
         }
       },
-      "InterludeBallotDto": {
-        "type": "object",
-        "properties": {
-          "accusedId": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "door": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "null",
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          }
-        }
-      },
-      "InterludeOfferMessage": {
-        "type": "object",
-        "properties": {
-          "matchId": {
-            "type": "string"
-          },
-          "offerId": {
-            "type": "string"
-          },
-          "endedFloor": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "deadline": {
-            "type": "string"
-          },
-          "doors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DoorDto"
-            }
-          },
-          "candidates": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "voters": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "voted": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "canVote": {
-            "type": "boolean"
-          },
-          "myVote": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/InterludeBallotDto"
-              }
-            ]
-          }
-        }
-      },
-      "InterludeVerdictDto": {
-        "type": "object",
-        "properties": {
-          "endedFloor": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "accusations": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AccusationDto"
-            }
-          },
-          "noAccusation": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
-          "doors": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/DoorTallyDto"
-            }
-          },
-          "chosenDoor": {
-            "type": [
-              "null",
-              "string"
-            ]
-          }
-        }
-      },
       "JoinByCodeRequest": {
         "required": [
           "code"
@@ -4257,14 +4035,6 @@
       "OtherHeroDto": {
         "type": "object",
         "properties": {
-          "convictions": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          },
           "playerId": {
             "type": "string"
           },
@@ -4461,25 +4231,13 @@
               "type": "string"
             }
           },
-          "interlude": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/InterludeOfferMessage"
-              }
-            ]
-          },
-          "lastVerdict": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/InterludeVerdictDto"
-              }
-            ]
+          "chillRound": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -4805,6 +4563,14 @@
             "type": "string"
           },
           "floodedRows": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "size": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",
             "type": [
               "integer",
@@ -5186,9 +4952,6 @@
               "string"
             ],
             "format": "int32"
-          },
-          "canSabotage": {
-            "type": "boolean"
           },
           "visionRadius": {
             "pattern": "^-?(?:0|[1-9]\\d*)$",

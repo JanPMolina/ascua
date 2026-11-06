@@ -16,6 +16,7 @@ se escribe una nueva que la **reemplaza** y se actualiza el estado de la anterio
 | [0008](0008-nombres-de-heroes.md) | Un solo juego de nombres de héroe (YUNQUE, CHISPA, CUERVO, RAIZ) y lectura compatible de partidas guardadas | reemplazada por ADR-0009 | 2026-10-30 |
 | [0009](0009-nueve-heroes-contrato-2.md) | Nueve héroes nuevos, contrato 2.0.0 sin periodo de transición y borrado de partidas viejas | aceptada | 2026-11-02 |
 | [0010](0010-juego-v3-contrato-3.md) | Versión 3 del juego, contrato 3.0.0 solo en la rama local | aceptada | 2026-11-05 |
+| [0011](0011-juego-v4-contrato-4.md) | Versión 4 del juego, contrato 4.0.0 solo en la rama local | aceptada | 2026-11-06 |
 
 Contratos relacionados: [`contracts/asyncapi.yaml`](../../contracts/asyncapi.yaml) (tiempo real) y
 [`contracts/openapi.json`](../../contracts/openapi.json) (REST, OpenAPI 3.1 generado por la API). Visión general en
