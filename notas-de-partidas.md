@@ -14,6 +14,7 @@ Jugadores automáticos que deciden con lo que ve cada uno y ordenan **solo con c
 | 4 | Anteayer, Mampostero | 9 × 9 | Oscura, Tesoro, Inundada | Derrota de todos | 40 |
 | 5 | La Escucha, Usurera | 9 × 9 | Arena, Oscura, Tesoro | Derrota de todos | 96 |
 | 6 | Campanero, Errata | 9 × 9 | Santuario, Oscura, Tesoro | Derrota de todos | 48 |
+| 7 | Errata, Avaro, Hilván, Polizón, La Escucha | 11 × 11 | Santuario, Inundada, Oscura | Derrota de todos: **el frío la cerró** (Celador en 39 de 64 en la ronda 95) | 114 |
 
 | Comprobado | Resultado |
 |---|---|
@@ -23,7 +24,8 @@ Jugadores automáticos que deciden con lo que ve cada uno y ordenan **solo con c
 | Partidas que pasan de la ronda 60 | Siguen hasta que gana un bando (hasta 96 rondas) |
 | Tipo de cada sala | Se anuncia al entrar («Piso 3 · Oscura») y coincide con lo guardado en la base |
 | Desplazamiento de página a 1366 × 768 y 1920 × 1080 | Ninguno |
-| Errores de JavaScript y de CSP en consola | Ninguno en las 6 partidas |
+| Errores de JavaScript y de CSP en consola | Ninguno en las 7 partidas, ni en el tutorial ni en la demo (6 rondas con clics cada uno) |
+| El frío | La partida 7 pasó de la ronda 80 y terminó por el frío, sin quedar colgada |
 
 **Corregido tras la prueba**
 - El botón Listo compartía id con el «Marcar listo» de la sala de espera: el clic no enviaba nada.
@@ -32,7 +34,7 @@ Jugadores automáticos que deciden con lo que ve cada uno y ordenan **solo con c
 - La sala no dejaba elegir 5 plazas.
 - El resumen decía «atacas a al Polilla».
 
-**Sin probar todavía:** partidas entre personas, el tutorial y la demo en el navegador (se revisaron con `node --check`), y una victoria con 5 jugadores: los jugadores automáticos casi no le hacen daño al Celador en la sala de 11.
+**Sin probar todavía:** partidas entre personas, el tutorial completo de punta a punta, la revancha y una victoria con 5 jugadores: los jugadores automáticos tardan mucho en llegar al costado del Celador en la sala de 11.
 
 ## Prueba simulada (4 navegadores con teclas al azar)
 
