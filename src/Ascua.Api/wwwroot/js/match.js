@@ -238,7 +238,7 @@ class MatchController {
     // Fase 1: clic en una casilla vecina. Fase 2: un botón y luego el objetivo en el tablero. Listo envía.
     document.querySelectorAll('.phase-btn').forEach((btn) => listen(btn, 'click', () => this.goPhase(btn.dataset.phase)));
     document.querySelectorAll('.act').forEach((btn) => listen(btn, 'click', () => this.pickAction(btn.dataset.act)));
-    listen($('btn-ready'), 'click', () => this.ready());
+    listen($('btn-plan-ready'), 'click', () => this.ready());
     listen($('btn-plan-reset'), 'click', () => this.resetPlan(true));
     listen($('btn-leave-match'), 'click', () => this.leave());
     listen($('btn-demo-drop'), 'click', () => toast(this.transport.simulateDrop()));
@@ -621,7 +621,7 @@ class MatchController {
       b.classList.toggle('cooling', cooling);
     });
     const p = this.signalMark;
-    setText('signal-hint', p ? `Casilla (${p.x},${p.y}) marcada · Esc la quita` : 'Clic en el tablero: marca casilla');
+    setText('signal-hint', p ? `Casilla (${p.x},${p.y}) marcada · Esc la quita` : 'Clic en una casilla sin resaltar: la marca');
     $('signal-hint').classList.toggle('marked', Boolean(p));
     const key = this.signalFeed.map((s) => s.shownAt).join();
     if (this.shown.signals !== key) {
@@ -1094,14 +1094,16 @@ class MatchController {
     const walk = this.plannedStep ? `${ember ? 'Flotas' : 'Te mueves'} al ${label(DIRECTIONS, this.plannedStep)}` : 'Te quedas donde estás';
     const a = this.plannedAction;
     if (a?.type === 'GUARD') return ember ? 'Te quedas y enciendes una Luz.' : 'Te quedas y defiendes: recibes la mitad del daño.';
-    if (!a) return `${walk}${this.plannedStep ? '' : ''}. Falta la acción (o pulsa Listo y solo caminas).`;
+    if (!a) return `${walk}. Falta la acción (o pulsa Listo y ${this.plannedStep ? 'solo caminas' : 'defiendes'}).`;
     const target = this.board.describeTarget(a.type, a.direction, this.plannedStep);
     const names = ember ? EMBER_ORDERS : heroOrders(me);
     const verb = {
       ATTACK: ember ? 'frenas' : 'atacas', INTERACT: ember ? 'revives' : 'usas', PUSH: 'empujas',
       ABILITY: `usas ${(names.ABILITY?.name ?? 'tu habilidad')}`,
     }[a.type] ?? label(ORDER_TYPES, a.type).toLowerCase();
-    const to = target ? ` ${a.type === 'ABILITY' ? 'hacia' : 'a'} ${target}` : ` hacia el ${label(DIRECTIONS, a.direction)}`;
+    const toward = a.type === 'ABILITY' || a.type === 'INTERACT' ? '' : 'a ';
+    const phrase = target && toward && target.startsWith('el ') ? `al ${target.slice(3)}` : target ? `${toward}${target}` : null;
+    const to = phrase ? ` ${a.type === 'ABILITY' ? `hacia ${target}` : phrase}` : ` hacia el ${label(DIRECTIONS, a.direction)}`;
     const noAim = a.type === 'ABILITY' && !ember && me.hostEnemyId == null && NO_AIM.has(me.hero);
     return `${walk} y ${verb}${noAim ? '' : to}.`;
   }
@@ -1351,9 +1353,9 @@ class MatchController {
     setText('ability-text', ember ? (EMBER_ORDERS.ABILITY?.text ?? '') : me?.hostEnemyId != null ? (names.ABILITY?.text ?? '') : info.abilityText ?? '');
     $('ability-card').hidden = !me || me.state === 'EXTINCT' || me.state === 'DOWN';
     setText('plan-summary', open ? this.planSummary() : sent && this.order ? `Enviado: ${describeOrder(this.order.payload.order)}` : '');
-    $('btn-ready').disabled = !open;
+    $('btn-plan-ready').disabled = !open;
     $('btn-plan-reset').disabled = !open || (!this.plannedStep && !this.plannedAction && this.phase === 'MOVE');
-    $('btn-ready').textContent = open && !this.planOrder() ? 'Listo (defender)' : 'Listo';
+    $('btn-plan-ready').textContent = open && !this.planOrder() ? 'Listo (defender)' : 'Listo';
   }
 
   /** Fila de la lista de jugadores: estado del camino, si decidió y su vida (la Brasa no tiene vida). */

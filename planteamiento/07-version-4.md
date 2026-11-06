@@ -145,3 +145,33 @@ Decisiones tomadas donde el encargo no alcanzaba.
 - **Repique y Prisa** se redondean hacia arriba para no dejar menos de 5 s a nadie.
 - **Habilidad sin dirección.** El cable sigue pidiendo dirección para `ABILITY`; el cliente envía norte cuando no importa.
 - **`SABOTAGE` y `MatchPhase.Interlude` en el código.** El valor del enum se conserva para leer partidas viejas del historial, pero se rechaza siempre.
+
+## Para el cliente
+
+Lo que cambia en el cable (detalle en [`contracts/asyncapi.yaml`](../contracts/asyncapi.yaml) y [ADR-0011](../docs/adr/0011-juego-v4-contrato-4.md)). En pantalla se dice oro, derribado, muerto, Fantasma, Traidor, mejora, misión secreta, ataque marcado, espera, Defender y Usar.
+
+| Qué | Antes (3.0.0) | Ahora (4.0.0) |
+|---|---|---|
+| Conexión | `protocolVersion=3` | `protocolVersion=4` |
+| Jugadores | 2 a 4 | **2 a 5**; `POST /api/v1/rooms { maxPlayers }` acepta 2 a 5 (por defecto 5) |
+| Sala | 9 × 9 fijo | `view.room.size`: 9, u 11 con 5 jugadores. Casillas de 0 a `size − 1` |
+| Orden | `SABOTAGE` posible | `MOVE`, `ATTACK`, `ABILITY`, `INTERACT`, `PUSH`, `GUARD`; `SABOTAGE` da `INVALID_PAYLOAD` |
+| Escalera | `INTERLUDE` + `InterludeOffer`/`CastInterludeVote`/`InterludeResolved` | En el mismo `RoundResolved`: `delta.floorChanged` y `FLOOR_ENTERED { amount: sala, detail: tipo }` |
+| Vista | `interlude`, `lastVerdict`, `me.canSabotage`, `allies[].convictions` | Se quitan; llega `chillRound` |
+| Rondas | tope 60 | sin tope (`round` hasta 9999); evento `CHILLED { amount: daño }` |
+| Reloj | 20 s; Repique 8 s; Prisa 12 s | **11 s; Repique 5 s; Prisa 7 s** |
+| Títulos y misiones | `MOST_TRIAL_GOLD_LOST`, `BETRAY_TWICE_UNCONVICTED`, `CORRECT_CONVICTION` | Ya no salen (el historial viejo puede traerlos) |
+
+**El plan por fases es del cliente.** Cada clic se traduce a la orden de siempre:
+
+| En pantalla | Se envía |
+|---|---|
+| Fase 1, clic en una casilla vecina | `step` (o, sin acción, `MOVE` con esa dirección) |
+| Fase 1, clic en el propio héroe | sin paso |
+| Fase 2, botón y clic en un objetivo resaltado | `type` y la `direction` de esa casilla desde la de llegada |
+| Habilidad sin dirección | `ABILITY` con `direction: "N"` |
+| Defender | `GUARD`, sin paso |
+| Listo sin nada planeado | `GUARD` |
+| Se acaba el plazo con algo planeado | lo planeado, 0,9 s antes del cierre |
+
+Los objetivos resaltados son una aproximación con lo que trae la vista; el servidor decide. La partida sigue aceptando una sola orden por ronda: el plan se puede cambiar hasta pulsar Listo, no después.

@@ -1531,4 +1531,4 @@ button.trial-pick.chosen:disabled, button.door.chosen:disabled { opacity: 1; }
 .ability-card p { margin: .2rem 0 0; font-size: .8rem; line-height: 1.3; opacity: .9; }
 .plan-summary { margin: .45rem 0 .3rem; font-weight: 600; min-height: 1.3em; color: var(--ember-hi); }
 .plan-actions { display: flex; gap: .4rem; }
-.plan-actions #btn-ready { flex: 1; }
+.plan-actions #btn-plan-ready { flex: 1; }

@@ -50,6 +50,8 @@ const EMBER_COLORS = ['#ff9a3a', '#ffcf6a', '#ff6a2a'];
 const SPIRIT_COLORS = ['#6fc8ff', '#c8ecff', '#3f9ae8'];
 const BLOOD_COLORS = ['#ff4a3a', '#a8160e', '#ff8a6a'];
 const BEACON_RADIUS = 2;
+/** Monstruos de nombre femenino, para el resumen del plan. */
+const FEMININE = new Set(['POLILLA', 'GELATINA']);
 
 /** Radio de visión (Manhattan): el que manda el servidor (la sala Oscura, DIM y Ojo de búho lo bajan). Con Lámpara, toda la sala. */
 export function visionRadius(me) {
@@ -576,21 +578,21 @@ export class BoardRenderer {
     return hits.includes(want) ? want : hits[0];
   }
 
-  /** Nombre de lo primero que hay en las casillas de esa acción, para el resumen del plan («al Carroñero»). */
+  /** Lo primero que hay en las casillas de esa acción, con artículo, para el resumen del plan («el Carroñero», «la Polilla»). */
   describeTarget(type, dir) {
     const tmp = [];
     this.affected(type, dir, tmp);
     const { me, allies, enemies } = this.state;
     for (const p of tmp) {
       for (const e of enemies?.values?.() ?? []) {
-        if (e.position?.x === p.x && e.position?.y === p.y && e.enemyId !== me?.hostEnemyId) return `al ${ENEMY_NAMES[e.kind] ?? 'enemigo'}`;
+        if (e.position?.x === p.x && e.position?.y === p.y && e.enemyId !== me?.hostEnemyId) return `${FEMININE.has(e.kind) ? 'la' : 'el'} ${ENEMY_NAMES[e.kind] ?? 'enemigo'}`;
       }
       const ally = (allies ?? []).find((a) => a.position?.x === p.x && a.position?.y === p.y);
-      if (ally) return `a ${ally.displayName}`;
+      if (ally) return ally.displayName;
       const kind = this.tiles.get(tileKey(p.x, p.y));
-      if (kind === 'CHEST') return 'al cofre';
-      if (kind === 'ALTAR') return 'al altar';
-      if (kind === 'BRAZIER') return 'al brasero';
+      if (kind === 'CHEST') return 'el cofre';
+      if (kind === 'ALTAR') return 'el altar';
+      if (kind === 'BRAZIER') return 'el brasero';
     }
     return null;
   }

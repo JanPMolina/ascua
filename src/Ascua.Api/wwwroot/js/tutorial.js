@@ -105,7 +105,7 @@ const STEPS = [
       'Fase 1: las casillas vecinas a las que puedes caminar están resaltadas. Haz clic en una (o en tu héroe para quedarte). Después pulsa Listo: si no eliges acción, solo caminas.',
       c.server.round > 0 ? 'Cuando todos están listos (o vence el plazo, 11 s en partidas reales) se resuelve todo a la vez. Ves solo hasta 3 casillas; lo demás queda en niebla.' : 'Espera a que se abra la ronda 1 (mira el reloj arriba del tablero).',
     ],
-    focus: ['#phase-steps', '#board', '#btn-ready'],
+    focus: ['#phase-steps', '#board', '#btn-plan-ready'],
     done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'MOVE',
   },
   {
@@ -121,7 +121,7 @@ const STEPS = [
         'Si una ronda no planeas nada, defiendes solo.',
       ];
     },
-    focus: ['.act[data-act="GUARD"]', '#btn-ready', '#board'],
+    focus: ['.act[data-act="GUARD"]', '#btn-plan-ready', '#board'],
     done: (c, type) => type === 'RoundResolved' && c.dangerBefore && !c.hitThisRound(),
   },
   {
