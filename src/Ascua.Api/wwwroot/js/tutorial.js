@@ -3,10 +3,8 @@
 // avanza cuando el jugador lo cumple; cada paso prepara lo que necesita (p. ej. hace aparecer un enemigo).
 import { $, el, setText } from './ui.js';
 import { DEMO_PLAYER_ID, DemoTransport } from './demo.js';
-import { DIRECTIONS, label } from './labels.js';
 
 const ME_ID = DEMO_PLAYER_ID;
-const ARROWS = { N: '↑', S: '↓', E: '→', W: '←' };
 
 const SCENARIO = {
   // Sin aliados: la ronda se resuelve apenas envías tu orden, sin esperar a nadie.
@@ -51,16 +49,6 @@ function lineDir(a, b) {
   return null;
 }
 
-/** Paso sugerido desde a hacia b por el eje de mayor distancia. */
-function stepDir(a, b) {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  if (Math.abs(dx) >= Math.abs(dy) && dx !== 0) return dx > 0 ? 'E' : 'W';
-  return dy > 0 ? 'S' : 'N';
-}
-
-const keyHint = (dir) => `${ARROWS[dir]} (${label(DIRECTIONS, dir)})`;
-
 class TutorialTransport extends DemoTransport {
   constructor() {
     super(SCENARIO);
@@ -94,7 +82,7 @@ const STEPS = [
   {
     title: 'Bienvenida a Ascua',
     text: () => [
-      'Ascua es una mazmorra por turnos simultáneos para 2 a 4 jugadores. Juntos deben derrotar al Celador antes de que se apague el fuego… pero solo gana quien reúna más oro.',
+      'Ascua es una mazmorra por turnos simultáneos para 2 a 5 jugadores. Juntos deben derrotar al Celador antes de que se apague el fuego… pero solo gana quien reúna más oro.',
       'En esta práctica juegas con El Mampostero, y sin otros jugadores. Hay nueve héroes y cada uno rompe una regla del juego: el suyo rompe «la mazmorra está quieta». Nada de lo que hagas aquí cuenta, así que puedes equivocarte sin problema.',
       'Tu héroe aparece en el panel resaltado. Ahí verás también tu misión secreta: un objetivo que solo tú conoces y que da +3 de oro si lo cumples.',
     ],
@@ -111,67 +99,59 @@ const STEPS = [
     done: (c) => c.server.me.blessings.length > 0 && Boolean(c.server.me.pact),
   },
   {
-    title: 'Muévete',
+    title: 'Fase 1: moverte',
     text: (c) => [
-      'Cada ronda das una orden en secreto: un paso, una acción, o las dos. Cuando todos decidieron (o vence el plazo, 20 s en partidas reales) el servidor resuelve todo a la vez.',
-      `Muévete una casilla: pulsa ${keyHint('N')} y verás el paso marcado en el tablero. Vuelve a pulsar la misma flecha o Enter para enviarlo solo. Esc lo quita.`,
-      c.server.round > 0 ? 'Ves solo hasta 3 casillas a tu alrededor; lo demás queda en niebla.' : 'Espera a que se abra la ronda 1 (mira el reloj arriba del tablero).',
+      'Cada ronda planeas en dos fases, con clics: 1 Moverte y 2 Actuar. Luego pulsas Listo. Mira el indicador «1 Moverte → 2 Actuar → Listo» en el panel de la derecha.',
+      'Fase 1: las casillas vecinas a las que puedes caminar están resaltadas. Haz clic en una (o en tu héroe para quedarte). Después pulsa Listo: si no eliges acción, solo caminas.',
+      c.server.round > 0 ? 'Cuando todos están listos (o vence el plazo, 11 s en partidas reales) se resuelve todo a la vez. Ves solo hasta 3 casillas; lo demás queda en niebla.' : 'Espera a que se abra la ronda 1 (mira el reloj arriba del tablero).',
     ],
-    focus: ['.dpad', '#m-timer'],
+    focus: ['#phase-steps', '#board', '#btn-ready'],
     done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'MOVE',
   },
   {
-    title: 'Ataques marcados',
+    title: 'Ataques marcados y Defender',
     setup: (c) => c.spawnNear('CARRONERO', 2, 2),
     text: (c) => {
       const danger = c.dangerOnMe();
       return [
-        'Apareció un Carroñero. Los enemigos MARCAN dónde van a golpear: esas casillas se marcan en rojo y el golpe cae en la ronda siguiente.',
+        'Apareció un Carroñero. Los enemigos MARCAN dónde van a golpear: esas casillas se ven en rojo y el golpe cae en la ronda siguiente.',
         danger
-          ? '¡La casilla roja está sobre ti! Pulsa Espacio (Defender): reduce el daño a la mitad y anula los golpes de 1. También podrías apartarte.'
-          : 'Todavía no te apunta. Pulsa Espacio (Defender) para esperar a que se acerque y mira cómo marca su ataque.',
-        'Si una ronda no envías nada, el servidor defiende por ti.',
+          ? '¡La casilla roja está sobre ti! En la fase 2 pulsa el botón Defender (recibes la mitad del daño y anulas los golpes de 1) y luego Listo. También podrías apartarte en la fase 1.'
+          : 'Todavía no te apunta. Pulsa Defender y Listo para esperar a que se acerque, y mira cómo marca su ataque.',
+        'Si una ronda no planeas nada, defiendes solo.',
       ];
     },
-    focus: ['#btn-guard', '#board'],
+    focus: ['.act[data-act="GUARD"]', '#btn-ready', '#board'],
     done: (c, type) => type === 'RoundResolved' && c.dangerBefore && !c.hitThisRound(),
   },
   {
-    title: 'Ataca',
+    title: 'Fase 2: atacar',
     setup: (c) => { if (c.enemies().length === 0) c.spawnNear('CARRONERO', 2, 2); },
     text: (c) => {
       const target = c.nearestEnemy();
-      const lines = ['El Mampostero golpea cuerpo a cuerpo, a la casilla vecina. Atacar es Shift + flecha (o el botón Atacar y luego una dirección). Otros héroes llegan más lejos.'];
-      if (!target) return [...lines, 'No ves enemigos ahora: espera una ronda (Espacio).'];
-      const dir = lineDir(c.me().position, target.position);
-      lines.push(dir && manhattan(c.me().position, target.position) <= 1
-        ? `El enemigo está en línea: pulsa Shift + ${keyHint(dir)}. Tiene ${target.hp} de vida, puede que necesites más de un golpe.`
-        : `Ponte en su misma fila o columna: muévete ${keyHint(stepDir(c.me().position, target.position))}.`);
+      const lines = ['Fase 2: pulsa el botón Atacar. Se resaltan las casillas a las que llega tu golpe desde donde quedarás; haz clic en la del enemigo y luego en Listo. El Mampostero pega a la casilla vecina; otros héroes llegan más lejos.'];
+      if (!target) return [...lines, 'No ves enemigos ahora: pulsa Listo y espera una ronda.'];
+      lines.push(manhattan(c.me().position, target.position) <= 1 && lineDir(c.me().position, target.position)
+        ? `Lo tienes al lado. Tiene ${target.hp} de vida: puede que necesites más de un golpe.`
+        : 'Todavía no está a tu lado: en la fase 1 haz clic en una casilla que te acerque.');
       lines.push('Dar el golpe final a un enemigo da +1 de oro.');
       return lines;
     },
-    focus: ['.mode[data-mode="ATTACK"]', '#board'],
+    focus: ['.act[data-act="ATTACK"]', '#board'],
     done: (c, type, msg) => type === 'RoundResolved' && c.mine(msg, 'ENEMY_KILLED'),
   },
   {
-    title: 'Paso y acción',
+    title: 'Las dos fases juntas',
     setup: (c) => { if (c.enemies().length === 0) c.spawnNear('CARRONERO', 2, 2, 3); },
     text: (c) => {
       const target = c.nearestEnemy();
-      const lines = ['En la misma ronda puedes dar un paso y actuar: primero caminan todos, luego actúa cada uno desde donde quedó.'];
-      if (!target) return [...lines, 'No ves enemigos ahora: espera una ronda (Espacio).'];
-      const me = c.me().position;
-      const dist = manhattan(me, target.position);
-      const first = stepDir(me, target.position);
-      const after = { x: me.x + { E: 1, W: -1 }[first] || me.x, y: me.y + { S: 1, N: -1 }[first] || me.y };
-      const dir = lineDir(after, target.position);
-      lines.push(dist === 2 && dir
-        ? `Marca el paso con ${keyHint(first)} y luego ataca con Shift + ${keyHint(dir)}. La línea del ataque sale de la casilla marcada.`
-        : `Marca un paso con una flecha y luego usa Shift + flecha para atacar en esa misma orden. Aunque no le des, cuenta para practicar.`);
-      lines.push('Si tu paso rebota, la acción sale de donde estabas. Defender (Espacio) borra el paso: quien defiende se planta.');
+      const lines = ['En la misma ronda puedes moverte y actuar: primero caminan todos, luego actúa cada uno desde donde quedó. Los objetivos se resaltan desde la casilla de llegada.'];
+      if (!target) return [...lines, 'No ves enemigos ahora: pulsa Listo y espera una ronda.'];
+      lines.push('Haz clic en la casilla que te deja al lado del enemigo, luego en Atacar, en el enemigo, y en Listo. El panel resume tu plan: «Te mueves al norte y atacas al Carroñero».');
+      lines.push('Puedes cambiar el plan hasta pulsar Listo (Borrar plan empieza de nuevo). Si se acaba el tiempo, se envía lo que planeaste. Defender borra el paso: quien defiende se planta.');
       return lines;
     },
-    focus: ['#order-plan', '.dpad', '#board'],
+    focus: ['#plan-summary', '#phase-steps', '#board'],
     done: (c, type) => type === 'RoundResolved' && Boolean(c.server.lastOrder?.step),
   },
   {
@@ -184,14 +164,14 @@ const STEPS = [
       return [
         'Los cofres (casillas doradas) dan oro y a veces objetos. Su contenido solo lo ve quien lo abre.',
         dist === 1
-          ? `Estás al lado: pulsa E y luego ${keyHint(lineDir(me, chest))} para usar.`
+          ? 'Estás al lado: en la fase 2 pulsa Usar, haz clic en el cofre resaltado y luego en Listo.'
           : dist === 2 && lineDir(me, chest)
-          ? `Puedes hacerlo en una sola orden: marca el paso ${keyHint(lineDir(me, chest))}, pulsa E y otra vez ${keyHint(lineDir(me, chest))}.`
-          : `El cofre está en (${chest.x},${chest.y}). Acércate hasta quedar al lado: muévete ${keyHint(stepDir(me, chest))}.`,
+          ? 'Puedes hacerlo en una sola ronda: en la fase 1 haz clic en la casilla junto al cofre; en la fase 2, Usar, clic en el cofre y Listo.'
+          : `El cofre está en (${chest.x},${chest.y}). Acércate: en la fase 1 haz clic en la casilla vecina que te acerque.`,
         c.me().pact?.pactId === 'OPEN_1_CHEST' ? 'Abrirlo también cumple tu misión secreta de esta práctica.' : 'Cada cofre cuenta para tu misión secreta.',
       ];
     },
-    focus: ['.mode[data-mode="INTERACT"]', '#tile-embers'],
+    focus: ['.act[data-act="INTERACT"]', '#tile-embers'],
     done: (c, type, msg) => type === 'RoundResolved' && c.mine(msg, 'CHEST_OPENED'),
   },
   {
@@ -202,11 +182,11 @@ const STEPS = [
       return [
         'Cada héroe tiene una habilidad. La tuya es Corrimiento: desliza 1 casilla tu fila (este/oeste) o tu columna (norte/sur) con todo lo que tenga encima, también la escalera. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2 de daño.',
         cd > 0
-          ? `La habilidad está en espera: lista en ${cd} ronda${cd === 1 ? '' : 's'}. Defiende (Espacio) hasta entonces.`
-          : 'Apareció una Polilla al borde de tu fila. Pulsa Q y luego la flecha hacia ella: verás la línea que se mueve antes de elegir. ¡Cuidado en partidas reales: también arrastra a tus aliados!',
+          ? `La habilidad está en espera: lista en ${cd} ronda${cd === 1 ? '' : 's'} (lo dice su ficha, bajo los botones). Defiende hasta entonces.`
+          : 'Apareció una Polilla al borde de tu fila. En la fase 2 pulsa el botón Corrimiento: se resaltan tu fila y tu columna. Haz clic en una casilla de la fila hacia la Polilla y luego en Listo. ¡En partidas reales también arrastra a tus aliados!',
       ];
     },
-    focus: ['.mode[data-mode="ABILITY"]', '#tile-ability'],
+    focus: ['.act[data-act="ABILITY"]', '#ability-card'],
     done: (c, type) => type === 'RoundResolved' && c.server.lastOrder?.type === 'ABILITY' && c.mine(c.lastResolved, 'ABILITY_USED'),
   },
   {
@@ -225,25 +205,14 @@ const STEPS = [
     done: (c) => c.server.enemies.size === 0,
   },
   {
-    title: 'Sabotear y empujar',
+    title: 'Empujar y la escalera',
     text: () => [
-      'Todos quieren el mismo oro. Sabotear (R y una dirección): 1 de daño al primer aliado en línea a 2 casillas o menos. Nadie ve quién fue. Solo una vez por sala.',
-      'Empujar (F y una dirección): mueve 1 casilla a quien tengas al lado, aliado o enemigo. Sí se ve quién fue, y luego esperas 3 rondas. Un enemigo que no vuela muere en una grieta; un héroe queda derribado.',
-      'Aquí no hay a quién sabotear. En una partida, ten cuidado: pueden juzgarte.',
+      'Empujar (botón Empujar y clic en la casilla de al lado): mueve 1 casilla a quien tengas al lado, aliado o enemigo. Se ve quién fue y luego esperas 3 rondas. Un enemigo que no vuela muere en una grieta; un héroe queda derribado.',
+      'Al despejar una sala, pisar la escalera lleva a todos directo a la siguiente. Su tipo sale al azar y se anuncia al entrar: tesoro, arena, santuario, oscura o inundada.',
+      'No hay límite de rondas, pero desde la ronda 80 llega el frío: daño cada 3 rondas que nada para. No se demoren.',
     ],
-    focus: ['.mode[data-mode="SABOTAGE"]', '.mode[data-mode="PUSH"]'],
+    focus: ['.act[data-act="PUSH"]', '#board'],
     button: 'Sigue',
-  },
-  {
-    title: 'El Juicio y las puertas',
-    setup: (c) => { c.server.paused = true; },
-    text: () => [
-      'Al despejar una sala y bajar por la escalera, el juego se detiene hasta 20 s. Cada uno vota en secreto: a quién acusa (o a nadie) y por qué puerta seguir.',
-      'Con mayoría, el acusado queda condenado. Si traicionó en esa sala es culpable: pierde 3 de oro y se ven sus traiciones. Si era inocente, cada uno de los que lo acusaron pierde 1. Nunca se sabe quién votó qué.',
-      'Cada puerta lleva a una sala con su propia regla: tesoro, arena, santuario, oscura o inundada. Ves su efecto antes de votar. Ante el Celador solo hay Juicio. Los Traidores no votan; un derribado o un Fantasma, sí.',
-    ],
-    focus: ['#board'],
-    button: 'Entendido',
   },
   {
     // Opcional: se explica y se puede ver el diálogo, pero no hace falta jugarlos.
@@ -439,7 +408,7 @@ class Coach {
   finish() {
     setText('coach-step', 'Completado');
     setText('coach-title', '¡Lo lograste!');
-    $('coach-body').replaceChildren(el('p', {}, 'Ya sabes dar un paso y actuar, defender, atacar, abrir cofres y usar tu habilidad. Y qué esperar de El Juicio.'));
+    $('coach-body').replaceChildren(el('p', {}, 'Ya sabes planear las dos fases con clics, defender, atacar, abrir cofres y usar tu habilidad.'));
     $('coach-bar').style.width = '100%';
     $('coach-next').hidden = true;
     this.setFocus([]);

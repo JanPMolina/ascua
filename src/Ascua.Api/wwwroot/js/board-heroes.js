@@ -7,8 +7,9 @@ import { heroInfo } from './heroes.js';
 import { glow, sprite, HERO_COLORS } from './sprites.js';
 import { ease } from './fx.js';
 import { SIGNALS } from './labels.js';
+// Lado de la sala (9 u 11): enlace vivo con board.js, que lo cambia al llegar la vista.
+import { SIZE } from './board.js';
 
-const SIZE = 9;
 const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const COINS = ['#ffe07a', '#e8c44a', '#ff9a3a'];
 const ECHO_COLORS = ['#6fd8c8', '#c8fff4', '#2f7f76'];

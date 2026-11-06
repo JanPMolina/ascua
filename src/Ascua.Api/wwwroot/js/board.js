@@ -1,4 +1,4 @@
-// Tablero 9×9 en <canvas>, animado con requestAnimationFrame.
+// Tablero (9×9, u 11×11 con 5 jugadores) en <canvas>, animado con requestAnimationFrame.
 //
 // match.js entrega el estado lógico con draw(state) cada vez que cambia; el renderer guarda su propio
 // estado visual (posiciones interpoladas, vida mostrada, transparencias) y lo dibuja a 60 fps solo
@@ -19,16 +19,18 @@ import { getSettings } from './settings.js';
 import { HERO_COLORS, dangerIcon, glow, grayCopy, makeCanvas, paintTile, sprite } from './sprites.js';
 import { Floaters, Particles, Timeline, clamp01, ease } from './fx.js';
 import { heroInfo } from './heroes.js';
+import { ENEMIES as ENEMY_NAMES } from './labels.js';
 import {
   applyHeroEvent, correctedTiles, drawEchoes, drawGroundEmbers, drawHiddenTelegraphs, drawHostMark, drawLastWord, drawNoise, drawRewind,
   drawShiftPreview, drawSignalMark, drawThreads, isBlind, mirrored, onShiftLine, shiftFromEvent, shiftFromOrder, shiftText, shiftedPos, signalFx, tensarCells,
 } from './board-heroes.js';
 
-export const SIZE = 9;
+/** Lado de la sala: lo trae la vista (`view.room.size`). Se cambia con `setSize`. */
+export let SIZE = 9;
 
 const DIRS = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
 const DIR_NAMES = Object.keys(DIRS);
-const MODE_COLORS = { MOVE: '#8fd0ff', ATTACK: '#ff6a5a', ABILITY: '#e8c15a', INTERACT: '#6cc28a', GUARD: '#8fd0ff', SABOTAGE: '#c58af0', PUSH: '#ffb45a' };
+const MODE_COLORS = { MOVE: '#8fd0ff', ATTACK: '#ff6a5a', ABILITY: '#e8c15a', INTERACT: '#6cc28a', GUARD: '#8fd0ff', PUSH: '#ffb45a' };
 /** Lo que no deja dar un paso (los cofres ya abiertos tampoco se pisan). */
 const STOPS_STEP = new Set(['WALL', 'BRAZIER', 'ALTAR', 'CHEST', 'CHEST_OPENED']);
 const STOPS_SHOTS = new Set(['WALL', 'BRAZIER']);
@@ -156,28 +158,31 @@ export class BoardRenderer {
       on('match:stop', () => this.dispose()),
       on('signal:received', (s) => signalFx(this, s)),
     ];
-    // Clic en el tablero: casilla para la próxima señal rápida.
-    this.onCanvasClick = (e) => {
+    // Clic en el tablero: objetivo del plan (match.js decide) o casilla para la próxima señal rápida.
+    const tileOf = (e) => {
       const box = canvas.getBoundingClientRect();
-      if (!box.width) return;
+      if (!box.width) return null;
       const x = Math.floor(((e.clientX - box.left) / box.width) * SIZE);
       const y = Math.floor(((e.clientY - box.top) / box.height) * SIZE);
-      if (inBounds(x, y)) emit('board:tile', { x, y });
+      return inBounds(x, y) ? { x, y } : null;
     };
+    this.onCanvasClick = (e) => {
+      const t = tileOf(e);
+      if (t) emit('board:tile', t);
+    };
+    // Al pasar el ratón sobre un objetivo resaltado, se ve qué afectaría.
+    this.onCanvasMove = (e) => {
+      const t = tileOf(e);
+      const mode = this.state.armedMode;
+      this.hoverDir = t && mode ? this.dirForTile(mode, t.x, t.y) : null;
+      canvas.style.cursor = this.hoverDir || (t && mode === 'MOVE' && this.isOrigin(t)) ? 'pointer' : '';
+    };
+    this.onCanvasOut = () => { this.hoverDir = null; canvas.style.cursor = ''; };
     canvas.addEventListener('click', this.onCanvasClick);
+    canvas.addEventListener('pointermove', this.onCanvasMove);
+    canvas.addEventListener('pointerleave', this.onCanvasOut);
     this.onVisibility = () => this.updateLoop();
-    this.onHover = (e) => {
-      const btn = e.target?.closest?.('.dir[data-dir]');
-      if (btn) this.hoverDir = btn.dataset.dir;
-    };
-    this.onLeave = (e) => {
-      if (e.target?.closest?.('.dir[data-dir]')) this.hoverDir = null;
-    };
     document.addEventListener('visibilitychange', this.onVisibility);
-    document.addEventListener('pointerover', this.onHover);
-    document.addEventListener('pointerout', this.onLeave);
-    document.addEventListener('focusin', this.onHover);
-    document.addEventListener('focusout', this.onLeave);
     this.onResize = () => this.resize();
     window.addEventListener('resize', this.onResize);
     this.observer = typeof ResizeObserver === 'function' ? new ResizeObserver(this.onResize) : null;
@@ -192,18 +197,33 @@ export class BoardRenderer {
     this.updateLoop();
     this.offs.forEach((off) => off());
     this.canvas.removeEventListener('click', this.onCanvasClick);
+    this.canvas.removeEventListener('pointermove', this.onCanvasMove);
+    this.canvas.removeEventListener('pointerleave', this.onCanvasOut);
     document.removeEventListener('visibilitychange', this.onVisibility);
-    document.removeEventListener('pointerover', this.onHover);
-    document.removeEventListener('pointerout', this.onLeave);
-    document.removeEventListener('focusin', this.onHover);
-    document.removeEventListener('focusout', this.onLeave);
     window.removeEventListener('resize', this.onResize);
     this.observer?.disconnect();
   }
 
   // ───────────── tamaño y bucle ─────────────
 
-  /** El canvas se dimensiona en píxeles de dispositivo (múltiplo de 9 para que las casillas sean exactas). */
+  /** Cambia el lado de la sala (9 u 11): se rehacen las capas que dependen de él. */
+  setSize(size) {
+    const n = Number(size) || 9;
+    if (n === SIZE) return;
+    SIZE = n;
+    this.vision = new Float32Array(SIZE * SIZE);
+    this.known = new Float32Array(SIZE * SIZE);
+    this.fog = makeCanvas(SIZE * 4, SIZE * 4);
+    this.fogCtx = this.fog.getContext('2d');
+    this.fogImg = this.fogCtx.createImageData(SIZE * 4, SIZE * 4);
+    this.fogDirty = true;
+    this.layerDirty = true;
+    this.W = 0;
+    this.canvas.setAttribute('aria-label', `Tablero de ${SIZE}×${SIZE}`);
+    this.resize();
+  }
+
+  /** El canvas se dimensiona en píxeles de dispositivo (múltiplo del lado para que las casillas sean exactas). */
   resize() {
     const css = this.canvas.getBoundingClientRect().width;
     if (!css) return;
@@ -256,6 +276,7 @@ export class BoardRenderer {
 
   /** Lo llama match.js en cada render con el estado lógico; el dibujo ocurre en el bucle. */
   draw(state) {
+    if (state.size) this.setSize(state.size);
     this.state = state;
     const changes = this.syncTiles(state.tiles);
     if (this.pending) this.consumePending(changes);
@@ -454,18 +475,13 @@ export class BoardRenderer {
     if (hosted) {
       // Dentro del huésped: mover lo mueve, atacar golpea con su alcance, la habilidad sale. Guardar e interactuar no hacen nada.
       if (type === 'MOVE' || type === 'ABILITY') stepFrom(from0, dir);
-      else if (type === 'ATTACK') ray(from0, dir, this.state.enemies?.get(me.hostEnemyId)?.kind === 'BALLESTERO' ? 8 : 1);
-      return out;
-    }
-    if (type === 'SABOTAGE') {
-      // Busca al primer aliado en línea desde el cuerpo principal y, si no hay, desde el segundo.
-      ray(from0, dir, 2);
-      if (second) ray(second, mirrored(dir), 2);
+      else if (type === 'ATTACK') ray(from0, dir, this.state.enemies?.get(me.hostEnemyId)?.kind === 'BALLESTERO' ? SIZE : 1);
       return out;
     }
     if (type === 'PUSH') {
-      ray(from0, dir, 2);
-      if (second) ray(second, mirrored(dir), 2);
+      // Solo lo que está al lado: la casilla vecina (y la del segundo cuerpo de Hilván, en espejo).
+      stepFrom(from0, dir);
+      if (second) stepFrom(second, mirrored(dir));
       return out;
     }
     if (type === 'MOVE' || type === 'INTERACT') {
@@ -507,6 +523,78 @@ export class BoardRenderer {
     return out;
   }
 
+  /** ¿Es la casilla desde la que actúa el jugador (clic en ella = quedarse)? */
+  isOrigin(t) {
+    const o = this.origin();
+    return Boolean(o) && o.x === t.x && o.y === t.y;
+  }
+
+  /**
+   * Casillas que se pueden elegir para una acción, por dirección (las que se resaltan). Una habilidad sin casillas en una
+   * dirección (Corregir sin ataques marcados cerca, Soborno sin nadie) deja elegir igual la casilla vecina.
+   */
+  targetsByDir(type) {
+    const out = new Map();
+    const tmp = [];
+    const origin = this.origin();
+    for (const d of DIR_NAMES) {
+      this.affected(type, d, tmp);
+      let list = tmp.slice();
+      if (type === 'MOVE' && !isSpirit(this.state.me)) list = list.filter((p) => !STOPS_STEP.has(this.tiles.get(tileKey(p.x, p.y))));
+      if (!list.length && type === 'ABILITY' && origin) {
+        const step = this.stepInPlay();
+        const from = (step ? this.landing(step)?.pos : null) ?? origin;
+        const [dx, dy] = DIRS[d];
+        if (inBounds(from.x + dx, from.y + dy)) list = [{ x: from.x + dx, y: from.y + dy }];
+      }
+      out.set(d, list);
+    }
+    return out;
+  }
+
+  /** Dirección que corresponde a un clic en (x, y) para esa acción; null si no es un objetivo resaltado. */
+  dirForTile(type, x, y) {
+    const me = this.state.me;
+    if (!me) return null;
+    const noAim = type === 'ABILITY' && !isSpirit(me) && me.hostEnemyId == null && ['ANTEAYER', 'HILVAN', 'ESCUCHA', 'CAMPANERO'].includes(me.hero);
+    const byDir = this.targetsByDir(type);
+    const hits = DIR_NAMES.filter((d) => byDir.get(d).some((p) => p.x === x && p.y === y));
+    if (noAim) {
+      // La dirección no importa: vale un clic en cualquier casilla resaltada o en el propio héroe.
+      const step = this.stepInPlay();
+      const from = (step ? this.landing(step)?.pos : null) ?? this.origin();
+      return hits.length || (from && from.x === x && from.y === y) ? 'N' : null;
+    }
+    if (!hits.length) return null;
+    if (hits.length === 1) return hits[0];
+    // Varias direcciones cubren la casilla (Corrimiento: E y O mueven la misma fila): manda hacia dónde queda.
+    const step = type === 'MOVE' ? null : this.stepInPlay();
+    const from = (step ? this.landing(step)?.pos : null) ?? this.origin();
+    const dx = x - from.x;
+    const dy = y - from.y;
+    const want = Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 'E' : 'W') : (dy >= 0 ? 'S' : 'N');
+    return hits.includes(want) ? want : hits[0];
+  }
+
+  /** Nombre de lo primero que hay en las casillas de esa acción, para el resumen del plan («al Carroñero»). */
+  describeTarget(type, dir) {
+    const tmp = [];
+    this.affected(type, dir, tmp);
+    const { me, allies, enemies } = this.state;
+    for (const p of tmp) {
+      for (const e of enemies?.values?.() ?? []) {
+        if (e.position?.x === p.x && e.position?.y === p.y && e.enemyId !== me?.hostEnemyId) return `al ${ENEMY_NAMES[e.kind] ?? 'enemigo'}`;
+      }
+      const ally = (allies ?? []).find((a) => a.position?.x === p.x && a.position?.y === p.y);
+      if (ally) return `a ${ally.displayName}`;
+      const kind = this.tiles.get(tileKey(p.x, p.y));
+      if (kind === 'CHEST') return 'al cofre';
+      if (kind === 'ALTAR') return 'al altar';
+      if (kind === 'BRAZIER') return 'al brasero';
+    }
+    return null;
+  }
+
   updatePreview() {
     const s = this.state;
     this.preview.length = 0;
@@ -514,19 +602,20 @@ export class BoardRenderer {
     this.previewMode = null;
     this.previewStep = s.pendingOrder || !s.plannedStep ? null : this.landing(s.plannedStep);
     if (s.pendingOrder || !s.me?.position || this.timeline.running) return;
-    const mode = s.armedMode ?? s.mode ?? 'MOVE';
+    const mode = s.armedMode ?? s.plannedAction?.type ?? s.mode ?? 'MOVE';
     this.previewMode = mode;
-    if (mode === 'ABILITY' && (s.me.hero === 'ANTEAYER' || s.me.hero === 'HILVAN') && !isSpirit(s.me) && s.me.hostEnemyId == null) {
-      // Volver y Tensar no dependen de la dirección: se ven en cuanto se elige la habilidad.
-      this.affected(mode, null, this.preview);
-    } else if (this.hoverDir) {
-      this.affected(mode, this.hoverDir, this.preview);
-    } else if (s.armedMode) {
-      const tmp = this.previewTmp;
-      for (const d of DIR_NAMES) {
-        this.affected(mode, d, tmp);
-        for (const p of tmp) if (!this.previewFaint.some((q) => q.x === p.x && q.y === p.y)) this.previewFaint.push(p);
+    if (s.armedMode) {
+      // Objetivos válidos de la fase: todo lo que se puede elegir, tenue; lo que está bajo el ratón, fuerte.
+      for (const list of this.targetsByDir(s.armedMode).values()) {
+        for (const p of list) if (!this.previewFaint.some((q) => q.x === p.x && q.y === p.y)) this.previewFaint.push(p);
       }
+      if (s.armedMode === 'MOVE') { const o = this.origin(); if (o) this.previewFaint.push(o); }
+      if (this.hoverDir && s.armedMode !== 'MOVE') this.affected(s.armedMode, this.hoverDir, this.preview);
+      else if (this.hoverDir) this.preview.push(...(this.targetsByDir('MOVE').get(this.hoverDir) ?? []));
+    } else if (s.plannedAction?.direction) {
+      this.affected(s.plannedAction.type, s.plannedAction.direction, this.preview);
+    } else if (s.plannedAction?.type === 'GUARD') {
+      this.affected('GUARD', null, this.preview);
     }
   }
 
@@ -2251,8 +2340,8 @@ export class BoardRenderer {
       g.setLineDash(NO_DASH);
       g.globalAlpha = 1;
     };
-    tilesFill(this.previewFaint, 0.1, true);
-    tilesFill(this.preview, 0.26, true);
+    tilesFill(this.previewFaint, 0.2, true);
+    tilesFill(this.preview, 0.4, false);
     const s = this.state;
     // Corrimiento: flechas a lo largo de la línea y adónde iría la escalera.
     if (this.previewMode === 'ABILITY' && s.me?.hero === 'MAMPOSTERO' && !isSpirit(s.me) && !s.pendingOrder && s.me.position && !this.timeline.running) {

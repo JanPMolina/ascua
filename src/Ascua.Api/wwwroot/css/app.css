@@ -1497,3 +1497,38 @@ button.trial-pick.chosen:disabled, button.door.chosen:disabled { opacity: 1; }
   .dpad .dir { min-height: 40px; padding: .1rem; font-size: 1rem; }
   .dpad .dir small { font-size: .62rem; }
 }
+
+/* ───────── Versión 4: plan por fases con el cursor (07-version-4.md §4) ───────── */
+.phase-steps { list-style: none; display: flex; align-items: center; gap: .25rem; margin: .4rem 0 .3rem; padding: 0; }
+.phase-steps .phase-arrow { color: var(--line); font-weight: 700; }
+.phase-btn {
+  display: inline-flex; align-items: center; gap: .3rem; padding: .3rem .55rem; border-radius: 999px;
+  border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; font-size: .85rem; cursor: pointer;
+}
+.phase-btn b { display: inline-grid; place-items: center; width: 1.25rem; height: 1.25rem; border-radius: 50%; background: var(--panel-3); font-size: .75rem; }
+.phase-btn.current { border-color: var(--ember-hi); background: rgba(255, 138, 61, .18); color: var(--ember-hi); box-shadow: 0 0 0 2px rgba(255, 196, 107, .25); }
+.phase-btn.current b { background: var(--ember); color: #1a0f08; }
+.phase-btn.done b { background: var(--ok); color: #0c1a10; }
+.phase-btn:disabled { cursor: default; opacity: .7; }
+.phase-help { margin: .2rem 0 .45rem; padding: .45rem .6rem; border-radius: 8px; background: var(--panel-3); font-size: .9rem; line-height: 1.3; }
+.phase-help.picking { background: rgba(255, 196, 107, .14); outline: 1px dashed var(--ember-hi); }
+.act-buttons { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.4rem, 1fr)); gap: .35rem; }
+.act {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: .1rem; min-height: 3.2rem; padding: .35rem .3rem;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--panel-2); color: inherit; font: inherit; font-size: .85rem; cursor: pointer;
+}
+.act .act-ico { font-size: 1.25rem; line-height: 1; }
+.act:hover:not(:disabled) { border-color: var(--accent); }
+.act.armed { border-color: var(--ember-hi); background: rgba(255, 138, 61, .22); box-shadow: 0 0 0 2px rgba(255, 196, 107, .35); }
+.act.chosen { border-color: var(--ok); background: rgba(116, 207, 147, .16); }
+.act-ability { border-color: var(--gold); }
+.act .act-cd { position: absolute; top: .15rem; right: .25rem; font-size: .7rem; padding: 0 .3rem; border-radius: 999px; background: var(--panel-3); }
+.act:disabled { opacity: .45; cursor: not-allowed; }
+.act-buttons.locked .act { opacity: .55; }
+.ability-card { margin: .45rem 0 0; padding: .4rem .55rem; border-radius: 8px; border: 1px solid rgba(243, 195, 94, .35); background: rgba(243, 195, 94, .07); }
+.ability-card[hidden] { display: none; }
+.ability-head { display: flex; align-items: center; justify-content: space-between; gap: .4rem; }
+.ability-card p { margin: .2rem 0 0; font-size: .8rem; line-height: 1.3; opacity: .9; }
+.plan-summary { margin: .45rem 0 .3rem; font-weight: 600; min-height: 1.3em; color: var(--ember-hi); }
+.plan-actions { display: flex; gap: .4rem; }
+.plan-actions #btn-ready { flex: 1; }

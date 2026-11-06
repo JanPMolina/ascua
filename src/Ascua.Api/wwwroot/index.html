@@ -34,9 +34,9 @@
         <div class="hero-copy">
           <img class="hero-logo" src="img/logo.svg" alt="Ascua" width="320" height="96">
           <p class="tagline">Desciende a la cripta. Derrota al Celador. Quédate con el oro.</p>
-          <p class="lead">Una mazmorra por turnos simultáneos para 2 a 4 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más oro.</p>
+          <p class="lead">Una mazmorra por turnos simultáneos para 2 a 5 jugadores: cooperen para derrotar al Celador, pero solo gana quien reúna más oro.</p>
           <ul class="features">
-            <li><span class="feat-ico" aria-hidden="true">⏳</span><span><b>Rondas de 20 s</b> todos ordenan a la vez, en secreto.</span></li>
+            <li><span class="feat-ico" aria-hidden="true">⏳</span><span><b>Rondas de 11 s</b> todos ordenan a la vez, en secreto.</span></li>
             <li><span class="feat-ico" aria-hidden="true">🤝</span><span><b>Cooperación tensa</b> sin el grupo no hay victoria… ni reparto.</span></li>
             <li><span class="feat-ico" aria-hidden="true">📜</span><span><b>Misiones secretas</b> que se revelan al final.</span></li>
           </ul>
@@ -286,7 +286,7 @@
           <div class="timerbar"><div id="m-timerbar"></div></div>
           <div class="board-stage">
             <div class="board-frame">
-              <canvas id="board" width="540" height="540" aria-label="Tablero 9×9"></canvas>
+              <canvas id="board" width="540" height="540" aria-label="Tablero de la sala"></canvas>
               <div id="verdict" class="verdict-card" role="status" hidden></div>
             </div>
           </div>
@@ -307,46 +307,46 @@
         <aside class="match-right" aria-label="Órdenes y eventos">
           <div class="card card-orders">
             <div class="card-head">
-              <h3>Orden</h3>
+              <h3>Tu plan</h3>
               <span class="spacer"></span>
-              <small class="hint">Esc cancela</small>
+              <small id="plan-round" class="hint"></small>
             </div>
-            <div class="modes" role="radiogroup" aria-label="Tipo de orden">
-              <button type="button" class="mode" data-mode="MOVE" role="radio"><span class="mode-ico" aria-hidden="true">➜</span><span class="mode-name">Paso</span> <kbd>↑↓←→</kbd><small class="mode-cd" hidden></small></button>
-              <button type="button" class="mode" data-mode="ATTACK" role="radio"><span class="mode-ico" aria-hidden="true">⚔</span><span class="mode-name">Atacar</span> <kbd>⇧</kbd><small class="mode-cd" hidden></small></button>
-              <button type="button" class="mode" data-mode="ABILITY" role="radio"><span class="mode-ico" aria-hidden="true">✺</span><span class="mode-name">Habilidad</span> <kbd>Q</kbd><small class="mode-cd" hidden></small></button>
-              <button type="button" class="mode" data-mode="SABOTAGE" role="radio"><span class="mode-ico" aria-hidden="true">🗡</span><span class="mode-name">Sabotear</span> <kbd>R</kbd><small class="mode-cd" hidden></small></button>
-              <button type="button" class="mode" data-mode="PUSH" role="radio"><span class="mode-ico" aria-hidden="true">🖐</span><span class="mode-name">Empujar</span> <kbd>F</kbd><small class="mode-cd" hidden></small></button>
-              <button type="button" class="mode" data-mode="INTERACT" role="radio"><span class="mode-ico" aria-hidden="true">✋</span><span class="mode-name">Usar</span> <kbd>E</kbd><small class="mode-cd" hidden></small></button>
+            <ol id="phase-steps" class="phase-steps" aria-label="Fases de la ronda">
+              <li><button type="button" class="phase-btn" data-phase="MOVE"><b>1</b> Moverte</button></li>
+              <li aria-hidden="true" class="phase-arrow">→</li>
+              <li><button type="button" class="phase-btn" data-phase="ACT"><b>2</b> Actuar</button></li>
+              <li aria-hidden="true" class="phase-arrow">→</li>
+              <li><button type="button" class="phase-btn" data-phase="READY"><b>✔</b> Listo</button></li>
+            </ol>
+            <p id="phase-help" class="phase-help" aria-live="polite"></p>
+            <div id="act-buttons" class="act-buttons" role="group" aria-label="Acción de la fase 2">
+              <button type="button" class="act" data-act="ATTACK"><span class="act-ico" aria-hidden="true">⚔</span><span class="act-name">Atacar</span><small class="act-cd" hidden></small></button>
+              <button type="button" class="act act-ability" data-act="ABILITY"><span class="act-ico" aria-hidden="true">✺</span><span class="act-name">Habilidad</span><small class="act-cd" hidden></small></button>
+              <button type="button" class="act" data-act="INTERACT"><span class="act-ico" aria-hidden="true">✋</span><span class="act-name">Usar</span><small class="act-cd" hidden></small></button>
+              <button type="button" class="act" data-act="PUSH"><span class="act-ico" aria-hidden="true">🖐</span><span class="act-name">Empujar</span><small class="act-cd" hidden></small></button>
+              <button type="button" class="act act-guard" data-act="GUARD"><span class="act-ico" aria-hidden="true">⛨</span><span class="act-name">Defender</span><small class="act-cd" hidden></small></button>
             </div>
-            <p id="order-plan" class="order-plan" hidden></p>
-            <p id="order-armed" class="armed-hint" hidden></p>
+            <div id="ability-card" class="ability-card">
+              <div class="ability-head"><b id="ability-name">Habilidad</b><span id="ability-wait" class="badge"></span></div>
+              <p id="ability-text"></p>
+            </div>
+            <p id="plan-summary" class="plan-summary" aria-live="polite"></p>
+            <div class="plan-actions">
+              <button id="btn-plan-reset" type="button" class="ghost">Borrar plan</button>
+              <button id="btn-ready" type="button" class="primary big">Listo</button>
+            </div>
             <p id="order-note" class="order-note" hidden></p>
-            <div class="dpad">
-              <button type="button" class="dir" data-dir="N" aria-label="Norte"><span aria-hidden="true">▲</span><small>N</small></button>
-              <button type="button" class="dir" data-dir="W" aria-label="Oeste"><span aria-hidden="true">◀</span><small>O</small></button>
-              <button type="button" id="btn-guard" class="dir guard"><span id="guard-ico" aria-hidden="true">⛨</span><small><span id="guard-name">Defender</span> <kbd>␣</kbd></small></button>
-              <button type="button" class="dir" data-dir="E" aria-label="Este"><span aria-hidden="true">▶</span><small>E</small></button>
-              <button type="button" class="dir" data-dir="S" aria-label="Sur"><span aria-hidden="true">▼</span><small>S</small></button>
-            </div>
-            <button type="button" id="btn-send-step" class="primary block" hidden>Enviar solo el paso <kbd>Enter</kbd></button>
             <div id="last-word" class="last-word" hidden aria-live="polite">
               <b id="last-word-title">🔔 Último en hablar</b>
               <ul id="last-word-list"></ul>
             </div>
             <div id="order-status" class="order-status" aria-live="polite">Sin orden en esta ronda.</div>
             <details class="shortcuts">
-              <summary>Atajos de teclado</summary>
+              <summary>Atajos de teclado (opcionales)</summary>
               <ul class="kbd-list">
-                <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> marcar el paso</li>
-                <li><kbd>Enter</kbd> o la misma flecha: enviar solo el paso</li>
-                <li><kbd>⇧</kbd> + flecha atacar (con el paso marcado)</li>
-                <li><kbd>Q</kbd> y flecha habilidad</li>
-                <li><kbd>E</kbd> y flecha usar</li>
-                <li><kbd>R</kbd> y flecha sabotear</li>
-                <li><kbd>F</kbd> y flecha empujar</li>
-                <li><kbd>Espacio</kbd> defender (sin paso)</li>
-                <li><kbd>Esc</kbd> quitar lo marcado</li>
+                <li><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd> el paso, o el objetivo de la acción elegida</li>
+                <li><kbd>A</kbd> atacar · <kbd>Q</kbd> habilidad · <kbd>E</kbd> usar · <kbd>F</kbd> empujar · <kbd>Espacio</kbd> defender</li>
+                <li><kbd>Enter</kbd> listo · <kbd>Esc</kbd> volver atrás</li>
               </ul>
             </details>
           </div>
@@ -355,7 +355,7 @@
             <div class="card-head">
               <h3>Señales</h3>
               <span class="spacer"></span>
-              <small id="signal-hint" class="hint">Clic en el tablero: marca casilla</small>
+              <small id="signal-hint" class="hint">Clic en una casilla sin resaltar: la marca</small>
             </div>
             <div class="signal-buttons" role="group" aria-label="Señales rápidas a tu bando">
               <button type="button" class="signal" data-signal="HERE"><span aria-hidden="true">📍</span> ¡Aquí! <kbd>1</kbd></button>
@@ -370,10 +370,6 @@
             <h3>Eventos de la ronda</h3>
             <ul id="events" class="events" role="log" aria-live="polite"></ul>
           </div>
-          <details id="verdict-log" class="card card-verdict" hidden>
-            <summary>Último Juicio</summary>
-            <div id="verdict-log-body"></div>
-          </details>
 
           <div class="row match-actions">
             <button id="btn-leave-match" type="button" class="danger">Abandonar partida</button>
@@ -402,30 +398,6 @@
             <div id="pact-options" class="pact-options"></div>
           </div>
           <p class="hint">Plazo: <b id="draft-timer" class="draft-timer"></b> (si vence, se elige la primera).</p>
-        </div>
-      </div>
-
-      <!-- Interludio: El Juicio y las puertas (planteamiento/06-version-3.md §3 y §4) -->
-      <div id="interlude" class="overlay" hidden role="dialog" aria-modal="true" aria-labelledby="interlude-title">
-        <div class="dialog interlude">
-          <span id="interlude-floor" class="badge warn"></span>
-          <h2 id="interlude-title">El Juicio</h2>
-          <p id="interlude-lead" class="hint"></p>
-          <section class="trial-section">
-            <h3>¿A quién acusas de traicionar en esta sala?</h3>
-            <p class="hint">Si una mayoría lo acusa: culpable, −3 de oro y su traición a la vista. Inocente: cada acusador pierde 1. Tu voto es secreto.</p>
-            <div id="trial-options" class="trial-options" role="radiogroup" aria-label="A quién acusas"></div>
-          </section>
-          <section id="door-section" class="door-section">
-            <h3>¿Por qué puerta siguen?</h3>
-            <div id="door-options" class="door-options" role="radiogroup" aria-label="Puerta"></div>
-          </section>
-          <div class="interlude-actions">
-            <button id="btn-vote" type="button" class="primary big">Votar</button>
-            <span id="interlude-voted" class="badge" aria-live="polite"></span>
-          </div>
-          <div class="path-timebar" aria-hidden="true"><div id="interlude-timebar"></div></div>
-          <p class="hint">Plazo: <b id="interlude-timer" class="draft-timer"></b> · si vence, tu voto es «a nadie».</p>
         </div>
       </div>
 
@@ -491,7 +463,7 @@
         <div id="fin-pacts" class="pacts"></div>
         <div id="fin-tutorial" class="fin-tutorial" hidden>
           <h3>Terminaste el tutorial</h3>
-          <p>En una partida real juegan de 2 a 4 personas, cada una con uno de los nueve héroes, cada ronda dura 20 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan las misiones secretas y gana quien tenga más oro.</p>
+          <p>En una partida real juegan de 2 a 5 personas, cada una con uno de los nueve héroes, cada ronda dura 11 s y hay 5 salas: 4 con enemigos y la del Celador. Al final se revelan las misiones secretas y gana quien tenga más oro.</p>
           <div class="row">
             <a class="button primary" href="/">Jugar en línea</a>
             <a class="button secondary" href="?tutorial=1">Repetir el tutorial</a>
@@ -536,19 +508,19 @@
 
       <section class="howto-page">
         <h3>La idea</h3>
-        <p>Una hoguera antigua se apaga. De 2 a 4 portadores bajan a la cripta a derrotar al <b>Celador</b>, que se alimenta de ella.</p>
+        <p>Una hoguera antigua se apaga. De 2 a 5 portadores bajan a la cripta a derrotar al <b>Celador</b>, que se alimenta de ella.</p>
         <ul>
-          <li><b>Cooperan para sobrevivir:</b> si nadie vence al Celador antes de la ronda 60, todos pierden.</li>
+          <li><b>Cooperan para sobrevivir:</b> si caen todos, todos pierden. No hay límite de rondas, pero desde la ronda 80 llega <b>el frío</b>: daño cada 3 rondas que nada para.</li>
           <li><b>Compiten por el oro:</b> si el Celador cae, gana quien tenga más <b>de oro</b>.</li>
-          <li>La cripta tiene <b>5 salas</b> de 9×9: cuatro con enemigos, cofres y trampas, y la del Celador.</li>
+          <li>La cripta tiene <b>5 salas</b> de 9×9 (11×11 con 5 jugadores): cuatro con enemigos, cofres y trampas, y la del Celador. Con más jugadores hay más monstruos y el Celador aguanta más.</li>
         </ul>
       </section>
 
       <section class="howto-page" hidden>
         <h3>Una ronda</h3>
         <ol>
-          <li><b>Planifica (20 s):</b> cada jugador decide en secreto <b>un paso y una acción</b>, los dos opcionales. Los demás solo ven que ya decidiste.</li>
-          <li><b>Se resuelve todo a la vez</b> cuando todos decidieron o vence el reloj. Si no mandaste nada, tu héroe <b>defiende</b>.</li>
+          <li><b>Planifica (11 s) con clics:</b> <b>1 Moverte</b> (clic en una casilla vecina resaltada, o en ti para quedarte) → <b>2 Actuar</b> (un botón y clic en el objetivo resaltado) → <b>Listo</b>. Los demás solo ven que ya decidiste.</li>
+          <li><b>Se resuelve todo a la vez</b> cuando todos pulsaron Listo o vence el reloj. Si se acaba el tiempo, se envía lo que planeaste; sin plan, tu héroe <b>defiende</b>.</li>
           <li>Orden de resolución: defensas y escudos → <b>todos los pasos</b> → <b>todas las acciones</b>, desde donde quedó cada uno → golpes de los enemigos → los enemigos se mueven y <b>marcan</b> su próximo golpe.</li>
         </ol>
         <p class="hint">Si dos héroes van a la misma casilla, ninguno se mueve (rebotan), y la acción sale de donde estaban. Quien defiende se planta: no da paso.</p>
@@ -557,18 +529,18 @@
       <section class="howto-page" hidden>
         <h3>Órdenes y controles</h3>
         <table class="table">
-          <thead><tr><th>Orden</th><th>Teclado</th><th>Qué hace</th></tr></thead>
+          <thead><tr><th>Fase</th><th>Con el ratón</th><th>Qué hace</th></tr></thead>
           <tbody>
-            <tr><td>Paso</td><td><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd></td><td>Marca 1 casilla (se ve en el tablero). <kbd>Enter</kbd> o la misma flecha lo envía solo; si eliges una acción, se envían juntos.</td></tr>
-            <tr><td>Atacar</td><td><kbd>⇧</kbd> + flecha</td><td>Ataque básico según el alcance de tu héroe, desde donde te deje el paso.</td></tr>
-            <tr><td>Habilidad</td><td><kbd>Q</kbd> y flecha</td><td>La habilidad de tu héroe (tiene espera; si no hace nada, no se gasta).</td></tr>
-            <tr><td>Usar</td><td><kbd>E</kbd> y flecha</td><td>Abrir un cofre, levantar a un aliado derribado o usar un altar (casilla vecina).</td></tr>
-            <tr><td>Sabotear</td><td><kbd>R</kbd> y flecha</td><td>1 de daño anónimo al primer aliado en línea a ≤2. Una vez por sala.</td></tr>
-            <tr><td>Empujar</td><td><kbd>F</kbd> y flecha</td><td>Mueve 1 casilla a quien tengas al lado. Con autor. Espera 3.</td></tr>
-            <tr><td>Defender</td><td><kbd>Espacio</kbd></td><td>Recibes la mitad de daño; anula los golpes de 1. No admite paso. Es la orden por defecto.</td></tr>
+            <tr><td>1 Moverte</td><td>Clic en una casilla vecina resaltada (o en ti)</td><td>Un paso opcional. Se ve dónde quedarías.</td></tr>
+            <tr><td>2 Atacar</td><td>Botón y clic en el objetivo</td><td>Ataque básico según el alcance de tu héroe, desde donde te deje el paso.</td></tr>
+            <tr><td>2 Habilidad</td><td>Botón con su nombre y clic</td><td>La habilidad de tu héroe: su ficha dice qué hace y su espera. Si no hace nada, no se gasta.</td></tr>
+            <tr><td>2 Usar</td><td>Botón y clic</td><td>Abrir un cofre, levantar a un aliado derribado o usar un altar (casilla vecina).</td></tr>
+            <tr><td>2 Empujar</td><td>Botón y clic</td><td>Mueve 1 casilla a quien tengas al lado. Con autor. Espera 3.</td></tr>
+            <tr><td>2 Defender</td><td>Botón</td><td>Recibes la mitad de daño; anula los golpes de 1. Borra el paso. Es la orden por defecto.</td></tr>
+            <tr><td>Listo</td><td>Botón</td><td>Envía el plan. Hasta entonces puedes cambiarlo; «Borrar plan» empieza de nuevo.</td></tr>
           </tbody>
         </table>
-        <p class="hint">También puedes usar los botones del panel «Orden»: el d-pad marca el paso, un botón de acción la arma y el d-pad le da dirección. Esc quita lo marcado.</p>
+        <p class="hint">Todo se hace con el ratón o tocando la pantalla. Atajos opcionales: flechas (paso u objetivo), A, Q, E, F, Espacio, Enter (Listo) y Esc (volver).</p>
       </section>
 
       <section class="howto-page" hidden>
@@ -577,7 +549,7 @@
           <li><b>Niebla:</b> ves hasta 3 casillas a tu alrededor; lo que viste antes queda en gris. Siempre ves a tus aliados, salvo a Polizón cuando va dentro de un monstruo.</li>
           <li><span class="sw sw-tele"></span><b>Ataque marcado:</b> los enemigos marcan dónde golpearán <b>la ronda siguiente</b>. Apártate o defiende.</li>
           <li><span class="sw sw-chest"></span><b>Cofre:</b> oro y a veces una poción, escudo o la llave de plata de los altares.</li>
-          <li><span class="sw sw-stairs"></span><b>Escalera:</b> con la sala sin enemigos, pisarla abre El Juicio y las puertas, y luego lleva a todos a la sala siguiente. El Mampostero puede moverla.</li>
+          <li><span class="sw sw-stairs"></span><b>Escalera:</b> con la sala sin enemigos, pisarla lleva a todos a la sala siguiente; su tipo sale al azar y se anuncia al entrar. El Mampostero puede moverla.</li>
           <li><span class="sw sw-spikes"></span><b>Pinchos</b> (se activan en rondas pares) y <span class="sw sw-fire"></span><b>fuego</b> hacen daño.</li>
         </ul>
       </section>
@@ -593,37 +565,36 @@
             <dt>Anteayer · 4 de vida</dt>
             <dd><i>Rompe: «lo hecho, hecho está».</i> <b>Eco:</b> 2 rondas después de cada ataque, una copia translúcida lo repite desde donde estabas, aunque ya estés derribado. <b>Volver</b> (espera 5): saltas a donde estabas hace 2 rondas y recuperas la vida que tenías entonces, si era más.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/hilvan.svg" alt="" width="48" height="48"><dl>
-            <dt>Hilván · 8 de vida</dt>
+            <dt>Hilván · 9 de vida</dt>
             <dd><i>Rompe: «tienes un solo cuerpo».</i> Dos cuerpos, una orden, una vida. Norte y sur los mueven igual; este y oeste, al revés. Un golpe a cada cuerpo son dos golpes. <b>Tensar</b> (espera 3): con los cuerpos alineados, a ≥2 y sin muro entre ellos, todo lo que haya en medio recibe 2 de daño, aliados incluidos.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/polizon.svg" alt="" width="48" height="48"><dl>
-            <dt>Polizón · 6 de vida</dt>
+            <dt>Polizón · 7 de vida</dt>
             <dd><i>Rompe: «eres tu cuerpo».</i> Dentro de un monstruo no te ve nadie, aliados incluidos. Cada 2 rondas lo drenas: pierde 1 y curas 1. <b>Abordar</b> (espera 3): entras en el enemigo vecino. Dentro, mover lo mueve, atacar hace que golpee ya y la habilidad te saca. Al Celador solo lo giras 180°; al Tótem no se entra.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/escucha.svg" alt="" width="48" height="48"><dl>
             <dt>La Escucha · 5 de vida</dt>
             <dd><i>Rompe: «ves lo que tienes cerca».</i> Conoce el terreno, pero solo percibe lo que está a 1 casilla y lo que hizo ruido. Golpea a tientas hasta 4 casillas, amigo o enemigo; 2 de daño a lo que no hizo ruido. <b>Grito</b> (espera 4): hasta la próxima resolución su bando ve la sala entera, y en esta ronda todos los monstruos la eligen a ella.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/usurera.svg" alt="" width="48" height="48"><dl>
             <dt>La Usurera · 4 de vida</dt>
-            <dd><i>Rompe: «ayudar es gratis».</i> <b>Interés:</b> cada 7 rondas la deuda sube 1 (tope 3). Lo que gane el deudor le llega a ella y al terminar cobra lo que quede. La deuda solo la ven ella y el deudor. <b>Préstamo</b> (espera 2): al primer aliado herido o derribado en línea a ≤2 le cura 3 o lo levanta con 3. No pide permiso: le crea 1 de oro de deuda.</dd></dl></div>
+            <dd><i>Rompe: «ayudar es gratis».</i> <b>Interés:</b> cada 10 rondas la deuda sube 1 (tope 3). Lo que gane el deudor le llega a ella y al terminar cobra lo que quede. La deuda solo la ven ella y el deudor. <b>Préstamo</b> (espera 2): al primer aliado herido o derribado en línea a ≤2 le cura 3 o lo levanta con 3. No pide permiso: le crea 1 de oro de deuda.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/avaro.svg" alt="" width="48" height="48"><dl>
-            <dt>El Avaro · 4 de oro</dt>
+            <dt>El Avaro · 5 de oro</dt>
             <dd><i>Rompe: «la vida y la puntuación son cosas distintas».</i> Su oro es su vida. Cada punto de daño tira 1 al suelo y el primero que pise la casilla se lo queda. No acepta curas ni préstamos. <b>Soborno</b> (espera 2): paga 1 de oro al primer enemigo en línea a ≤3: cancela su ataque marcado y esa ronda no actúa. El Celador cuesta 3 y solo cancela el ataque marcado.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/mampostero.svg" alt="" width="48" height="48"><dl>
             <dt>El Mampostero · 6 de vida</dt>
             <dd><i>Rompe: «la mazmorra está quieta».</i> Los pinchos y las grietas no le afectan. <b>Corrimiento</b> (espera 3): desliza 1 casilla su fila (este/oeste) o su columna (norte/sur) con todo encima, escalera incluida. Lo que sale por un borde entra por el otro y, si es una criatura, recibe 2. Los anuncios no se mueven.</dd></dl></div>
           <div class="hero-row"><img src="img/heroes/campanero.svg" alt="" width="48" height="48"><dl>
             <dt>El Campanero · 4 de vida</dt>
-            <dd><i>Rompe: «el reloj es igual para todos».</i> <b>Último en hablar:</b> si todos los demás decidieron y él no, recibe en privado sus órdenes. Golpea hasta 2 casillas. <b>Repique</b> (espera 4): en la ronda siguiente los demás tienen solo 8 s y él conserva los 20. Se oye: todos ven la cuenta regresiva.</dd></dl></div>
+            <dd><i>Rompe: «el reloj es igual para todos».</i> <b>Último en hablar:</b> si todos los demás decidieron y él no, recibe en privado sus órdenes. Golpea hasta 2 casillas. <b>Repique</b> (espera 4): en la ronda siguiente los demás tienen solo 5 s y él conserva los 11. Se oye: todos ven la cuenta regresiva.</dd></dl></div>
         </div>
       </section>
 
       <section class="howto-page" hidden>
         <h3>Señales y traición anónima</h3>
         <ul>
-          <li><b>Señales rápidas:</b> durante la ronda puedes enviar a tu bando «¡Aquí!», «¡Cuidado!», «Ayuda» o «Es mía» (teclas <kbd>1</kbd>–<kbd>4</kbd>), hasta una cada 3 s. Si antes haces clic en el tablero, la señal marca esa casilla.</li>
+          <li><b>Señales rápidas:</b> durante la ronda puedes enviar a tu bando «¡Aquí!», «¡Cuidado!», «Ayuda» o «Es mía» (teclas <kbd>1</kbd>–<kbd>4</kbd>), hasta una cada 3 s. Si antes haces clic en una casilla sin resaltar, la señal la marca.</li>
           <li><b>También se puede mentir:</b> la casilla la eliges tú y el servidor no la comprueba. Solo la recibe tu bando y no queda en la repetición.</li>
-          <li><b>Traición anónima:</b> si un golpe desviado por Errata o dado desde el huésped de Polizón le cae a un aliado, el registro culpa al monstruo. No hay robo de oro, y cuenta para la misión de traicionar.</li>
-          <li><b>Sabotaje:</b> cualquier héroe activo, una vez por sala, le hace 1 de daño a un aliado en línea a ≤2. Se ve el daño, no el autor. Si estaba defendiendo, se anula.</li>
-          <li><b>Se revela al final:</b> la pantalla de resultados dice quién fue («Errata le costó 3 de vida a Ana»), salvo que El Juicio lo exponga antes.</li>
+          <li><b>Traición anónima:</b> si un golpe desviado por Errata o dado desde el huésped de Polizón le cae a un aliado, el registro culpa al monstruo. No hay robo de oro.</li>
+          <li><b>Se revela al final:</b> la pantalla de resultados dice quién fue («Errata le costó 3 de vida a Ana»).</li>
           <li><b>El Repique</b> se oye: si el Campanero lo tocó, todos ven la cuenta regresiva. Si se te acaba tu plazo, defiendes (o enciendes la Luz) y una orden tardía se rechaza.</li>
         </ul>
       </section>
@@ -681,14 +652,8 @@
       </section>
 
       <section class="howto-page" hidden>
-        <h3>El Juicio y las puertas</h3>
-        <p>Al pisar la escalera con la sala despejada se abre una pausa de hasta <b>20 s</b>. No corre el contador de rondas.</p>
-        <ul>
-          <li><b>Votan</b> héroes vivos, derribados y Fantasmas, en secreto. Los Traidores no votan.</li>
-          <li><b>Acusa</b> a quien creas que traicionó en esta sala, o a nadie. Condena la mayoría de los demás votantes (con 2 jugadores basta 1).</li>
-          <li><b>Culpable:</b> −3 de oro y su traición a la vista de todos. <b>Inocente:</b> cada acusador pierde 1. Sin mayoría no pasa nada. Quién votó qué nunca se revela.</li>
-          <li><b>Puertas:</b> se vota también entre 2 salas con regla propia. Gana la mayoría; en empate, al azar.</li>
-        </ul>
+        <h3>Las salas</h3>
+        <p>Al pisar la escalera con la sala despejada, todos pasan directo a la siguiente. La primera sala es normal y la última es la del Celador; las otras tres salen <b>al azar</b> entre estos tipos, sin repetir el de la sala anterior, y se anuncian al entrar.</p>
         <table class="table compact">
           <tbody>
             <tr><td>Tesoro</td><td>4 cofres y 1 monstruo más.</td></tr>

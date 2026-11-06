@@ -59,11 +59,11 @@ export const ECHO_REASONS = {
 };
 
 export const MATCH_STATUS = {
-  LOBBY: 'sala', DRAFTING: 'eligiendo mejora y misión', IN_PROGRESS: 'en curso', INTERLUDE: 'El Juicio', FINISHED: 'terminada',
+  LOBBY: 'sala', DRAFTING: 'eligiendo mejora y misión', IN_PROGRESS: 'en curso', FINISHED: 'terminada',
   FAULTED: 'fallida', ABANDONED: 'abandonada', EXPIRED: 'expirada', TERMINATED: 'terminada por un admin',
 };
 
-export const ORDER_TYPES = { MOVE: 'Paso', ATTACK: 'Atacar', ABILITY: 'Habilidad', INTERACT: 'Usar', GUARD: 'Defender', SABOTAGE: 'Sabotear', PUSH: 'Empujar' };
+export const ORDER_TYPES = { MOVE: 'Paso', ATTACK: 'Atacar', ABILITY: 'Habilidad', INTERACT: 'Usar', GUARD: 'Defender', PUSH: 'Empujar' };
 export const DIRECTIONS = { N: 'norte', S: 'sur', E: 'este', W: 'oeste' };
 
 export const BLESSINGS = {
@@ -120,7 +120,7 @@ export const CURSES = {
   FIERCE: { name: 'Fieros', effect: 'Los monstruos tienen 1 de vida más.', icon: '🐾' },
   WARDEN_PLUS: { name: 'Celador imponente', effect: 'El Celador tiene 50 % más de vida.', icon: '👑' },
   DIM: { name: 'Penumbra', effect: 'Todos ven 1 casilla menos.', icon: '🌘' },
-  HASTE: { name: 'Prisa', effect: 'Las rondas duran 12 segundos.', icon: '⏱' },
+  HASTE: { name: 'Prisa', effect: 'Las rondas duran 7 segundos.', icon: '⏱' },
 };
 
 /** Fases de la resolución (`phase` de los eventos), en orden. */
@@ -161,7 +161,7 @@ export const EVENTS = {
   WARDEN_TURNED: 'el Celador giró', SHOUTED: 'gritó', DEBT_CHANGED: 'la deuda cambió', EMBERS_DROPPED: 'cayeron oro al suelo',
   EMBERS_PICKED_UP: 'recogió oro', EMBERS_LOST: 'perdió oro', ENEMY_BRIBED: 'sobornó a un enemigo', ROOM_SHIFTED: 'la sala se corrió',
   BELL_RUNG: 'tocó el Repique', BELL_EXPIRED: 'venció el plazo del Repique',
-  PUSHED: 'empujó', ROOM_FLOODED: 'el agua subió', INTERLUDE_OPENED: 'se abrió El Juicio', INTERLUDE_CLOSED: 'se cerró El Juicio',
+  PUSHED: 'empujó', ROOM_FLOODED: 'el agua subió', CHILLED: 'llegó el frío',
 };
 
 export const ERROR_CODES = {

@@ -8,7 +8,6 @@ import { uuidv7 } from './uuid.js';
 import { emit, on } from './bus.js';
 import { BLESSING_ICONS, heroAvatar, heroInfo } from './heroes.js';
 import { settingsOpen } from './settings-panel.js';
-import { InterludeUi } from './interlude.js';
 import { loadCatalog } from './catalog.js';
 import * as api from './api.js';
 import { shiftFromEvent, shiftText, shiftedPos } from './board-heroes.js';
@@ -19,7 +18,9 @@ import {
 
 const KEY_DIRS = { ArrowUp: 'N', ArrowDown: 'S', ArrowLeft: 'W', ArrowRight: 'E' };
 const KEY_SIGNALS = { 1: 'HERE', 2: 'DANGER', 3: 'HELP', 4: 'MINE' };
-const KEY_ACTIONS = { q: 'ABILITY', e: 'INTERACT', r: 'SABOTAGE', f: 'PUSH' };
+const KEY_ACTIONS = { a: 'ATTACK', q: 'ABILITY', e: 'INTERACT', f: 'PUSH' };
+/** Antes del cierre se envía lo planeado, para que llegue a tiempo. */
+const AUTO_SEND_MS = 900;
 const REMATCH_POLL_MS = 3000;
 const SIGNAL_INTERVAL_MS = 3000;
 const SIGNAL_FEED_MAX = 3;
@@ -43,7 +44,7 @@ const EVENT_STYLE = {
   HOST_BOARDED: ['◉', 'good'], HOST_EXITED: ['◉', ''], HOST_DRAINED: ['◉', 'good'], WARDEN_TURNED: ['↻', 'info'], SHOUTED: ['📢', 'info'],
   DEBT_CHANGED: ['⚖', 'gold'], EMBERS_DROPPED: ['✦', 'bad'], EMBERS_PICKED_UP: ['✦', 'gold'], EMBERS_LOST: ['✦', 'bad'], ENEMY_BRIBED: ['✦', 'gold'],
   ROOM_SHIFTED: ['⇄', 'info'], BELL_RUNG: ['🔔', 'info'], BELL_EXPIRED: ['🔔', ''],
-  PUSHED: ['🖐', 'info'], ROOM_FLOODED: ['🌊', 'bad'], INTERLUDE_OPENED: ['⚖', 'info'], INTERLUDE_CLOSED: ['⚖', 'info'],
+  PUSHED: ['🖐', 'info'], ROOM_FLOODED: ['🌊', 'bad'], CHILLED: ['❄', 'bad'],
 };
 
 /** Sucesos que se resaltan en el registro: cambian la partida. */
@@ -60,22 +61,24 @@ const DEBT_REASONS = {
 /** Habilidades a las que la dirección no les importa. */
 const NO_AIM = new Set(['ANTEAYER', 'HILVAN', 'ESCUCHA', 'CAMPANERO']);
 
-const ARMED_TEXT = {
-  ABILITY: 'Habilidad armada: elige una dirección (flecha o d-pad). Esc cancela.',
-  INTERACT: 'Usar armado: elige la casilla vecina (flecha o d-pad). Esc cancela.',
-  SABOTAGE: 'Sabotaje armado: 1 de daño sin autor al primer aliado en línea a 2 casillas o menos. Elige dirección. Esc cancela.',
-  PUSH: 'Empujón armado: mueve 1 casilla a quien tengas al lado. Elige dirección. Esc cancela.',
+/** Qué resaltar y qué decir mientras se elige el objetivo de cada acción. */
+const PICK_TEXT = {
+  ATTACK: 'Elige a quién atacar: clic en una casilla resaltada.',
+  ABILITY: 'Elige hacia dónde: clic en una casilla resaltada.',
+  INTERACT: 'Elige qué usar: clic en una casilla resaltada (cofre, altar, aliado derribado).',
+  PUSH: 'Elige a quién empujar: clic en la casilla de al lado.',
 };
-const EMBER_ARMED_TEXT = {
-  ABILITY: 'Escudo armado: elige hacia qué aliado (flecha o d-pad). Esc cancela.',
-  INTERACT: 'Revivir armado: elige la casilla del derribado (flecha o d-pad). Esc cancela.',
+const EMBER_PICK_TEXT = {
+  ATTACK: 'Frenar: clic en la casilla del enemigo (hasta 2).',
+  ABILITY: 'Escudo: clic en la casilla del aliado (hasta 2).',
+  INTERACT: 'Revivir: clic en la casilla del derribado.',
 };
 
 /** Nombres e íconos originales de los botones de orden (se restauran al dejar de ser Brasa). */
 const HERO_ORDERS = {
   MOVE: { name: 'Paso', icon: '➜' }, ATTACK: { name: 'Atacar', icon: '⚔' }, ABILITY: { name: 'Habilidad', icon: '✺' },
   INTERACT: { name: 'Usar', icon: '✋' }, GUARD: { name: 'Defender', icon: '⛨' },
-  SABOTAGE: { name: 'Sabotear', icon: '🗡' }, PUSH: { name: 'Empujar', icon: '🖐' },
+  PUSH: { name: 'Empujar', icon: '🖐' },
 };
 
 const PATH_DEADLINE_MS = 15000;
@@ -122,7 +125,6 @@ class MatchController {
     this.matchId = transport.matchId;
     this.onExit = onExit;
     this.onRematch = onRematch;
-    this.interlude = new InterludeUi(this);
     this.toast = toast;
     this.rematchTimer = 0;
     this.board = new BoardRenderer($('board'));
@@ -132,8 +134,10 @@ class MatchController {
     this.reconnectTimer = 0;
     this.drainDelayMs = null;
     this.selectedMode = 'MOVE';
-    this.armedMode = null;
-    this.plannedStep = null; // paso marcado, a la espera de una acción o de enviarlo solo
+    this.armedMode = null; // acción elegida en la fase 2, a la espera de su objetivo
+    this.plannedStep = null; // paso planeado (null = quedarse)
+    this.plannedAction = null; // acción planeada { type, direction }
+    this.phase = 'MOVE'; // MOVE (1 Moverte) | ACT (2 Actuar)
     this.order = null; // { payload, status: sending|waiting|acked|error, ack, error }
     this.draft = null;
     this.pactOffer = null; // oferta de misión { offerId, options, deadline, sending }
@@ -190,7 +194,7 @@ class MatchController {
       // Con el catálogo real se rehacen los textos de una oferta que ya estuviera abierta.
       loadCatalog().then((changed) => { if (changed && !this.disposed && this.draft) this.renderDraftOptions(); });
     }
-    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PactOffer', 'PathOffer', 'InterludeOffer', 'InterludeResolved',
+    for (const type of ['RoundOpened', 'PlayerDecided', 'RoundResolved', 'Snapshot', 'DraftOffer', 'PactOffer', 'PathOffer',
       'LastWord', 'SignalReceived', 'PlayerConnectionChanged', 'MatchFinished', 'ServerDraining', 'Error']) {
       this.transport.on(type, (payload) => {
         if (this.disposed) return;
@@ -210,7 +214,6 @@ class MatchController {
     clearInterval(this.tick);
     clearTimeout(this.reconnectTimer);
     clearTimeout(this.rematchTimer);
-    this.interlude.dispose();
     document.removeEventListener('keydown', this.onKey);
     this.cleanups.forEach((fn) => fn());
     this.transport.stop();
@@ -232,17 +235,11 @@ class MatchController {
       node.addEventListener(type, fn);
       this.cleanups.push(() => node.removeEventListener(type, fn));
     };
-    // Paso: siempre disponible. Las demás arman la acción y el d-pad le da dirección.
-    document.querySelectorAll('.mode').forEach((btn) => listen(btn, 'click', () => {
-      const mode = btn.dataset.mode;
-      this.armedMode = mode === 'MOVE' || this.armedMode === mode ? null : mode;
-      this.render();
-    }));
-    document.querySelectorAll('.dir[data-dir]').forEach((btn) => listen(btn, 'click', () => {
-      this.pressDirection(btn.dataset.dir);
-    }));
-    listen($('btn-send-step'), 'click', () => this.sendPlannedStep());
-    listen($('btn-guard'), 'click', () => this.guard());
+    // Fase 1: clic en una casilla vecina. Fase 2: un botón y luego el objetivo en el tablero. Listo envía.
+    document.querySelectorAll('.phase-btn').forEach((btn) => listen(btn, 'click', () => this.goPhase(btn.dataset.phase)));
+    document.querySelectorAll('.act').forEach((btn) => listen(btn, 'click', () => this.pickAction(btn.dataset.act)));
+    listen($('btn-ready'), 'click', () => this.ready());
+    listen($('btn-plan-reset'), 'click', () => this.resetPlan(true));
     listen($('btn-leave-match'), 'click', () => this.leave());
     listen($('btn-demo-drop'), 'click', () => toast(this.transport.simulateDrop()));
     listen($('btn-demo-finish'), 'click', () => this.transport.simulateFinish());
@@ -397,8 +394,7 @@ class MatchController {
     // El plazo se traduce al reloj local con el desfase que informa el servidor.
     const offset = Date.parse(snap.serverTime) - Date.now();
     this.clockOffset = Number.isFinite(offset) ? offset : 0;
-    // En el interludio el plazo es de la votación: tiene su propio reloj.
-    this.deadlineLocal = v.roundDeadline && v.status !== 'INTERLUDE' ? Date.parse(v.roundDeadline) - this.clockOffset : null;
+    this.deadlineLocal = v.roundDeadline ? Date.parse(v.roundDeadline) - this.clockOffset : null;
     this.setBell(v.bell);
     this.decidedCount = [this.me, ...this.allies].filter((h) => h?.decided).length;
     // Dan orden los héroes vivos, las Brasas y los Renegados presentes (un aliado Renegado se cuenta si se le ve).
@@ -407,8 +403,6 @@ class MatchController {
     if (this.order && this.order.payload.round !== this.round) this.order = null;
     setLastSeq(this.seq);
     this.syncPathOffer();
-    this.interlude.sync(v.interlude ?? null);
-    this.interlude.renderLog(v.lastVerdict ?? null);
     this.renderPactOptions();
     if (before) {
       // Se cambió de sala al cerrarse el interludio: el tablero hace la transición.
@@ -451,8 +445,7 @@ class MatchController {
     if (m.round < this.round) return;
     this.status = 'IN_PROGRESS';
     this.round = m.round;
-    this.plannedStep = null;
-    this.armedMode = null;
+    this.resetPlan(false);
     // Se usa la duración (no la hora absoluta) para no depender del reloj del cliente. Con el Repique, el plazo de cada
     // jugador (roundDeadline; si no llegó, bellDeadline salvo para quien lo tocó) es menor que el de la ronda.
     const ringing = Boolean(m.bellDeadline);
@@ -516,21 +509,26 @@ class MatchController {
     this.noiseTiles = d.noiseTiles ?? this.noiseTiles;
     this.lastWord = null;
     this.bell = null;
-    this.plannedStep = null;
-    this.armedMode = null;
-    // En el interludio roundDeadline es el plazo de la votación, no el de la ronda que viene.
-    this.nextDeadline = d.status === 'INTERLUDE' ? null : d.roundDeadline ?? null;
+    this.resetPlan(false);
+    this.nextDeadline = d.roundDeadline ?? null;
     this.events = d.events ?? [];
     const flood = this.events.find((ev) => ev.type === 'ROOM_FLOODED');
     if (flood) this.room = { ...this.room, floodedRows: flood.amount ?? this.room.floodedRows };
     for (const ev of this.events) {
-      if (ev.type === 'BETRAYAL_RECORDED') toast(`Nadie lo sabe todavía: le costaste ${ev.amount ?? '?'} de vida a ${this.nameOf(ev.targetId)}. Pueden juzgarte al terminar la sala.`, 'info', 5000);
+      if (ev.type === 'BETRAYAL_RECORDED') toast(`Nadie lo sabe todavía: le costaste ${ev.amount ?? '?'} de vida a ${this.nameOf(ev.targetId)}. Se sabrá al final.`, 'info', 5000);
+      if (ev.type === 'CHILLED') toast(`Llega el frío: ${ev.amount ?? 1} de daño a cada uno. Terminen ya.`, 'bad', 4000);
       if (isSabotageHit(ev)) emit('sabotage:seen', { targetId: ev.targetId, onMe: ev.targetId === this.playerId });
     }
     this.seq = m.seq;
     this.deadlineLocal = null;
     setLastSeq(this.seq);
-    if (d.floorChanged) emit('floor:changed', { floor: d.floorChanged });
+    if (d.floorChanged) {
+      const entered = this.events.find((ev) => ev.type === 'FLOOR_ENTERED');
+      const type = entered?.detail ?? 'NORMAL';
+      const known = ROOM_TYPES[type] ?? {};
+      this.room = { ...this.room, type, name: known.name ?? type, effect: known.effect ?? '', floodedRows: 0 };
+      emit('floor:changed', { floor: d.floorChanged, room: this.room });
+    }
     emit('round:resolved', { round: m.round, events: this.events, before, after: this.entities(), myId: this.playerId });
     this.syncPathOffer();
   }
@@ -574,22 +572,6 @@ class MatchController {
     return this.allies.find((a) => a.playerId === id)?.hero ?? null;
   }
 
-  // ───────────── interludio ─────────────
-
-  onInterludeOffer(m) {
-    this.interlude.sync(m, { live: this.status !== null && this.seq !== null && !this.interlude.isOpen && this.floor !== null });
-  }
-
-  onInterludeResolved(m) {
-    this.interlude.close();
-    this.seq = Math.max(this.seq ?? 0, m.seq);
-    setLastSeq(this.seq);
-    // Lo que pasó al cerrar va al registro: renacer, aparecer, entrar en la sala nueva.
-    this.events = m.events ?? [];
-    this.interlude.showVerdict(m.verdict);
-    this.interlude.renderLog(m.verdict);
-    for (const ev of this.events) if (ev.type === 'EMBERS_LOST') toast(`El Juicio te costó ${Math.abs(ev.amount ?? 1)} de oro.`, 'bad', 5000);
-  }
 
   // ───────────── señales y Último en hablar ─────────────
 
@@ -605,6 +587,7 @@ class MatchController {
   }
 
   markTile(p) {
+    if (this.planTile(p)) return;
     const same = this.signalMark?.x === p.x && this.signalMark?.y === p.y;
     this.signalMark = same ? null : p;
     this.render();
@@ -903,7 +886,6 @@ class MatchController {
     this.draft = null;
     this.pactOffer = null;
     $('draft').hidden = true;
-    this.interlude.close();
     this.closePathDialog();
     showFinished(m, this.playerId, () => this.exit());
     this.bindRematch();
@@ -973,28 +955,21 @@ class MatchController {
   // ───────────── órdenes ─────────────
 
   handleKey(e) {
-    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('path').hidden || !$('interlude').hidden || !$('howto').hidden || settingsOpen()) return;
+    if (this.disposed || $('screen-match').hidden || !$('draft').hidden || !$('path').hidden || !$('howto').hidden || settingsOpen()) return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
     if (e.ctrlKey || e.altKey || e.metaKey) return;
-    // Si un botón tiene el foco, Espacio también lo "pulsaría": se le quita el foco.
-    if (tag === 'BUTTON' && (e.key === ' ' || e.key === 'Enter' || KEY_DIRS[e.key])) {
-      // Enter sobre un botón lo pulsa: solo se le quita si hay un paso que enviar.
-      if (e.key !== 'Enter' || this.plannedStep) document.activeElement.blur();
-      else return;
-    }
+    if (tag === 'BUTTON' && (e.key === ' ' || KEY_DIRS[e.key])) document.activeElement.blur();
     const dir = KEY_DIRS[e.key];
     if (dir) {
       e.preventDefault();
-      if (e.shiftKey) this.sendAction('ATTACK', dir);
-      else this.pressDirection(dir);
+      this.planDirection(dir);
       return;
     }
     if (e.key === 'Enter') {
-      if (this.plannedStep) {
-        e.preventDefault();
-        this.sendPlannedStep();
-      }
+      if (tag === 'BUTTON') return;
+      e.preventDefault();
+      this.ready();
       return;
     }
     if (KEY_SIGNALS[e.key]) {
@@ -1002,79 +977,133 @@ class MatchController {
       return;
     }
     const key = e.key.toLowerCase();
-    if (KEY_ACTIONS[key]) {
-      const mode = KEY_ACTIONS[key];
-      this.armedMode = this.armedMode === mode ? null : mode;
-    } else if (key === 'escape') {
-      // De a uno: primero la acción armada, luego el paso y al final la casilla marcada.
-      if (this.armedMode) this.armedMode = null;
-      else if (this.plannedStep) this.plannedStep = null;
-      else this.signalMark = null;
-    } else if (key === ' ') {
-      e.preventDefault();
-      this.guard();
-      return;
+    if (KEY_ACTIONS[key]) this.pickAction(KEY_ACTIONS[key]);
+    else if (key === ' ') { e.preventDefault(); this.pickAction('GUARD'); }
+    else if (key === 'escape') this.back();
+  }
+
+  // ───────────── plan por fases ─────────────
+
+  /** ¿Se puede planear ahora? (ronda abierta, sin orden enviada y el héroe puede actuar). */
+  planOpen() {
+    if (this.status !== 'IN_PROGRESS' || this.deadlineLocal === null || !this.me || !canAct(this.me)) return false;
+    if (this.me.decided || (this.order && this.order.payload.round === this.round && this.order.status !== 'error')) return false;
+    return !this.orderBlocked({ type: 'MOVE' });
+  }
+
+  resetPlan(render) {
+    this.plannedStep = null;
+    this.plannedAction = null;
+    this.armedMode = null;
+    this.phase = 'MOVE';
+    if (render) this.render();
+  }
+
+  goPhase(phase) {
+    if (!this.planOpen()) return;
+    if (phase === 'READY') { this.ready(); return; }
+    this.phase = phase === 'ACT' ? 'ACT' : 'MOVE';
+    this.armedMode = null;
+    this.render();
+  }
+
+  back() {
+    if (this.armedMode) this.armedMode = null;
+    else if (this.phase === 'ACT') this.phase = 'MOVE';
+    else this.signalMark = null;
+    this.render();
+  }
+
+  /** Fase 2: elegir una acción. Defender no tiene objetivo y borra el paso. */
+  pickAction(type) {
+    if (!this.planOpen()) { if (this.me && canAct(this.me)) toast('Ya enviaste tu orden de esta ronda.'); return; }
+    const blocked = this.orderBlocked({ type });
+    if (blocked) { toast(blocked); return; }
+    this.phase = 'ACT';
+    if (type === 'GUARD') {
+      this.plannedStep = null;
+      this.plannedAction = { type: 'GUARD' };
+      this.armedMode = null;
     } else {
-      return;
+      this.armedMode = this.armedMode === type ? null : type;
+      emit('order:armed', { type });
     }
     this.render();
   }
 
-  /** Flecha o d-pad: da dirección a la acción armada o, si no hay, marca el paso (repetirlo lo envía solo). */
-  pressDirection(direction) {
-    const btn = document.querySelector(`.dir[data-dir="${direction}"]`);
-    if (btn) replay(btn, 'pressed');
-    if (this.armedMode) {
-      this.sendAction(this.armedMode, direction);
-      return;
-    }
-    if (this.plannedStep === direction) {
-      this.sendPlannedStep();
-      return;
-    }
-    if (!this.canPlan()) return;
+  /** Flecha (atajo): en la fase 1 es el paso; en la 2, el objetivo de la acción elegida. */
+  planDirection(direction) {
+    if (!this.planOpen()) return;
+    if (this.phase === 'ACT' && this.armedMode) this.setAction(this.armedMode, direction);
+    else if (this.phase === 'MOVE') this.setStep(direction);
+  }
+
+  setStep(direction) {
     this.plannedStep = direction;
+    if (this.plannedAction?.type === 'GUARD' && direction) this.plannedAction = null;
+    this.phase = 'ACT';
     emit('order:step', { direction });
     this.render();
   }
 
-  /** ¿Se puede marcar algo ahora? Si no, lo dice una sola vez. */
-  canPlan() {
-    if (this.status !== 'IN_PROGRESS' || this.deadlineLocal === null) {
-      toast('No hay una ronda abierta.');
-      return false;
-    }
-    if (this.me?.decided || (this.order && this.order.payload.round === this.round && this.order.status !== 'error')) {
-      toast('Ya enviaste tu orden de esta ronda (la primera es la que vale).');
-      return false;
-    }
-    const blocked = this.orderBlocked({ type: 'MOVE' });
-    if (blocked) toast(blocked);
-    return !blocked;
-  }
-
-  sendPlannedStep() {
-    const direction = this.plannedStep;
-    if (!direction) return;
-    this.plannedStep = null;
-    this.submitOrder({ type: 'MOVE', direction });
-  }
-
-  sendAction(type, direction) {
-    const step = this.plannedStep;
+  setAction(type, direction) {
+    this.plannedAction = { type, direction };
     this.armedMode = null;
-    const order = { type, direction };
-    if (step) order.step = step;
-    this.submitOrder(order);
-    // Si la orden no salió, el paso sigue marcado.
-    if (this.order?.payload.order === order) this.plannedStep = null;
+    emit('order:planned', { type, direction });
+    this.render();
   }
 
-  guard() {
-    replay($('btn-guard'), 'pressed');
-    this.plannedStep = null;
-    this.armedMode = null;
-    this.submitOrder({ type: 'GUARD' });
+  /** Clic en una casilla: si es un objetivo resaltado de la fase actual, entra en el plan. */
+  planTile(p) {
+    if (!this.planOpen()) return false;
+    if (this.phase === 'MOVE') {
+      const origin = this.board.origin();
+      if (origin && origin.x === p.x && origin.y === p.y) { this.setStep(null); return true; }
+      const dir = this.board.dirForTile('MOVE', p.x, p.y, null);
+      if (!dir) return false;
+      this.setStep(dir);
+      return true;
+    }
+    if (!this.armedMode) return false;
+    const dir = this.board.dirForTile(this.armedMode, p.x, p.y, this.plannedStep);
+    if (!dir) return false;
+    this.setAction(this.armedMode, dir);
+    return true;
+  }
+
+  /** La orden que sale del plan, o null si no hay nada planeado. */
+  planOrder() {
+    const action = this.plannedAction;
+    if (action?.type === 'GUARD') return { type: 'GUARD' };
+    if (action) return this.plannedStep ? { ...action, step: this.plannedStep } : { ...action };
+    if (this.plannedStep) return { type: 'MOVE', direction: this.plannedStep };
+    return null;
+  }
+
+  /** Listo: envía lo planeado. Sin nada planeado, defiende. */
+  ready() {
+    if (!this.planOpen()) return;
+    this.submitOrder(this.planOrder() ?? { type: 'GUARD' });
+  }
+
+  /** Resumen del plan en lenguaje simple. */
+  planSummary() {
+    const me = this.me;
+    if (!me) return '';
+    const ember = me.state === 'EMBER_SPIRIT';
+    const walk = this.plannedStep ? `${ember ? 'Flotas' : 'Te mueves'} al ${label(DIRECTIONS, this.plannedStep)}` : 'Te quedas donde estás';
+    const a = this.plannedAction;
+    if (a?.type === 'GUARD') return ember ? 'Te quedas y enciendes una Luz.' : 'Te quedas y defiendes: recibes la mitad del daño.';
+    if (!a) return `${walk}${this.plannedStep ? '' : ''}. Falta la acción (o pulsa Listo y solo caminas).`;
+    const target = this.board.describeTarget(a.type, a.direction, this.plannedStep);
+    const names = ember ? EMBER_ORDERS : heroOrders(me);
+    const verb = {
+      ATTACK: ember ? 'frenas' : 'atacas', INTERACT: ember ? 'revives' : 'usas', PUSH: 'empujas',
+      ABILITY: `usas ${(names.ABILITY?.name ?? 'tu habilidad')}`,
+    }[a.type] ?? label(ORDER_TYPES, a.type).toLowerCase();
+    const to = target ? ` ${a.type === 'ABILITY' ? 'hacia' : 'a'} ${target}` : ` hacia el ${label(DIRECTIONS, a.direction)}`;
+    const noAim = a.type === 'ABILITY' && !ember && me.hostEnemyId == null && NO_AIM.has(me.hero);
+    return `${walk} y ${verb}${noAim ? '' : to}.`;
   }
 
   /** Motivo por el que la orden no puede salir ahora (o null). Evita gastar la orden de la ronda en algo que no vale. */
@@ -1084,12 +1113,6 @@ class MatchController {
     if (me.state === 'EXTINCT') return me.path?.choice ? 'Ya elegiste camino: se revela al resolver la ronda.' : 'Moriste: elige tu camino.';
     if (awaitingSpawn(me)) return 'Todavía no apareciste como Traidor.';
     if (this.bell && this.bell.ringerId !== this.playerId && (this.bell.closed || this.deadlineLocal <= Date.now())) return 'Se acabó tu plazo del Repique: defiendes esta ronda.';
-    if (order.type === 'SABOTAGE') {
-      if (me.state !== 'ALIVE') return 'Solo un héroe vivo puede sabotear: ni el Fantasma ni el Traidor.';
-      if (me.hostEnemyId != null) return 'Dentro de un huésped no puedes sabotear: ya tienes tu golpe anónimo.';
-      if (!me.canSabotage) return 'Ya saboteaste en esta sala.';
-      return null;
-    }
     if (order.type === 'PUSH') {
       if (me.state === 'EMBER_SPIRIT') return 'Un Fantasma no puede empujar.';
       if (me.hostEnemyId != null) return 'Dentro de un huésped no puedes empujar.';
@@ -1222,22 +1245,9 @@ class MatchController {
       ? `${this.decidedCount}/${this.expectedPlayers} decidieron` : '');
     $('m-decided').className = this.expectedPlayers && this.decidedCount >= this.expectedPlayers ? 'badge ok' : 'badge';
 
-    // Modo de orden (resaltado distinto cuando Q o E esperan una dirección).
-    const mode = this.armedMode ?? 'MOVE';
-    const ember = me?.state === 'EMBER_SPIRIT';
+    const mode = this.armedMode ?? (this.phase === 'MOVE' ? 'MOVE' : this.plannedAction?.type ?? 'MOVE');
     this.renderOrderModes(me);
-    document.querySelectorAll('.mode').forEach((b) => {
-      const on = b.dataset.mode === mode;
-      b.classList.toggle('active', on && !this.armedMode);
-      b.classList.toggle('armed', on && Boolean(this.armedMode));
-      b.setAttribute('aria-checked', String(on));
-    });
-    const armed = $('order-armed');
-    armed.hidden = !this.armedMode;
-    armed.textContent = this.armedMode ? (ember ? EMBER_ARMED_TEXT : ARMED_TEXT)[this.armedMode] ?? '' : '';
-    if (this.armedMode === 'ABILITY' && !ember && me?.hostEnemyId == null && NO_AIM.has(me?.hero)) armed.textContent = `${heroInfo(me.hero).ability} armado: pulsa cualquier flecha, la dirección no importa. Esc cancela.`;
-    document.querySelector('.dpad').classList.toggle('armed', Boolean(this.armedMode));
-    this.renderPlan();
+    this.renderPlanner(me);
     this.renderOrderNote(me, mode);
     this.renderOrderStatus();
     this.renderLastWord();
@@ -1264,9 +1274,11 @@ class MatchController {
       enemies: this.enemies,
       pendingOrder: this.order?.status === 'acked' || this.order?.status === 'sending' || this.order?.status === 'waiting'
         ? this.order.payload.order : me?.pendingOrder ?? null,
-      armedMode: this.armedMode,
+      armedMode: this.planOpen() ? (this.phase === 'MOVE' ? 'MOVE' : this.armedMode) : null,
       mode,
       plannedStep: this.plannedStep,
+      plannedAction: this.planOpen() ? this.plannedAction : null,
+      size: this.room?.size ?? 9,
       floodedRows: this.room?.floodedRows ?? 0,
       round: this.round,
       hiddenTelegraphs: this.hiddenTelegraphs,
@@ -1299,16 +1311,49 @@ class MatchController {
     $('m-curses').replaceChildren(...this.curses.map((c) => el('span', { class: 'curse-chip', title: `${CURSES[c]?.name ?? c}: ${CURSES[c]?.effect ?? ''}`, 'aria-label': CURSES[c]?.name ?? c }, CURSES[c]?.icon ?? '☠')));
   }
 
-  /** Lo marcado: el paso, y qué falta para enviarlo. */
-  renderPlan() {
-    const plan = $('order-plan');
-    const step = this.plannedStep;
-    plan.hidden = !step;
-    $('btn-send-step').hidden = !step;
-    if (!step) return;
-    plan.textContent = this.armedMode
-      ? `Paso ${label(DIRECTIONS, step)} marcado. Elige la dirección de la acción.`
-      : `Paso ${label(DIRECTIONS, step)} marcado. Elige una acción, o envíalo solo. Esc lo quita.`;
+  /** Indicador de fases, ayuda, ficha de la habilidad, resumen y Listo. */
+  renderPlanner(me) {
+    const open = this.planOpen();
+    const sent = Boolean(this.me?.decided || (this.order && this.order.payload.round === this.round && this.order.status !== 'error'));
+    const phase = sent ? 'READY' : this.phase;
+    document.querySelectorAll('.phase-btn').forEach((b) => {
+      const p = b.dataset.phase;
+      b.classList.toggle('current', p === phase);
+      b.classList.toggle('done', (p === 'MOVE' && (phase !== 'MOVE')) || (p === 'ACT' && phase === 'READY'));
+      b.disabled = !open && !(p === 'READY' && sent);
+      b.setAttribute('aria-current', p === phase ? 'step' : 'false');
+    });
+    setText('plan-round', this.round ? `Ronda ${this.round}` : '');
+    const ember = me?.state === 'EMBER_SPIRIT';
+    let help = '';
+    if (sent) help = '✔ Plan enviado. Espera a los demás.';
+    else if (!open) help = me && !canAct(me) ? 'Esta ronda no das órdenes.' : this.status === 'IN_PROGRESS' ? 'Espera la próxima ronda.' : '';
+    else if (this.phase === 'MOVE') help = ember ? '1 · Flotar: clic en una casilla resaltada (hasta 2 en línea), o en ti para quedarte.' : '1 · Moverte: clic en una casilla vecina resaltada, o en tu héroe para quedarte.';
+    else if (this.armedMode) help = `2 · ${(ember ? EMBER_PICK_TEXT : PICK_TEXT)[this.armedMode] ?? 'Clic en un objetivo resaltado.'}`;
+    else help = '2 · Actuar: elige una acción abajo, o pulsa Listo.';
+    setText('phase-help', help);
+    $('phase-help').className = `phase-help${this.armedMode ? ' picking' : ''}`;
+    document.querySelectorAll('.act').forEach((b) => {
+      const on = b.dataset.act === this.armedMode || (!this.armedMode && b.dataset.act === this.plannedAction?.type);
+      b.classList.toggle('armed', b.dataset.act === this.armedMode);
+      b.classList.toggle('chosen', on && b.dataset.act !== this.armedMode);
+      b.setAttribute('aria-pressed', String(on));
+    });
+    $('act-buttons').classList.toggle('locked', !open);
+    // Ficha de la habilidad: qué hace y su espera.
+    const info = heroInfo(me?.hero);
+    const names = ember ? EMBER_ORDERS : heroOrders(me);
+    const abilityName = names.ABILITY?.name ?? info.ability ?? 'Habilidad';
+    const cd = ember ? me?.abilityCooldown ?? 0 : me?.hostEnemyId != null ? 0 : me?.abilityCooldown ?? 0;
+    setText('ability-name', `✺ ${abilityName}`);
+    setText('ability-wait', cd > 0 ? `espera ${cd}` : 'lista');
+    $('ability-wait').className = cd > 0 ? 'badge warn' : 'badge ok';
+    setText('ability-text', ember ? (EMBER_ORDERS.ABILITY?.text ?? '') : me?.hostEnemyId != null ? (names.ABILITY?.text ?? '') : info.abilityText ?? '');
+    $('ability-card').hidden = !me || me.state === 'EXTINCT' || me.state === 'DOWN';
+    setText('plan-summary', open ? this.planSummary() : sent && this.order ? `Enviado: ${describeOrder(this.order.payload.order)}` : '');
+    $('btn-ready').disabled = !open;
+    $('btn-plan-reset').disabled = !open || (!this.plannedStep && !this.plannedAction && this.phase === 'MOVE');
+    $('btn-ready').textContent = open && !this.planOrder() ? 'Listo (defender)' : 'Listo';
   }
 
   /** Fila de la lista de jugadores: estado del camino, si decidió y su vida (la Brasa no tiene vida). */
@@ -1353,9 +1398,7 @@ class MatchController {
     return el('li', { class: classes, dataset: { hero: p.hero } },
       el('span', { class: 'p-avatar' }, heroAvatar(p.hero, 'sm'), mark,
         el('span', { class: `dot ${p.connected ? 'on' : 'off'}`, title: p.connected ? 'conectado' : 'desconectado' })),
-      el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`),
-        // Una condena en El Juicio es pública.
-        (p.convictions ?? 0) > 0 ? el('span', { class: 'p-tag convicted', title: 'Condenado en El Juicio' }, `⚖ ×${p.convictions}`) : null),
+      el('span', { class: 'who' }, p.displayName, p.isMe ? ' (tú)' : '', ' ', el('small', {}, `· ${info.name}`)),
       state,
       el('span', { class: 'p-stats' }, ...stats, el('span', { class: 'em' }, `✦ ${p.embers}`),
         // Lo que te debe solo llega si eres su Usurera; un aliado sin posición puede ir de polizón o no oírse.
@@ -1371,39 +1414,27 @@ class MatchController {
     const cooldowns = ember ? { ABILITY: me.abilityCooldown ?? 0, ATTACK: me.path?.hinderCooldown ?? 0 } : { ABILITY: hosted ? 0 : me?.abilityCooldown ?? 0 };
     cooldowns.PUSH = ember ? 0 : me?.pushCooldown ?? 0;
     const canPush = !ember && !hosted && (me?.state === 'ALIVE' || me?.state === 'RENEGADE');
-    const canSabotage = Boolean(me?.canSabotage) && !hosted && me?.state === 'ALIVE';
-    const key = `${ember}|${hosted}|${me?.hero}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}|${cooldowns.PUSH}|${canPush}|${canSabotage}`;
+    const key = `${ember}|${hosted}|${me?.hero}|${cooldowns.ABILITY ?? ''}|${cooldowns.ATTACK ?? ''}|${cooldowns.PUSH}|${canPush}`;
     const card = document.querySelector('.card-orders');
     card.dataset.path = pathClass(me?.state) || 'hero';
     card.classList.toggle('inactive', Boolean(me) && !canAct(me));
     if (this.shown.orders === key) return;
     this.shown.orders = key;
     const names = ember ? EMBER_ORDERS : heroOrders(me);
-    document.querySelectorAll('.mode').forEach((b) => {
-      const type = b.dataset.mode;
+    document.querySelectorAll('.act').forEach((b) => {
+      const type = b.dataset.act;
       const named = names[type] ?? HERO_ORDERS[type];
-      b.querySelector('.mode-name').textContent = named.name;
-      b.querySelector('.mode-ico').textContent = named.icon;
+      b.querySelector('.act-name').textContent = named.name;
+      b.querySelector('.act-ico').textContent = named.icon;
       b.title = named.text ? `${named.name}: ${named.text}` : '';
-      // Sabotear y Empujar no existen para quien no puede; el sabotaje gastado se ve hasta la sala siguiente.
       if (type === 'PUSH') { b.disabled = !canPush; b.hidden = ember; b.title = canPush ? 'Empujar: mueve 1 casilla a quien tengas al lado. Con autor. Espera 3.' : 'Ahora no puedes empujar.'; }
-      if (type === 'SABOTAGE') {
-        const possible = me?.state === 'ALIVE' && !hosted;
-        b.hidden = ember || me?.state === 'RENEGADE';
-        b.disabled = !canSabotage;
-        b.classList.toggle('spent', possible && !canSabotage);
-        b.title = canSabotage ? 'Sabotear: 1 de daño sin autor al primer aliado en línea a 2 o menos. Una vez por sala. Es una traición: pueden juzgarte.' : 'Ya saboteaste en esta sala.';
-      }
       const cd = cooldowns[type] ?? 0;
-      const badge = b.querySelector('.mode-cd');
+      const badge = b.querySelector('.act-cd');
       badge.hidden = cd <= 0;
       badge.textContent = cd > 0 ? String(cd) : '';
       badge.title = cd > 0 ? `Lista en ${cd} ronda${cd === 1 ? '' : 's'}` : '';
       b.classList.toggle('cooling', cd > 0);
     });
-    setText('guard-name', names.GUARD.name);
-    setText('guard-ico', names.GUARD.icon);
-    $('btn-guard').title = ember ? `Luz: ${EMBER_ORDERS.GUARD.text}` : '';
   }
 
   /** Nota bajo los modos: qué hace la orden de la Brasa, o por qué no se puede dar orden. */
@@ -1431,13 +1462,8 @@ class MatchController {
       kind = 'host';
       const o = heroOrders(me)[mode] ?? heroOrders(me).MOVE;
       parts = [el('b', {}, `Dentro de ${this.hostName(me)}: `), o.text ?? 'Nadie te ve.'];
-    } else if (me && mode === 'SABOTAGE') {
-      parts = [el('b', {}, 'Sabotaje: '), me.canSabotage ? 'nadie verá al autor, salvo que El Juicio te condene.' : 'ya lo usaste en esta sala.'];
     } else if (me && mode === 'PUSH') {
       parts = [el('b', {}, 'Empujón: '), 'pinchos y fuego hacen su daño; un monstruo que no vuela muere en una grieta y un héroe queda derribado.'];
-    } else if (me && mode === 'ABILITY') {
-      const info = heroInfo(me.hero);
-      parts = [el('b', {}, `${info.ability}: `), info.abilityText];
     } else if (me?.hero === 'HILVAN' && (mode === 'MOVE' || mode === 'ATTACK' || mode === 'INTERACT')) {
       parts = [el('b', {}, 'Espejo: '), 'norte y sur van igual; este y oeste, al revés. Cada cuerpo rebota por su cuenta.'];
     }
@@ -1750,11 +1776,16 @@ class MatchController {
         emit('round:low-time', { round: this.round, leftMs: left });
       }
       bar.style.width = `${Math.min(100, (left / this.durationMs) * 100)}%`;
+      // Con algo planeado y sin pulsar Listo, se envía lo planeado justo antes del cierre (sin plan, el servidor defiende).
+      if (left > 0 && left < AUTO_SEND_MS && this.planOrder() && this.planOpen() && this.autoSentRound !== this.round) {
+        this.autoSentRound = this.round;
+        emit('order:auto', { round: this.round });
+        this.ready();
+      }
       bar.className = left < 5000 ? 'low' : '';
     }
     this.renderBell();
     this.renderSignals();
-    this.interlude.tick();
     if (this.pactOffer && !this.draft) {
       const left = Math.max(0, Date.parse(this.pactOffer.deadline) - Date.now());
       setText('draft-timer', `${Math.ceil(left / 1000)} s`);
@@ -1827,17 +1858,17 @@ class MatchController {
       case 'ATTACK_CORRECTED':
         return ev.targetId ? `El ataque marcado de ${who(ev.targetId)} se desvió: nadie sabe quién fue` : 'Un golpe marcado se desvió: nadie sabe quién fue';
       case 'BETRAYAL_RECORDED':
-        return `${ev.detail === 'SABOTAGE' ? 'Saboteaste' : 'En secreto,'} le costaste ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
+        return `En secreto, le costaste ${ev.amount ?? '?'} de vida a ${who(ev.targetId)}`;
       case 'PUSHED':
         return `${who(ev.actorId)} empujó a ${who(ev.targetId)}${ev.position ? ` hasta (${ev.position.x},${ev.position.y})` : ''}`;
       case 'ROOM_FLOODED':
         return `El agua sube: ${plural(ev.amount ?? 1, 'fila inundada', 'filas inundadas')}`;
-      case 'INTERLUDE_OPENED':
-        return `Sala ${ev.amount ?? ''} despejada: El Juicio y las puertas`;
-      case 'INTERLUDE_CLOSED':
-        return 'Se cerró El Juicio';
-      case 'FLOOR_ENTERED':
-        return `Entraron a la sala ${ev.amount ?? ''}`;
+      case 'CHILLED':
+        return `El frío: ${ev.amount ?? 1} de daño a cada uno, sin defensa posible`;
+      case 'FLOOR_ENTERED': {
+        const room = ROOM_TYPES[ev.detail];
+        return `Entraron a la sala ${ev.amount ?? ''}${room && ev.detail !== 'NORMAL' ? `: ${room.name}. ${room.effect ?? ''}` : ''}`;
+      }
       case 'EMBERS_GAINED':
         if (ev.detail === 'ASSIST') return `${who(ev.actorId)}: asistencia, +${ev.amount ?? 1} de oro`;
         if (ev.detail === 'WARDEN_BOUNTY') return `${who(ev.actorId)}: reparto del Celador, +${ev.amount ?? 1} de oro`;

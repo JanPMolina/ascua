@@ -68,7 +68,7 @@ public static class HeroCatalog
     {
         HeroClass.Errata => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 6, SkillCooldown: 3),
         HeroClass.Anteayer => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 5, SkillCooldown: 5),
-        HeroClass.Hilvan => new(MaxHp: 8, Range: 1, Damage: 1, Initiative: 3, SkillCooldown: 3),
+        HeroClass.Hilvan => new(MaxHp: 9, Range: 1, Damage: 1, Initiative: 3, SkillCooldown: 3),
         HeroClass.Polizon => new(MaxHp: 7, Range: 1, Damage: 1, Initiative: 7, SkillCooldown: 3),
         HeroClass.Escucha => new(MaxHp: 5, Range: 4, Damage: 1, Initiative: 2, SkillCooldown: 4),
         HeroClass.Usurera => new(MaxHp: 4, Range: 1, Damage: 1, Initiative: 1, SkillCooldown: 2),

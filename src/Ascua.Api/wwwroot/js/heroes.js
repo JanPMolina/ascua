@@ -16,13 +16,13 @@ export const HERO_INFO = {
     ability: 'Volver', abilityText: 'Saltas a donde estabas hace 2 rondas y, si tenías más vida entonces, la recuperas.',
   },
   HILVAN: {
-    name: 'Hilván', role: 'Dos cuerpos', hp: 8, range: 1, initiative: 3, cooldown: 3, color: '#e8a0d0',
+    name: 'Hilván', role: 'Dos cuerpos', hp: 9, range: 1, initiative: 3, cooldown: 3, color: '#e8a0d0',
     breaks: 'Tienes un solo cuerpo',
     passiveName: 'Espejo', passive: 'Dos cuerpos, una orden y una vida. Norte y sur los mueven igual; este y oeste, al revés. Ve con los dos.',
     ability: 'Tensar', abilityText: 'Con los cuerpos alineados, a 2 o más y sin muro entre ellos, todo lo que haya entre ellos recibe 2 de daño, aliados incluidos.',
   },
   POLIZON: {
-    name: 'Polizón', role: 'Parásito', hp: 6, range: 1, initiative: 7, cooldown: 3, color: '#a8d85a',
+    name: 'Polizón', role: 'Parásito', hp: 7, range: 1, initiative: 7, cooldown: 3, color: '#a8d85a',
     breaks: 'Eres tu cuerpo',
     passiveName: 'Sin casa', passive: 'Dentro de un monstruo desapareces de la vista de todos, aliados incluidos. Cada 2 rondas lo drenas: pierde 1 y tú curas 1.',
     ability: 'Abordar', abilityText: 'Entras en el enemigo vecino. Dentro, mover lo mueve, atacar hace que golpee ya, y la habilidad te saca. Al Celador solo lo giras 180°.',
@@ -42,7 +42,7 @@ export const HERO_INFO = {
   AVARO: {
     name: 'El Avaro', role: 'Sin vida', hp: 4, hpIsEmbers: true, range: 1, initiative: 2, cooldown: 2, color: '#ff9a3a',
     breaks: 'La vida y la puntuación son cosas distintas',
-    passiveName: 'Todo lo que tengo', passive: 'Su oro es su vida: empieza con 4. Cada punto de daño tira 1 al suelo, y el primero que pise la casilla se lo queda. No acepta curas ni préstamos.',
+    passiveName: 'Todo lo que tengo', passive: 'Su oro es su vida: empieza con 5. Cada punto de daño tira 1 al suelo, y el primero que pise la casilla se lo queda. No acepta curas ni préstamos.',
     ability: 'Soborno', abilityText: 'Paga 1 de oro al primer enemigo en línea a 3 o menos: cancela su ataque marcado y esa ronda no actúa. Al Celador le cuesta 3 y solo cancela el ataque marcado.',
   },
   MAMPOSTERO: {
@@ -55,7 +55,7 @@ export const HERO_INFO = {
     name: 'El Campanero', role: 'Último en hablar', hp: 4, range: 2, initiative: 4, cooldown: 4, color: '#7fb0e8',
     breaks: 'El reloj es igual para todos',
     passiveName: 'Último en hablar', passive: 'Si todos los demás ya decidieron y él no, recibe en privado sus órdenes y puede responder con lo que quede de reloj.',
-    ability: 'Repique', abilityText: 'En la ronda siguiente todos los demás tienen solo 8 s; él conserva los 20. Se oye: todos ven la cuenta regresiva.',
+    ability: 'Repique', abilityText: 'En la ronda siguiente todos los demás tienen solo 5 s; él conserva los 11. Se oye: todos ven la cuenta regresiva.',
   },
 };
 
