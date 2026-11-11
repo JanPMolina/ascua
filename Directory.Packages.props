@@ -23,7 +23,7 @@
     <PackageVersion Include="Azure.Security.KeyVault.Secrets" Version="4.12.0" />
     <PackageVersion Include="Microsoft.Azure.StackExchangeRedis" Version="3.3.1" />
     <!-- Rama 2.x: la exige el backplane Microsoft.AspNetCore.SignalR.StackExchangeRedis 10.x. -->
-    <PackageVersion Include="StackExchange.Redis" Version="2.13.17" />
+    <PackageVersion Include="StackExchange.Redis" Version="3.4.31" />
     <!-- Bot -->
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.14" />
     <!-- Pruebas de carga -->
