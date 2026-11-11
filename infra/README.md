@@ -37,6 +37,8 @@ az deployment sub create --name ascua-bootstrap --location westus2 --template-fi
 
 Los GUID no son credenciales. No guardar tokens, claves PEM ni cadenas con contraseña.
 
+El subject OIDC observado en GitHub incluye IDs inmutables: `repo:JanPMolina@231949390/ascua@1438994878:environment:dev` (o `production`). La federación de bootstrap debe coincidir exactamente con ese valor; el formato anterior sin IDs produce AADSTS700213. No ampliar a otros repositorios para resolverlo.
+
 ## Primera ejecución
 
 Fusionar el PR con CI en verde. Ejecutar `Infraestructura Azure` en main, destino dev. El workflow muestra what-if, despliega plataforma, espera propagación de RBAC, crea la clave JWT si no existe, crea el principal de la app en Postgres, construye/escanea/publica la imagen, despliega y comprueba readiness. La IP temporal del runner en Postgres se elimina incluso si el bootstrap falla. Un grupo nuevo y vacío se completa en una sola ejecución; la configuración OIDC es preparación de la cuenta.
@@ -60,3 +62,7 @@ Comprobaciones locales: compilar main, bootstrap y parámetros; actionlint sobre
 No actualizar la URL del README, marcar casillas ni crear v1.0.0 hasta tener esa evidencia.
 
 Fuentes: [retirada de Azure Cache for Redis](https://learn.microsoft.com/en-us/azure/azure-cache-for-redis/cache-whats-new), [políticas de clustering](https://learn.microsoft.com/en-us/azure/redis/choose-clustering-policy), [protección de entornos GitHub](https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments).
+
+### Restricción regional de PostgreSQL (11-nov-2026)
+
+La consulta real de capacidades de la suscripción estudiantil rechaza PostgreSQL en `westus2` (`OfferRestricted`, versiones vacías). `northcentralus` permite PostgreSQL 17 y `Standard_B1ms`, por eso solo PostgreSQL usa `postgresLocation=northcentralus`; los demás recursos permanecen en `westus2`. Esta separación añade latencia y posible transferencia interregional: medirla en la prueba de carga y conservar la reserva de USD 95. Se puede cambiar el parámetro antes de crear un ambiente nuevo.
