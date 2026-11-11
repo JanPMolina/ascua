@@ -1,0 +1,12 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {"type": 1, "content": {"json": "# Ascua: operación\nMétricas por réplica: Container App → Métricas → dividir por Replica. La latencia de este workbook es media/máxima; el p95 se acredita con la prueba de carga, no se infiere de medias agregadas."}, "name": "contexto"},
+    {"type": 3, "content": {"version": "KqlItem/1.0", "query": "AppMetrics | where Name in ('ascua.matches.active','ascua.connections.active','ascua.orders.rate') | summarize Valor=sum(Sum)/sum(ItemCount) by bin(TimeGenerated, 1m), Name | render timechart", "size": 0, "title": "Partidas, conexiones y órdenes (valor exportado)", "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces", "resources": ["__WORKSPACE_ID__"], "timeContext": {"durationMs": 3600000}, "visualization": "timechart"}, "name": "juego"},
+    {"type": 3, "content": {"version": "KqlItem/1.0", "query": "AppRequests | summarize Total=sum(ItemCount), Fallidas=sumif(ItemCount, Success == false) by bin(TimeGenerated, 1m) | extend Porcentaje=100.0*Fallidas/Total | project TimeGenerated, Porcentaje | render timechart", "size": 0, "title": "Solicitudes fallidas (%)", "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces", "resources": ["__WORKSPACE_ID__"], "timeContext": {"durationMs": 3600000}, "visualization": "timechart"}, "name": "errores"},
+    {"type": 3, "content": {"version": "KqlItem/1.0", "query": "AppMetrics | where Name == 'ascua.broadcast.latency' | summarize MediaMs=sum(Sum)/sum(ItemCount), MaximoMs=max(Max) by bin(TimeGenerated, 1m) | render timechart", "size": 0, "title": "Latencia broadcast: media y máximo (ms)", "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces", "resources": ["__WORKSPACE_ID__"], "timeContext": {"durationMs": 3600000}, "visualization": "timechart"}, "name": "latencia"},
+    {"type": 3, "content": {"version": "KqlItem/1.0", "query": "AzureMetrics | where MetricName in ('UsageNanoCores','WorkingSetBytes','RestartCount') | summarize Valor=avg(Average) by bin(TimeGenerated, 1m), MetricName | render timechart", "size": 0, "title": "CPU, memoria y reinicios (agregado de la app)", "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces", "resources": ["__WORKSPACE_ID__"], "timeContext": {"durationMs": 3600000}, "visualization": "timechart"}, "name": "recursos"}
+  ],
+  "fallbackResourceIds": ["__WORKSPACE_ID__"],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
