@@ -1,6 +1,6 @@
 # Costos de Ascua
 
-Estimación preparada el **11-nov-2026**, westus2, USD, sin impuestos ni descuentos. El portal Education mostró **USD 100/100** disponibles, vencimiento **11-nov-2027**. Usar únicamente la suscripción Azure for Students. La revisión es el **19-nov**; disponibilidad solicitada **hasta el 22-nov inclusive**.
+Estimación preparada el **11-nov-2026**, westus2 (PostgreSQL en northcentralus), USD, sin impuestos ni descuentos. El portal Education mostró **USD 100/100** disponibles, vencimiento **11-nov-2027**. Usar únicamente la suscripción Azure for Students. La revisión es el **19-nov**; disponibilidad solicitada **hasta el 22-nov inclusive**.
 
 ## Tarifas y supuestos
 
@@ -21,7 +21,7 @@ Container Apps activo en West US 2: 0,000034/vCPU-segundo y 0,000004/GiB-segundo
 
 **Hasta el 22-nov:** este escenario da aproximadamente **USD 86** para 12 días; reservar hasta **USD 95** para carga, despliegues con revisiones solapadas, alertas, red y variaciones de medición. Es una estimación, no una garantía: más tráfico, cuatro réplicas sostenidas o un incremento del cap pueden agotar el crédito antes. Comprobar las tarifas y el crédito en el portal antes de crear recursos. Los beneficios gratuitos de Postgres/ACR pueden reducir el consumo si la suscripción los tiene habilitados; no se presupone.
 
-La región inicial eastus2 fue rechazada durante la validación por RequestDisallowedByAzure. La directiva de la suscripción permitió westus2, brazilsouth, chilecentral, belgiumcentral y northcentralus; se eligió West US 2. El precio de Container Apps allí es mayor que en East US 2 y esta tabla ya usa la tarifa corregida.
+La región inicial eastus2 fue rechazada durante la validación por RequestDisallowedByAzure. La directiva de la suscripción permitió westus2, brazilsouth, chilecentral, belgiumcentral y northcentralus; se eligió West US 2 para la plataforma. PostgreSQL está restringido allí para esta suscripción: solo la base usa North Central US, con B1ms a 0,017/h y almacenamiento a 0,115/GB-mes confirmados en la API oficial el 11-nov. La transferencia entre regiones usa parte del margen; medirla con el consumo real. El precio de Container Apps allí es mayor que en East US 2 y esta tabla ya usa la tarifa corregida.
 
 ## Controles operativos
 

@@ -1,0 +1,38 @@
+name: Carga en Azure dev
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  load:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: dev
+    concurrency:
+      group: ascua-dev
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Carga con una réplica y restauración de configuración
+        run: bash infra/scripts/loadtest.sh
+      - name: Resumen
+        if: always()
+        run: cat loadtests/reports/*-azure/resumen.md >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: carga-azure-dev
+          path: loadtests/reports/
+          retention-days: 14
