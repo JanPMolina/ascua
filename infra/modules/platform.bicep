@@ -1,5 +1,6 @@
 param environment string
 param location string
+param postgresLocation string
 param tags object
 param postgresAdminObjectId string
 param postgresAdminName string
@@ -119,7 +120,7 @@ resource redisAccess 'Microsoft.Cache/redisEnterprise/databases/accessPolicyAssi
 
 resource postgres 'Microsoft.DBforPostgreSQL/flexibleServers@2024-08-01' = {
   name: 'psql-ascua-${environment}-${suffix}'
-  location: location
+  location: postgresLocation
   tags: tags
   sku: { name: 'Standard_B1ms', tier: 'Burstable' }
   properties: {

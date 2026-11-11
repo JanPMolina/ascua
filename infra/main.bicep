@@ -2,6 +2,8 @@ targetScope = 'subscription'
 @allowed(['dev', 'prod'])
 param environment string
 param location string = 'westus2'
+@description('West US 2 está restringido para PostgreSQL en Azure for Students; North Central US admite PostgreSQL 17/B1ms.')
+param postgresLocation string = 'northcentralus'
 param postgresAdminObjectId string
 param postgresAdminName string
 param alertEmail string
@@ -24,6 +26,7 @@ module resources 'environment.bicep' = {
   params: {
     environment: environment
     location: location
+    postgresLocation: postgresLocation
     postgresAdminObjectId: postgresAdminObjectId
     postgresAdminName: postgresAdminName
     alertEmail: alertEmail

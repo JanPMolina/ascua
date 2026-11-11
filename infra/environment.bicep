@@ -3,6 +3,8 @@ targetScope = 'resourceGroup'
 @allowed(['dev', 'prod'])
 param environment string
 param location string = 'westus2'
+@description('West US 2 está restringido para PostgreSQL en Azure for Students; North Central US admite PostgreSQL 17/B1ms.')
+param postgresLocation string = 'northcentralus'
 @description('Object ID del administrador humano de PostgreSQL en el tenant de la suscripción.')
 param postgresAdminObjectId string
 param postgresAdminName string
@@ -23,6 +25,7 @@ module platform 'modules/platform.bicep' = {
   params: {
     environment: environment
     location: location
+    postgresLocation: postgresLocation
     tags: tags
     postgresAdminObjectId: postgresAdminObjectId
     postgresAdminName: postgresAdminName
