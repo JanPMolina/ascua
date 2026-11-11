@@ -8,6 +8,8 @@ Usar **Azure for Students**, no `Azure subscription 1` de pago por uso. Educatio
 
 La directiva `sys.regionrestriction` de esta suscripción permite **westus2, brazilsouth, chilecentral, belgiumcentral y northcentralus**. La validación inicial rechazó eastus2. Los valores por defecto se ajustaron a **westus2**; confirmar también disponibilidad de cada SKU antes de desplegar la plataforma.
 
+**Preparación verificada en Azure:** despliegue `ascua-bootstrap` en estado Succeeded el 11-nov; grupos dev/prod, identidad y federación OIDC creados, con Contributor + User Access Administrator en ambos grupos. La creación de credenciales es secuencial para evitar conflictos del servicio. Falta comprobar el login efectivo del pipeline. Por decisión de Juan Pablo, **producción permanece bloqueada hasta que Jan configure la aprobación de GitHub**.
+
 ## Preparación del propietario (una vez)
 
 1. Confirmar la suscripción con `az account show`. Registrar Microsoft.App, Microsoft.OperationalInsights, Microsoft.Insights, Microsoft.ManagedIdentity, Microsoft.ContainerRegistry, Microsoft.KeyVault, Microsoft.Cache y Microsoft.DBforPostgreSQL. Esperar `Registered`.

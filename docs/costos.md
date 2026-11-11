@@ -25,7 +25,7 @@ La región inicial eastus2 fue rechazada durante la validación por RequestDisal
 
 ## Controles operativos
 
-- Crear presupuesto mensual de USD 90 con avisos al 50%, 80% y 100%, y revisar también el saldo de Education. **Un presupuesto avisa, no detiene servicios automáticamente.** No convertir la suscripción a pago por uso.
+- Presupuesto mensual **ascua-noviembre**, USD 90, creado el 11-nov en la suscripción estudiantil con avisos al 50%, 80% y 100% al correo del operador. Revisar también el saldo de Education. **Un presupuesto avisa, no detiene servicios automáticamente.** No convertir la suscripción a pago por uso. Límite de consumo autorizado por el usuario para esta tarea: **USD 95 del crédito**.
 - Mantener dev en minReplicas=0 y finalizar bots/partidas al concluir las pruebas. Detener Postgres dev cuando no se use (`az postgres flexible-server stop`); Azure lo reinicia automáticamente tras el plazo máximo admitido, por lo que hay que revisar su estado.
 - Redis sigue facturando mientras exista. Eliminarlo pierde datos de caché y requiere autorización y plan de reconstrucción; no se programa automáticamente.
 - Mantener prod con al menos dos réplicas durante el período de revisión; no apagarlo el 19 porque el usuario pidió disponibilidad hasta el 22.
