@@ -4,6 +4,8 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
   location: location
   tags: { project: 'ascua', purpose: 'OIDC GitHub Actions' }
 }
+// Azure rechaza escrituras concurrentes de credenciales de una misma identidad.
+@batchSize(1)
 resource federation 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedIdentityCredentials@2023-01-31' = [for env in ['dev', 'production']: {
   parent: identity
   name: 'github-${env}'
