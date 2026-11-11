@@ -6,6 +6,8 @@ Implementación propuesta el 11-nov-2026. La compilación local no demuestra un 
 
 Usar **Azure for Students**, no `Azure subscription 1` de pago por uso. Education muestra USD 100 disponibles y vencimiento 11-nov-2027. La app debe estar disponible hasta el **22-nov-2026 inclusive**, con revisión el 19. No se programa eliminación automática de datos.
 
+La directiva `sys.regionrestriction` de esta suscripción permite **westus2, brazilsouth, chilecentral, belgiumcentral y northcentralus**. La validación inicial rechazó eastus2. Los valores por defecto se ajustaron a **westus2**; confirmar también disponibilidad de cada SKU antes de desplegar la plataforma.
+
 ## Preparación del propietario (una vez)
 
 1. Confirmar la suscripción con `az account show`. Registrar Microsoft.App, Microsoft.OperationalInsights, Microsoft.Insights, Microsoft.ManagedIdentity, Microsoft.ContainerRegistry, Microsoft.KeyVault, Microsoft.Cache y Microsoft.DBforPostgreSQL. Esperar `Registered`.
@@ -13,8 +15,8 @@ Usar **Azure for Students**, no `Azure subscription 1` de pago por uso. Educatio
 3. Tras autorizar esos permisos, ejecutar desde una sesión del propietario:
 
 ```bash
-az deployment sub what-if --location eastus2 --template-file infra/bootstrap.bicep
-az deployment sub create --name ascua-bootstrap --location eastus2 --template-file infra/bootstrap.bicep
+az deployment sub what-if --location westus2 --template-file infra/bootstrap.bicep
+az deployment sub create --name ascua-bootstrap --location westus2 --template-file infra/bootstrap.bicep
 ```
 
 4. Un administrador del repositorio debe crear `dev` y `production`. En production configurar revisores requeridos, restricciones de rama/tag y evitar omitir la aprobación. **En repositorios privados, GitHub Free/Pro/Team no ofrecen required reviewers**: comprobar el plan del propietario. Si la opción no existe, acordar una alternativa de aprobación con el profesor antes de habilitar prod. Los workflows fallan antes del login si production carece de revisores; no simulan una aprobación.
@@ -29,7 +31,7 @@ az deployment sub create --name ascua-bootstrap --location eastus2 --template-fi
 | POSTGRES_ADMIN_OBJECT_ID | Object ID del usuario humano en ese tenant |
 | POSTGRES_ADMIN_NAME | Nombre de inicio de sesión del administrador humano |
 | ALERT_EMAIL | Correo del operador que recibirá las alertas |
-| AZURE_LOCATION | eastus2, o región admitida por la suscripción y todos los servicios |
+| AZURE_LOCATION | westus2, o región admitida por la suscripción y todos los servicios |
 
 Los GUID no son credenciales. No guardar tokens, claves PEM ni cadenas con contraseña.
 

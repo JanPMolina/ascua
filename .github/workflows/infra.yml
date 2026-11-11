@@ -43,7 +43,7 @@ jobs:
       POSTGRES_ADMIN_OBJECT_ID: ${{ vars.POSTGRES_ADMIN_OBJECT_ID }}
       POSTGRES_ADMIN_NAME: ${{ vars.POSTGRES_ADMIN_NAME }}
       ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
-      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'eastus2' }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'westus2' }}
     steps:
       - uses: actions/checkout@v7
       - name: Exigir aprobación configurada en producción

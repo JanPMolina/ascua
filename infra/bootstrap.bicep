@@ -1,5 +1,5 @@
 targetScope = 'subscription'
-param location string = 'eastus2'
+param location string = 'westus2'
 var environments = ['dev', 'prod']
 resource groups 'Microsoft.Resources/resourceGroups@2024-03-01' = [for env in environments: {
   name: 'rg-ascua-${env}'

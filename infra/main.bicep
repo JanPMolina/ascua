@@ -1,7 +1,7 @@
 targetScope = 'subscription'
 @allowed(['dev', 'prod'])
 param environment string
-param location string = 'eastus2'
+param location string = 'westus2'
 param postgresAdminObjectId string
 param postgresAdminName string
 param alertEmail string

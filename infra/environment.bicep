@@ -2,7 +2,7 @@ targetScope = 'resourceGroup'
 
 @allowed(['dev', 'prod'])
 param environment string
-param location string = 'eastus2'
+param location string = 'westus2'
 @description('Object ID del administrador humano de PostgreSQL en el tenant de la suscripción.')
 param postgresAdminObjectId string
 param postgresAdminName string
