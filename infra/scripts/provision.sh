@@ -17,7 +17,7 @@ cleanup() {
   unset PGPASSWORD
   rm -rf -- "$temp"
   if [[ "$firewallCreated" == true ]]; then
-    az postgres flexible-server firewall-rule delete -g "$rg" -n "${host%%.*}" --rule-name "$firewall" --yes --output none || true
+    az postgres flexible-server firewall-rule delete -g "$rg" --server-name "${host%%.*}" --name "$firewall" --yes --output none || true
   fi
 }
 trap cleanup EXIT
@@ -51,7 +51,7 @@ fi
 # IP del runner solo durante el bootstrap, retirada mediante trap incluso si falla.
 ip=$(curl --fail --silent --show-error https://api.ipify.org)
 [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
-az postgres flexible-server firewall-rule create -g "$rg" -n "${host%%.*}" --rule-name "$firewall" --start-ip-address "$ip" --end-ip-address "$ip" --output none
+az postgres flexible-server firewall-rule create -g "$rg" --server-name "${host%%.*}" --name "$firewall" --start-ip-address "$ip" --end-ip-address "$ip" --output none
 firewallCreated=true
 export PGPASSWORD
 PGPASSWORD=$(az account get-access-token --resource-type oss-rdbms --query accessToken -o tsv)
