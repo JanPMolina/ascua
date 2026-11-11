@@ -38,7 +38,7 @@ fqdn=$(az containerapp revision show -g "$rg" -n "$app" --revision "$new" --quer
 curl --fail --retry 30 --retry-all-errors --retry-delay 10 "https://$fqdn/health/ready"
 if [[ "$environment" == prod ]]; then
   az containerapp ingress traffic set -g "$rg" -n "$app" --revision-weight "$old=90" "$new=10" --output none
-  for iteration in {1..6}; do
+  for _ in {1..6}; do
     curl --fail --silent --show-error "https://$fqdn/health/ready" >/dev/null
     sleep 10
   done
@@ -51,5 +51,5 @@ sleep 30
 az containerapp revision deactivate -g "$rg" -n "$app" --revision "$old" --output none
 promoted=true
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  printf '### Ascua %s\n\nURL: https://%s\n\nRevisión: `%s`\n\nRollback: `%s`\n' "$environment" "$public" "$new" "$old" >> "$GITHUB_STEP_SUMMARY"
+  printf '### Ascua %s\n\nURL: https://%s\n\nRevisión: %s\n\nRollback: %s\n' "$environment" "$public" "$new" "$old" >> "$GITHUB_STEP_SUMMARY"
 fi

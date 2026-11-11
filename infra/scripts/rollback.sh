@@ -26,6 +26,6 @@ curl --fail --retry 5 --retry-all-errors --retry-delay 5 "https://$public/health
 elapsed=$((SECONDS - start))
 printf 'Rollback a %s: %s segundos\n' "$requested" "$elapsed"
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  printf '### Rollback %s\n\nRevisión: `%s`\n\nDuración: %s segundos\n\nURL: https://%s\n' "$environment" "$requested" "$elapsed" "$public" >> "$GITHUB_STEP_SUMMARY"
+  printf '### Rollback %s\n\nRevisión: %s\n\nDuración: %s segundos\n\nURL: https://%s\n' "$environment" "$requested" "$elapsed" "$public" >> "$GITHUB_STEP_SUMMARY"
 fi
 [[ "$elapsed" -lt 300 ]]

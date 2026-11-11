@@ -84,5 +84,5 @@ url=$(az containerapp show -g "$rg" -n "ca-ascua-$environment" --query propertie
 curl --fail --retry 20 --retry-all-errors --retry-delay 10 "https://$url/health/ready"
 printf '\nURL: https://%s\n' "$url"
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
-  printf '### Ascua %s\n\nURL: https://%s\n\nImagen: `%s`\n' "$environment" "$url" "$image" >> "$GITHUB_STEP_SUMMARY"
+  printf '### Ascua %s\n\nURL: https://%s\n\nImagen: %s\n' "$environment" "$url" "$image" >> "$GITHUB_STEP_SUMMARY"
 fi
