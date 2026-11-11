@@ -37,6 +37,8 @@ az deployment sub create --name ascua-bootstrap --location westus2 --template-fi
 
 Los GUID no son credenciales. No guardar tokens, claves PEM ni cadenas con contraseña.
 
+El subject OIDC observado en GitHub incluye IDs inmutables: `repo:JanPMolina@231949390/ascua@1438994878:environment:dev` (o `production`). La federación de bootstrap debe coincidir exactamente con ese valor; el formato anterior sin IDs produce AADSTS700213. No ampliar a otros repositorios para resolverlo.
+
 ## Primera ejecución
 
 Fusionar el PR con CI en verde. Ejecutar `Infraestructura Azure` en main, destino dev. El workflow muestra what-if, despliega plataforma, espera propagación de RBAC, crea la clave JWT si no existe, crea el principal de la app en Postgres, construye/escanea/publica la imagen, despliega y comprueba readiness. La IP temporal del runner en Postgres se elimina incluso si el bootstrap falla. Un grupo nuevo y vacío se completa en una sola ejecución; la configuración OIDC es preparación de la cuenta.

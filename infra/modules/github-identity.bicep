@@ -11,7 +11,7 @@ resource federation 'Microsoft.ManagedIdentity/userAssignedIdentities/federatedI
   name: 'github-${env}'
   properties: {
     issuer: 'https://token.actions.githubusercontent.com'
-    subject: 'repo:JanPMolina/ascua:environment:${env}'
+    subject: 'repo:JanPMolina@231949390/ascua@1438994878:environment:${env}'
     audiences: ['api://AzureADTokenExchange']
   }
 }]
