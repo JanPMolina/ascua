@@ -145,6 +145,8 @@ resource postgresAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators
     principalType: 'User'
     tenantId: tenant().tenantId
   }
+  // El firewall cambia temporalmente el estado del servidor; Entra necesita que ya esté accesible.
+  dependsOn: [firewall]
 }
 resource pipelineAdmin 'Microsoft.DBforPostgreSQL/flexibleServers/administrators@2024-08-01' = {
   parent: postgres
@@ -166,6 +168,7 @@ resource firewall 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-
   parent: postgres
   name: 'AllowAzureServices'
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
+  dependsOn: [database]
 }
 resource containerEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' = {
   name: 'cae-ascua-${environment}'

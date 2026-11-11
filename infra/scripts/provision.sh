@@ -24,7 +24,22 @@ trap cleanup EXIT
 umask 077
 az account set --subscription "$AZURE_SUBSCRIPTION_ID"
 az bicep build-params --file "$params" --outfile "$temp/parameters.json"
-az deployment group create --resource-group "$rg" --name "$deployment" --template-file infra/environment.bicep --parameters "$temp/parameters.json" --output none
+echo 'Desplegando plataforma y permisos; PostgreSQL se configura secuencialmente.'
+deploy_group() {
+  local attempt
+  for attempt in {1..3}; do
+    if az deployment group create --resource-group "$rg" --template-file infra/environment.bicep --parameters "$temp/parameters.json" "$@" --output none 2>"$temp/deployment-error"; then
+      return 0
+    fi
+    cat "$temp/deployment-error" >&2
+    if [[ "$attempt" == 3 ]] || ! grep -q 'AadAuthOperationCannotBePerformedWhenServerIsNotAccessible' "$temp/deployment-error"; then
+      return 1
+    fi
+    echo 'PostgreSQL todavía está cambiando de estado; reintento limitado en 30 s.'
+    sleep 30
+  done
+}
+deploy_group --name "$deployment"
 outputs=$(az deployment group show --resource-group "$rg" --name "$deployment" --query properties.outputs -o json)
 acr=$(jq -r '.registryName.value' <<< "$outputs")
 server=$(jq -r '.registryServer.value' <<< "$outputs")
@@ -36,6 +51,7 @@ if az containerapp show -g "$rg" -n "ca-ascua-$environment" --output none 2>/dev
   echo 'Plataforma actualizada. La aplicación ya existe; usar deploy.yml para cambiar de revisión.'
   exit 0
 fi
+echo 'Inicializando la clave JWT persistente en Key Vault.'
 # Consultar nombres, no valores. Reintentar la propagación de RBAC sin regenerar una clave existente.
 secrets=''
 for attempt in {1..30}; do
@@ -48,6 +64,7 @@ if ! printf '%s\n' "$secrets" | grep -qx 'jwt-signing-key'; then
   az keyvault secret set --vault-name "$vault" --name jwt-signing-key --file "$temp/jwt.pem" --content-type application/x-pem-file --output none
   rm -f "$temp/jwt.pem"
 fi
+echo 'Inicializando el rol Entra de la aplicación en PostgreSQL.'
 # IP del runner solo durante el bootstrap, retirada mediante trap incluso si falla.
 ip=$(curl --fail --silent --show-error https://api.ipify.org)
 [[ "$ip" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
@@ -71,6 +88,7 @@ GRANT ALL ON SCHEMA public TO :"role";
 ALTER DATABASE ascua OWNER TO :"role";
 SQL
 unset PGPASSWORD
+echo 'Construyendo y escaneando la imagen de la aplicación.'
 revision=$(git rev-parse HEAD)
 image="$server/ascua-api:$revision"
 az acr login --name "$acr" --output none
@@ -78,8 +96,8 @@ docker build -t "$image" .
 # Trivy lo ejecuta infra.yml antes del push.
 trivy image --exit-code 1 --severity CRITICAL --ignore-unfixed "$image"
 docker push "$image"
-az deployment group create --resource-group "$rg" --name "$deployment-app" --template-file infra/environment.bicep --parameters "$temp/parameters.json" \
-  --parameters deployApplication=true image="$image" --output none
+echo 'Desplegando Container App y comprobando readiness.'
+deploy_group --name "${deployment}-app" --parameters deployApplication=true image="$image"
 url=$(az containerapp show -g "$rg" -n "ca-ascua-$environment" --query properties.configuration.ingress.fqdn -o tsv)
 curl --fail --retry 20 --retry-all-errors --retry-delay 10 "https://$url/health/ready"
 printf '\nURL: https://%s\n' "$url"
