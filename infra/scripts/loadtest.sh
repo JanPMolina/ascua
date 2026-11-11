@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Exclusivamente dev. Conserva tráfico/configuración y restaura incluso si la carga falla.
-rg=rg-ascua-dev
-app=ca-ascua-dev
+rg='rg-ascua-dev'
+app='ca-ascua-dev'
 temp=$(mktemp -d)
 umask 077
 az containerapp show -g "$rg" -n "$app" -o json > "$temp/before.json"
@@ -23,6 +23,7 @@ for name in "${names[@]}"; do
 done
 changed=false
 testRevision=''
+# shellcheck disable=SC2329 # Se invoca desde el trap EXIT; se desregistra al entrar para evitar recursión.
 cleanup() {
   result=$?
   trap - EXIT
