@@ -1,0 +1,64 @@
+name: Desplegar Azure
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente de destino
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: >-
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+      && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository)
+      || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+      || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: ${{ (inputs.environment == 'prod' || github.event_name == 'push') && 'production' || 'dev' }}
+    concurrency:
+      group: ascua-${{ (inputs.environment == 'prod' || github.event_name == 'push') && 'prod' || 'dev' }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Exigir aprobación configurada en producción
+        if: inputs.environment == 'prod' || github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq '.protection_rules | any(.type == "required_reviewers")')" = true
+      - name: Validar que la versión pertenece a main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: v0.69.3
+      - name: Publicar una revisión sana y cambiar tráfico
+        env:
+          TARGET_ENV: ${{ (inputs.environment == 'prod' || github.event_name == 'push') && 'prod' || 'dev' }}
+        run: bash infra/scripts/deploy.sh "$TARGET_ENV"

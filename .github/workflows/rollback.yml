@@ -1,0 +1,49 @@
+name: Rollback Azure
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente
+        type: choice
+        options: [dev, prod]
+        default: dev
+      revision:
+        description: Revisión a restaurar (vacío usa la anterior)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  rollback:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: ${{ inputs.environment == 'prod' && 'production' || 'dev' }}
+    concurrency:
+      group: ascua-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v7
+      - name: Exigir aprobación configurada en producción
+        if: inputs.environment == 'prod'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq '.protection_rules | any(.type == "required_reviewers")')" = true
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Restaurar tráfico y medir duración
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+          TARGET_REVISION: ${{ inputs.revision }}
+        run: bash infra/scripts/rollback.sh "$TARGET_ENV" "$TARGET_REVISION"

@@ -1,0 +1,73 @@
+name: Infraestructura Azure
+
+on:
+  pull_request:
+    paths: ['infra/**', '.github/workflows/infra.yml', '.github/workflows/deploy.yml', '.github/workflows/rollback.yml']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Ambiente que se creará desde cero
+        type: choice
+        options: [dev, prod]
+        default: dev
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compilar Bicep
+        run: az bicep build --file infra/main.bicep --outfile /tmp/ascua.json
+      - name: Comprobar scripts
+        run: shellcheck infra/scripts/*.sh
+
+  provision:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: ${{ inputs.environment == 'prod' && 'production' || 'dev' }}
+    concurrency:
+      group: ascua-${{ inputs.environment }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      actions: read
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      AZURE_PRINCIPAL_ID: ${{ vars.AZURE_PRINCIPAL_ID }}
+      POSTGRES_ADMIN_OBJECT_ID: ${{ vars.POSTGRES_ADMIN_OBJECT_ID }}
+      POSTGRES_ADMIN_NAME: ${{ vars.POSTGRES_ADMIN_NAME }}
+      ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
+      AZURE_LOCATION: ${{ vars.AZURE_LOCATION || 'eastus2' }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Exigir aprobación configurada en producción
+        if: inputs.environment == 'prod'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GITHUB_REPOSITORY/environments/production" --jq '.protection_rules | any(.type == "required_reviewers")')" = true
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Instalar cliente PostgreSQL
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Instalar Trivy
+        uses: aquasecurity/setup-trivy@v0.3.1
+        with:
+          version: v0.69.3
+      - name: Vista previa de infraestructura
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: az deployment group what-if --resource-group "rg-ascua-$TARGET_ENV" --parameters "infra/parameters/$TARGET_ENV.bicepparam"
+      - name: Aprovisionar, inicializar y desplegar
+        env:
+          TARGET_ENV: ${{ inputs.environment }}
+        run: bash infra/scripts/provision.sh "$TARGET_ENV"
