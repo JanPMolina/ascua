@@ -13,6 +13,7 @@ using Ascua.Infrastructure.Redis;
 using Azure.Monitor.OpenTelemetry.AspNetCore;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
+using OpenTelemetry.Metrics;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
