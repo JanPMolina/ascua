@@ -62,6 +62,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 if (!string.IsNullOrWhiteSpace(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
 {
     builder.Services.AddOpenTelemetry().UseAzureMonitor();
+    builder.Services.ConfigureOpenTelemetryMeterProvider((_, metrics) =>
+        metrics.AddMeter(Ascua.Application.Matches.MatchMetrics.MeterName));
 }
 
 var app = builder.Build();
