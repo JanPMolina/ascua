@@ -7,7 +7,7 @@ Proyecto 2 de Diseño de Software (II-2026). Es un servidor autoritativo para **
   - Jan: juego, servidor, seguridad, contratos, pruebas y documentación.
   - Juan Pablo: todo lo de Azure (IaC, despliegue, identidad, monitoreo).
 
-> **URL pública:** _pendiente_ · **Documentación de la API:** `/docs`
+> **URL pública (dev Azure):** [Ascua](https://ca-ascua-dev.whitecliff-be2ee19c.westus2.azurecontainerapps.io/) · **Documentación de la API:** `/docs`
 
 ## Correr localmente (menos de 10 minutos)
 

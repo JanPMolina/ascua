@@ -276,3 +276,22 @@ optimización 1, que libera cuota, mueve tanto el p95.
 - **Siguiente optimización candidata**, según la misma traza: los envíos por socket a Redis (~14 % de la CPU en
   `send`) por los muchos comandos chicos de cada orden (`FindAck`, `GetAsync`, el script de envío y dos lecturas
   para `AllDecided`). Juntarlos en un solo script Lua o en un batch bajaría la CPU por orden.
+
+
+## Medición en Azure (12-nov-2026 UTC)
+
+[Workflow y artifact original](https://github.com/JanPMolina/ascua/actions/runs/43128625356). Inicio del generador: **00:45:43 UTC**. Destino: dev, una réplica de **0,5 vCPU / 1 GiB**, rondas de 3 s, etapas de 120 s, omitiendo los primeros 10 s de cada etapa. Reloj remoto estimado; desfase mediano servidor−cliente: −0,7 ms. Container Apps y Redis están en West US 2; PostgreSQL, en North Central US por restricción de esta suscripción.
+
+Las muestras de Azure Monitor se consultaron con las dimensiones reales `revisionName` y `podName`. Todas las filas corresponden a la réplica `ca-ascua-dev--load-43128625356-1-85ddcd69fd-zhsk2`. CPU y RAM son promedios de muestras PT1M dentro de cada etapa: esa granularidad puede mezclar un borde entre etapas. El p95 viene del generador, no de promedios de Azure Monitor.
+
+| Partidas | p95 ms | Tasa error | CPU núcleos | CPU % de la cuota de 0,5 vCPU | RAM MiB | Órdenes perdidas | Duplicadas | Huecos de secuencia |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 510,6 | 0,05% | 0,38 | 75,07 | 505,42 | 0 | 0 | 0 |
+| 32 | 402,5 | 0,06% | 0,38 | 76,42 | 475,65 | 0 | 0 | 0 |
+| 64 | 3809,1 | 4,13% | 0,48 | 96,16 | 418,25 | 0 | 0 | 0 |
+| 96 | 9530,6 | 24,99% | 0,48 | 95,48 | 387,21 | 0 | 0 | 0 |
+| 112 | 10946,6 | 15,17% | 0,48 | 95,60 | 418,81 | 0 | 0 | 1 |
+
+**Resultado: la meta no se alcanzó ni en la primera etapa.** Desde 64 partidas la CPU promedia cerca de su cuota y la latencia se degrada. La separación regional puede añadir tiempo de ida y vuelta, pero atribuirle la causa exige perfilar; no se demuestra con esta tabla. El punto local de ~112 partidas por réplica no se puede trasladar a Azure con esta medición.
+
+La prueba restauró `EnableDevEndpoints=false`, retiró las variables temporales de duración de ronda y límite de autenticación, y devolvió la escala a 0–2 réplicas. Se verificó de nuevo en Azure. No se cambió el generador ni se rebajó su umbral para obtener un resultado verde.
