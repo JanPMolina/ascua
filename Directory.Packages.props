@@ -1,7 +1,7 @@
 ﻿<Project>
   <ItemGroup>
     <!-- Api -->
-    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.AspNetCore.OpenApi" Version="10.0.15" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.14" />
     <PackageVersion Include="Microsoft.AspNetCore.SignalR.StackExchangeRedis" Version="10.0.15" />
     <PackageVersion Include="Scalar.AspNetCore" Version="2.18.2" />
