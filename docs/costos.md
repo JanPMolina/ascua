@@ -33,3 +33,7 @@ La región inicial eastus2 fue rechazada durante la validación por RequestDisal
 - Registrar consumo real y saldo antes/después de la prueba de carga; completar esta estimación con el precio confirmado del portal y evidencia de presupuesto.
 
 Fuentes: [Container Apps: facturación y franquicia](https://learn.microsoft.com/en-us/azure/container-apps/billing), [precios Container Apps](https://azure.microsoft.com/en-us/pricing/details/container-apps/), [precios Managed Redis](https://azure.microsoft.com/en-us/pricing/details/managed-redis/), [precios Postgres](https://azure.microsoft.com/en-us/pricing/details/postgresql/flexible-server/).
+
+## Región de producción y cuota observada
+
+Esta suscripción solo permite un Container Apps Environment por región. Dev ocupa West US 2, por lo que prod queda parametrizado en North Central US (incluido PostgreSQL). La tabla anterior conserva las tarifas de referencia de West US 2, con PostgreSQL de North Central US al mismo precio verificado. Recalcular la cotización de prod en North Central US antes de habilitarlo; no se activa producción mientras falten la aprobación nativa y esa comprobación. Se conserva el máximo autorizado de USD 95.
