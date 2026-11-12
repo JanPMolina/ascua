@@ -170,11 +170,13 @@ resource firewall 'Microsoft.DBforPostgreSQL/flexibleServers/firewallRules@2024-
   properties: { startIpAddress: '0.0.0.0', endIpAddress: '0.0.0.0' }
   dependsOn: [database]
 }
-resource containerEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' = {
+resource containerEnvironment 'Microsoft.App/managedEnvironments@2026-07-01' = {
   name: 'cae-ascua-${environment}'
   location: location
   tags: tags
   properties: {
+    // Express no permite revisiones múltiples ni el periodo de drenado que requiere Ascua.
+    environmentMode: 'WorkloadProfiles'
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {

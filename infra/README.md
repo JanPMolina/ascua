@@ -66,3 +66,7 @@ Fuentes: [retirada de Azure Cache for Redis](https://learn.microsoft.com/en-us/a
 ### Restricción regional de PostgreSQL (11-nov-2026)
 
 La consulta real de capacidades de la suscripción estudiantil rechaza PostgreSQL en `westus2` (`OfferRestricted`, versiones vacías). `northcentralus` permite PostgreSQL 17 y `Standard_B1ms`, por eso solo PostgreSQL usa `postgresLocation=northcentralus`; los demás recursos permanecen en `westus2`. Esta separación añade latencia y posible transferencia interregional: medirla en la prueba de carga y conservar la reserva de USD 95. Se puede cambiar el parámetro antes de crear un ambiente nuevo.
+
+### Modo del Environment
+
+Se declara `environmentMode: WorkloadProfiles` con API 2026-07-01 y únicamente el perfil Consumption. El entorno real creado inicialmente devolvió modo Express, que rechazó `terminationGracePeriodSeconds` y no admite revisiones múltiples. No retirar drenado, división de tráfico, identidad ni observabilidad para acomodar Express. El 12-nov UTC se solicitó cambiar el entorno vacío al modo estándar; verificar `environmentMode` y `provisioningState` antes de reintentar la app. Fuente: https://learn.microsoft.com/azure/container-apps/express-overview
