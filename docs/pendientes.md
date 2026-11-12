@@ -1,6 +1,6 @@
 # Pendientes hacia `v1.0.0`
 
-Actualizado el **3-nov-2026**. La entrega es el **12-nov-2026**: ese día se pone el tag `v1.0.0` y el profesor evalúa esa versión.
+Actualizado el **12-nov-2026**. La entrega prevista es el **12-nov-2026**; revisión indicada por Juan Pablo el **19-nov**, con disponibilidad solicitada hasta el **22-nov inclusive**. El tag `v1.0.0` sigue pendiente de los criterios de cierre.
 
 Esta lista se contrastó con el enunciado ([Proyecto3.pdf](../Proyecto3.pdf)) y su rúbrica. Cada pendiente indica qué criterio afecta.
 - **Al cerrar un pendiente:** se marca `[x]` en el mismo PR que lo resuelve.
@@ -47,7 +47,7 @@ En `main`, con CI, CodeQL, gitleaks y Trivy en verde, y verificado con `docker c
 - [x] **Sincronía OpenAPI ↔ código:** agregar una prueba o un paso de CI que compare el `openapi.json` generado con una copia versionada, para que la rúbrica («sincronizados con el código») quede demostrada.
 
 ### Documentación (5%)
-- [ ] **README:** falta solo la URL pública (cuando Juan Pablo la tenga). Ya tiene la carpeta `loadtests/` en la estructura, los enlaces a `docs/api/`, `docs/rendimiento.md`, las ADR, el modelo de amenazas, los runbooks y esta lista, y cómo correr la prueba de carga.
+- [x] **README:** URL pública de dev incorporada. Ya tiene la carpeta `loadtests/` en la estructura, los enlaces a `docs/api/`, `docs/rendimiento.md`, las ADR, el modelo de amenazas, los runbooks y esta lista, y cómo correr la prueba de carga.
 - [x] **Runbooks** en `docs/runbooks/`:
   - partida `FAULTED`;
   - suspender un usuario y terminar una partida desde administración;
@@ -77,7 +77,7 @@ Paso a paso en [Juan_Pablo_instrucciones.md](../Juan_Pablo_instrucciones.md).
 El detalle está en [infra/README.md](../infra/README.md); la interfaz con la app, en [03-plan-de-trabajo.md](../planteamiento/03-plan-de-trabajo.md#interfaz-entre-los-dos-para-no-bloquearse).
 
 ### IaC y CI/CD (10%)
-- [ ] **Bicep** con todos los recursos:
+- [x] **Bicep** con todos los recursos:
   - Container Apps;
   - Redis;
   - PostgreSQL Flexible Server;
@@ -90,13 +90,13 @@ El detalle está en [infra/README.md](../infra/README.md); la interfaz con la ap
   - `infra.yml`: ambiente desde cero en una ejecución;
   - `deploy.yml`: imagen a ACR, dev automático y prod con aprobación;
   - `rollback.yml`: menos de 5 minutos.
-- [ ] **Publicaciones sin cortar partidas:** revisiones con división de tráfico y drenado de conexiones; **rollback probado** y documentado.
+- [x] **Publicaciones sin cortar partidas:** revisiones con división de tráfico y drenado de conexiones; **rollback probado** y documentado.
 - [ ] **Evidencia** de un ambiente reconstruido desde cero con el pipeline.
 
 ### Seguridad e identidad (parte del 20%)
-- [ ] **Key Vault:** crear el secreto `jwt-signing-key` y dar `Key Vault Secrets User` a la identidad. El `KeyVaultSigningKeyProvider` ya está implementado y probado (Jan); solo falta configurarlo en Azure.
-- [ ] **Autenticación Entra** con identidad administrada en Postgres y Redis: crear los roles y permisos y poner `UseEntraAuth=true`. El código ya está (Jan); ninguna cadena lleva contraseña.
-- [ ] **Configuración de Azure:**
+- [x] **Key Vault:** crear el secreto `jwt-signing-key` y dar `Key Vault Secrets User` a la identidad. El `KeyVaultSigningKeyProvider` ya está implementado y probado (Jan); solo falta configurarlo en Azure.
+- [x] **Autenticación Entra** con identidad administrada en Postgres y Redis: crear los roles y permisos y poner `UseEntraAuth=true`. El código ya está (Jan); ninguna cadena lleva contraseña.
+- [x] **Configuración de Azure:**
   - `Ascua__Realtime__EnableDevEndpoints=false`;
   - `Ascua__TrustForwardedHeaders=true`;
   - `Ascua__Cors__AllowedOrigins` y `Ascua__Realtime__PublicBaseUrl` con el dominio público;
@@ -104,14 +104,26 @@ El detalle está en [infra/README.md](../infra/README.md); la interfaz con la ap
   - Redis **sin modo clúster**.
 
 ### Observabilidad y costo (5% + parte del 10%)
-- [ ] **Application Insights** recibiendo trazas y las métricas `ascua.*`.
-- [ ] **Al menos 2 alertas:** p95 > 200 ms, errores > 1% y reinicios de réplica.
-- [ ] **Dashboard o *workbook*.**
-- [ ] **Límite diario de ingesta** en Log Analytics.
-- [ ] **`docs/costos.md`:** estimación mensual y apagado o escala a 0 de dev.
+- [x] **Application Insights** recibiendo trazas y las métricas `ascua.*`.
+- [x] **Al menos 2 alertas:** errores HTTP >1%, partidas FAULTED y reinicios de réplica configurados.
+- [ ] **Alerta de p95 >200 ms:** falta una fuente que preserve las muestras o buckets adecuados; no calcular un percentil de medias.
+- [x] **Dashboard o *workbook*.**
+- [x] **Límite diario de ingesta** en Log Analytics.
+- [x] **`docs/costos.md`:** estimación mensual y apagado o escala a 0 de dev.
 
 ### Rendimiento en la nube (parte del 15%)
-- [ ] **Prueba de carga contra la URL de Azure:** correr `loadtests/run.sh` contra dev y reportar CPU y memoria por réplica desde Azure Monitor. Se agrega como sección de `docs/rendimiento.md`.
+- [x] **Prueba de carga contra la URL de Azure:** correr `loadtests/run.sh` contra dev y reportar CPU y memoria por réplica desde Azure Monitor. Se agrega como sección de `docs/rendimiento.md`.
+
+### Evidencia verificada de dev (12-nov-2026)
+
+- [URL pública de dev](https://ca-ascua-dev.whitecliff-be2ee19c.westus2.azurecontainerapps.io/): portada y sondas HTTP 200. Disponibilidad solicitada hasta el 22-nov inclusive; producción continúa bloqueada hasta que Jan configure revisores nativos.
+- [Despliegue de dev](https://github.com/JanPMolina/ascua/actions/runs/43300437654): corrección de métricas del [PR #54](https://github.com/JanPMolina/ascua/pull/54), con CI previo en verde. Application Insights recibe las métricas de partidas, conexiones, órdenes, duración de resolución y latencia de difusión.
+- [Rollback probado](https://github.com/JanPMolina/ascua/actions/runs/43299999681): **53 segundos**, revisión sana y dominio público comprobados. Prueba HTTP del rollback; la continuidad de partida se comprobó por separado durante el despliegue siguiente.
+- [Continuidad manual durante el despliegue automático](https://github.com/JanPMolina/ascua/actions/runs/43301113236): dos clientes reales conectados por MessagePack conservaron la misma partida, héroes y vida desde la ronda 1 hasta la 15; nueva orden con ACK ACCEPTED a las 20:36:38 UTC tras finalizar el despliegue. Es evidencia de esta sesión, no una prueba exhaustiva de ausencia de pérdidas.
+- [Carga real en Azure](https://github.com/JanPMolina/ascua/actions/runs/43128625356): ejecutada con una réplica de 0,5 vCPU/1 GiB; CPU y memoria por réplica en [rendimiento.md](rendimiento.md). **No alcanzó p95 <200 ms**: 510,6 ms ya con 16 partidas. Haber ejecutado la prueba no significa que se haya cumplido la meta.
+- Alertas configuradas: errores HTTP, partidas FAULTED y reinicios. El workbook muestra latencia media/máxima de los agregados; el p95 de muestras originales procede del generador de carga, no se presenta un percentil de promedios como p95 real.
+- La reconstrucción íntegra desde un grupo vacío y producción con aprobación nativa siguen pendientes. El alta inicial se corrigió tras detectar restricciones regionales, concurrencia de PostgreSQL y modo Express; la app se publicó finalmente aplicando su módulo.
+- [ ] Reducir la latencia de la carga de Azure hasta la meta y repetir la medición; no aumentar recursos sin recalcular el consumo dentro de USD 95.
 
 ## Los dos: entrega
 
