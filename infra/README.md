@@ -69,4 +69,8 @@ La consulta real de capacidades de la suscripción estudiantil rechaza PostgreSQ
 
 ### Modo del Environment
 
-Se declara `environmentMode: WorkloadProfiles` con API 2026-07-01 y únicamente el perfil Consumption. El entorno real creado inicialmente devolvió modo Express, que rechazó `terminationGracePeriodSeconds` y no admite revisiones múltiples. No retirar drenado, división de tráfico, identidad ni observabilidad para acomodar Express. El 12-nov UTC se solicitó cambiar el entorno vacío al modo estándar; verificar `environmentMode` y `provisioningState` antes de reintentar la app. Fuente: https://learn.microsoft.com/azure/container-apps/express-overview
+Se declara `environmentMode: WorkloadProfiles` con API 2026-07-01 y únicamente el perfil Consumption. El entorno real creado inicialmente devolvió modo Express, que rechazó `terminationGracePeriodSeconds` y no admite revisiones múltiples. No retirar drenado, división de tráfico, identidad ni observabilidad para acomodar Express. El cambio del entorno vacío terminó el 12-nov UTC en `WorkloadProfiles / Succeeded`. El módulo de la app se aplicó con los parámetros existentes y `/health/live`, `/health/ready` y la portada devolvieron HTTP 200. El primer pipeline no completó el alta de la app por el rechazo de Express; la evidencia de una reconstrucción entera desde cero sigue pendiente. Fuente: https://learn.microsoft.com/azure/container-apps/express-overview
+
+### Cuota regional de esta suscripción
+
+Azure devolvió `MaxNumberOfRegionalEnvironmentsInSubExceeded`: esta suscripción admite un solo Environment en West US 2. Dev usa ese cupo. Los parámetros de prod usan `northcentralus`, región permitida donde PostgreSQL 17/B1ms está disponible. Producción continúa bloqueada hasta configurar revisores nativos de GitHub y revalidar cuotas/precios. El Environment vacío `cae-ascua-dev-standard` creado como respaldo en North Central US no recibió aplicaciones y se retira para liberar el cupo.
